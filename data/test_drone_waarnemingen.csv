@@ -1,0 +1,865 @@
+Datum,Locatie,Aantal_waarnemingen,Type,Latitude,Longitude,Gem_hoogte_m,Bron
+2025-01-01,Vliegbasis Volkel,4,Onbekend,51.6573,5.6889,92.1,Akoestisch
+2025-01-01,Vliegbasis Leeuwarden,2,Vleugel-drone,53.2289,5.7556,240.3,Radar
+2025-01-01,Marinevliegkamp De Kooy,4,Vleugel-drone,52.9233,4.7806,145.2,Visueel
+2025-01-01,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,88,Visueel
+2025-01-02,Vliegbasis Volkel,2,Mini-drone,51.6573,5.6889,61,Akoestisch
+2025-01-02,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,179.1,Akoestisch
+2025-01-02,Marinevliegkamp De Kooy,6,Quadcopter,52.9233,4.7806,255.3,Akoestisch
+2025-01-02,Vliegbasis Eindhoven,3,Quadcopter,51.45,5.3744,56.6,Radar
+2025-01-03,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,112.5,Radar
+2025-01-03,Vliegbasis Leeuwarden,2,Vleugel-drone,53.2289,5.7556,61.1,Radar
+2025-01-03,Marinevliegkamp De Kooy,3,Onbekend,52.9233,4.7806,226.6,Visueel
+2025-01-03,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,116.9,Visueel
+2025-01-03,Vliegbasis Eindhoven,2,Onbekend,51.45,5.3744,53,Visueel
+2025-01-04,Vliegbasis Volkel,3,Vleugel-drone,51.6573,5.6889,52.2,Visueel
+2025-01-04,Vliegbasis Leeuwarden,4,Onbekend,53.2289,5.7556,213.5,Radar
+2025-01-04,Marinevliegkamp De Kooy,8,Mini-drone,52.9233,4.7806,143.8,Visueel
+2025-01-04,Vliegbasis Woensdrecht,4,Quadcopter,51.4489,4.3422,159.2,Radar
+2025-01-04,Vliegbasis Eindhoven,3,Quadcopter,51.45,5.3744,276.8,Visueel
+2025-01-05,Vliegbasis Volkel,4,Onbekend,51.6573,5.6889,289.4,Meervoudig
+2025-01-05,Vliegbasis Leeuwarden,3,Onbekend,53.2289,5.7556,163,Radar
+2025-01-05,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,103.9,Radar
+2025-01-05,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,218,Meervoudig
+2025-01-05,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,212.7,Meervoudig
+2025-01-06,Vliegbasis Volkel,1,Mini-drone,51.6573,5.6889,104.9,Radar
+2025-01-06,Vliegbasis Leeuwarden,4,Onbekend,53.2289,5.7556,155.6,Akoestisch
+2025-01-06,Marinevliegkamp De Kooy,7,Onbekend,52.9233,4.7806,130.3,Radar
+2025-01-06,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,60.5,Radar
+2025-01-06,Vliegbasis Eindhoven,4,Onbekend,51.45,5.3744,261.3,Meervoudig
+2025-01-07,Vliegbasis Volkel,1,Vleugel-drone,51.6573,5.6889,98.1,Akoestisch
+2025-01-07,Vliegbasis Leeuwarden,3,Onbekend,53.2289,5.7556,283.4,Radar
+2025-01-07,Marinevliegkamp De Kooy,4,Onbekend,52.9233,4.7806,96.7,Meervoudig
+2025-01-07,Vliegbasis Eindhoven,3,Onbekend,51.45,5.3744,147.9,Akoestisch
+2025-01-08,Vliegbasis Volkel,2,Quadcopter,51.6573,5.6889,165.9,Meervoudig
+2025-01-08,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,76.8,Radar
+2025-01-08,Marinevliegkamp De Kooy,6,Mini-drone,52.9233,4.7806,151,Akoestisch
+2025-01-08,Vliegbasis Woensdrecht,1,Onbekend,51.4489,4.3422,291,Meervoudig
+2025-01-08,Vliegbasis Eindhoven,3,Quadcopter,51.45,5.3744,204,Akoestisch
+2025-01-09,Vliegbasis Volkel,3,Vleugel-drone,51.6573,5.6889,134.9,Visueel
+2025-01-09,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,216.1,Meervoudig
+2025-01-09,Marinevliegkamp De Kooy,4,Onbekend,52.9233,4.7806,210,Meervoudig
+2025-01-09,Vliegbasis Eindhoven,4,Mini-drone,51.45,5.3744,285.8,Meervoudig
+2025-01-10,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,196.9,Radar
+2025-01-10,Vliegbasis Leeuwarden,1,Vleugel-drone,53.2289,5.7556,77.8,Akoestisch
+2025-01-10,Marinevliegkamp De Kooy,4,Vleugel-drone,52.9233,4.7806,100.1,Akoestisch
+2025-01-10,Vliegbasis Woensdrecht,2,Vleugel-drone,51.4489,4.3422,283.7,Radar
+2025-01-10,Vliegbasis Eindhoven,6,Onbekend,51.45,5.3744,92.9,Visueel
+2025-01-11,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,141.9,Visueel
+2025-01-11,Vliegbasis Leeuwarden,3,Vleugel-drone,53.2289,5.7556,138.9,Meervoudig
+2025-01-11,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,198.3,Meervoudig
+2025-01-11,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,167.8,Radar
+2025-01-11,Vliegbasis Eindhoven,4,Mini-drone,51.45,5.3744,272.7,Meervoudig
+2025-01-12,Vliegbasis Volkel,3,Vleugel-drone,51.6573,5.6889,272.7,Radar
+2025-01-12,Vliegbasis Leeuwarden,2,Vleugel-drone,53.2289,5.7556,124,Meervoudig
+2025-01-12,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,214.3,Visueel
+2025-01-12,Vliegbasis Woensdrecht,2,Vleugel-drone,51.4489,4.3422,136,Visueel
+2025-01-12,Vliegbasis Eindhoven,2,Vleugel-drone,51.45,5.3744,130.5,Akoestisch
+2025-01-13,Vliegbasis Volkel,4,Onbekend,51.6573,5.6889,122.7,Meervoudig
+2025-01-13,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,137.7,Akoestisch
+2025-01-13,Marinevliegkamp De Kooy,5,Vleugel-drone,52.9233,4.7806,286.2,Radar
+2025-01-13,Vliegbasis Woensdrecht,1,Onbekend,51.4489,4.3422,213.1,Akoestisch
+2025-01-13,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,157.1,Visueel
+2025-01-14,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,218,Akoestisch
+2025-01-14,Vliegbasis Leeuwarden,1,Mini-drone,53.2289,5.7556,106.4,Akoestisch
+2025-01-14,Marinevliegkamp De Kooy,2,Mini-drone,52.9233,4.7806,129.3,Akoestisch
+2025-01-14,Vliegbasis Woensdrecht,2,Quadcopter,51.4489,4.3422,175.5,Meervoudig
+2025-01-14,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,90.9,Visueel
+2025-01-15,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,165.3,Meervoudig
+2025-01-15,Marinevliegkamp De Kooy,3,Onbekend,52.9233,4.7806,249.2,Radar
+2025-01-15,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,102.1,Akoestisch
+2025-01-15,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,260.7,Akoestisch
+2025-01-16,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,276.2,Radar
+2025-01-16,Vliegbasis Leeuwarden,3,Vleugel-drone,53.2289,5.7556,144.3,Radar
+2025-01-16,Marinevliegkamp De Kooy,2,Onbekend,52.9233,4.7806,213.2,Radar
+2025-01-16,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,256.4,Meervoudig
+2025-01-16,Vliegbasis Eindhoven,2,Onbekend,51.45,5.3744,122.1,Meervoudig
+2025-01-17,Vliegbasis Volkel,4,Onbekend,51.6573,5.6889,73.5,Akoestisch
+2025-01-17,Vliegbasis Leeuwarden,2,Vleugel-drone,53.2289,5.7556,275.3,Akoestisch
+2025-01-17,Marinevliegkamp De Kooy,5,Quadcopter,52.9233,4.7806,264.7,Visueel
+2025-01-17,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,215.7,Meervoudig
+2025-01-17,Vliegbasis Eindhoven,4,Mini-drone,51.45,5.3744,96.7,Meervoudig
+2025-01-18,Vliegbasis Volkel,5,Mini-drone,51.6573,5.6889,161,Meervoudig
+2025-01-18,Vliegbasis Leeuwarden,3,Quadcopter,53.2289,5.7556,140.1,Meervoudig
+2025-01-18,Marinevliegkamp De Kooy,6,Mini-drone,52.9233,4.7806,261.7,Radar
+2025-01-18,Vliegbasis Woensdrecht,4,Quadcopter,51.4489,4.3422,293.9,Radar
+2025-01-18,Vliegbasis Eindhoven,6,Vleugel-drone,51.45,5.3744,57.7,Meervoudig
+2025-01-19,Vliegbasis Volkel,3,Quadcopter,51.6573,5.6889,99.8,Radar
+2025-01-19,Vliegbasis Leeuwarden,4,Onbekend,53.2289,5.7556,145.6,Visueel
+2025-01-19,Marinevliegkamp De Kooy,6,Vleugel-drone,52.9233,4.7806,298.6,Visueel
+2025-01-19,Vliegbasis Woensdrecht,2,Vleugel-drone,51.4489,4.3422,120.8,Radar
+2025-01-19,Vliegbasis Eindhoven,5,Mini-drone,51.45,5.3744,128.8,Meervoudig
+2025-01-20,Vliegbasis Volkel,1,Mini-drone,51.6573,5.6889,63.7,Meervoudig
+2025-01-20,Vliegbasis Leeuwarden,1,Mini-drone,53.2289,5.7556,272.5,Meervoudig
+2025-01-20,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,203.4,Akoestisch
+2025-01-20,Vliegbasis Woensdrecht,2,Quadcopter,51.4489,4.3422,120.7,Akoestisch
+2025-01-20,Vliegbasis Eindhoven,4,Onbekend,51.45,5.3744,173.5,Radar
+2025-01-21,Vliegbasis Volkel,2,Quadcopter,51.6573,5.6889,88.5,Akoestisch
+2025-01-21,Vliegbasis Leeuwarden,2,Quadcopter,53.2289,5.7556,290,Meervoudig
+2025-01-21,Marinevliegkamp De Kooy,4,Quadcopter,52.9233,4.7806,188.4,Visueel
+2025-01-21,Vliegbasis Woensdrecht,4,Mini-drone,51.4489,4.3422,236.1,Visueel
+2025-01-21,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,255.9,Visueel
+2025-01-22,Vliegbasis Volkel,1,Onbekend,51.6573,5.6889,287,Akoestisch
+2025-01-22,Vliegbasis Leeuwarden,1,Vleugel-drone,53.2289,5.7556,185.5,Visueel
+2025-01-22,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,115.7,Akoestisch
+2025-01-22,Vliegbasis Woensdrecht,1,Quadcopter,51.4489,4.3422,118.8,Akoestisch
+2025-01-22,Vliegbasis Eindhoven,1,Onbekend,51.45,5.3744,93.1,Radar
+2025-01-23,Vliegbasis Volkel,3,Vleugel-drone,51.6573,5.6889,272.7,Visueel
+2025-01-23,Marinevliegkamp De Kooy,6,Onbekend,52.9233,4.7806,192.7,Radar
+2025-01-23,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,190.9,Radar
+2025-01-23,Vliegbasis Eindhoven,3,Onbekend,51.45,5.3744,297.4,Radar
+2025-01-24,Vliegbasis Volkel,4,Quadcopter,51.6573,5.6889,87.7,Radar
+2025-01-24,Vliegbasis Leeuwarden,3,Vleugel-drone,53.2289,5.7556,157.2,Akoestisch
+2025-01-24,Marinevliegkamp De Kooy,1,Vleugel-drone,52.9233,4.7806,191.8,Meervoudig
+2025-01-24,Vliegbasis Eindhoven,4,Mini-drone,51.45,5.3744,196.8,Visueel
+2025-01-25,Vliegbasis Volkel,6,Mini-drone,51.6573,5.6889,250,Visueel
+2025-01-25,Vliegbasis Leeuwarden,1,Vleugel-drone,53.2289,5.7556,61.8,Radar
+2025-01-25,Marinevliegkamp De Kooy,5,Mini-drone,52.9233,4.7806,73.9,Akoestisch
+2025-01-25,Vliegbasis Woensdrecht,4,Onbekend,51.4489,4.3422,103.1,Meervoudig
+2025-01-25,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,85.7,Radar
+2025-01-26,Vliegbasis Volkel,4,Onbekend,51.6573,5.6889,140.3,Visueel
+2025-01-26,Vliegbasis Leeuwarden,4,Vleugel-drone,53.2289,5.7556,53.8,Akoestisch
+2025-01-26,Marinevliegkamp De Kooy,5,Vleugel-drone,52.9233,4.7806,280.8,Visueel
+2025-01-26,Vliegbasis Woensdrecht,6,Quadcopter,51.4489,4.3422,165.3,Radar
+2025-01-26,Vliegbasis Eindhoven,5,Mini-drone,51.45,5.3744,218.7,Visueel
+2025-01-27,Vliegbasis Volkel,4,Onbekend,51.6573,5.6889,92.9,Radar
+2025-01-27,Vliegbasis Leeuwarden,1,Vleugel-drone,53.2289,5.7556,256,Visueel
+2025-01-27,Marinevliegkamp De Kooy,3,Onbekend,52.9233,4.7806,51.6,Meervoudig
+2025-01-27,Vliegbasis Woensdrecht,1,Onbekend,51.4489,4.3422,232.6,Akoestisch
+2025-01-27,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,93.7,Meervoudig
+2025-01-28,Vliegbasis Volkel,1,Quadcopter,51.6573,5.6889,213.6,Akoestisch
+2025-01-28,Marinevliegkamp De Kooy,4,Vleugel-drone,52.9233,4.7806,78.5,Radar
+2025-01-28,Vliegbasis Woensdrecht,1,Vleugel-drone,51.4489,4.3422,183.6,Meervoudig
+2025-01-28,Vliegbasis Eindhoven,2,Onbekend,51.45,5.3744,270,Akoestisch
+2025-01-29,Vliegbasis Volkel,5,Vleugel-drone,51.6573,5.6889,240.2,Meervoudig
+2025-01-29,Marinevliegkamp De Kooy,2,Onbekend,52.9233,4.7806,276.1,Radar
+2025-01-29,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,215.8,Meervoudig
+2025-01-29,Vliegbasis Eindhoven,3,Quadcopter,51.45,5.3744,69.2,Visueel
+2025-01-30,Vliegbasis Volkel,3,Mini-drone,51.6573,5.6889,289.1,Akoestisch
+2025-01-30,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,248,Radar
+2025-01-30,Marinevliegkamp De Kooy,3,Onbekend,52.9233,4.7806,77.6,Visueel
+2025-01-30,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,213.2,Visueel
+2025-01-30,Vliegbasis Eindhoven,4,Onbekend,51.45,5.3744,234.1,Akoestisch
+2025-01-31,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,252.2,Akoestisch
+2025-01-31,Vliegbasis Leeuwarden,2,Quadcopter,53.2289,5.7556,104.4,Visueel
+2025-01-31,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,237.9,Visueel
+2025-01-31,Vliegbasis Eindhoven,3,Quadcopter,51.45,5.3744,268.2,Visueel
+2025-02-01,Vliegbasis Volkel,5,Mini-drone,51.6573,5.6889,76.1,Akoestisch
+2025-02-01,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,236.4,Akoestisch
+2025-02-01,Marinevliegkamp De Kooy,7,Onbekend,52.9233,4.7806,177,Meervoudig
+2025-02-01,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,58.8,Visueel
+2025-02-01,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,88.9,Akoestisch
+2025-02-02,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,79.4,Akoestisch
+2025-02-02,Vliegbasis Leeuwarden,2,Quadcopter,53.2289,5.7556,168,Meervoudig
+2025-02-02,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,83.7,Meervoudig
+2025-02-02,Vliegbasis Woensdrecht,2,Vleugel-drone,51.4489,4.3422,257.4,Radar
+2025-02-02,Vliegbasis Eindhoven,5,Mini-drone,51.45,5.3744,174.2,Akoestisch
+2025-02-03,Vliegbasis Volkel,2,Mini-drone,51.6573,5.6889,98.9,Visueel
+2025-02-03,Vliegbasis Leeuwarden,1,Quadcopter,53.2289,5.7556,146.4,Visueel
+2025-02-03,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,61.5,Akoestisch
+2025-02-03,Vliegbasis Woensdrecht,1,Quadcopter,51.4489,4.3422,260.7,Visueel
+2025-02-03,Vliegbasis Eindhoven,5,Onbekend,51.45,5.3744,138.2,Radar
+2025-02-04,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,299,Meervoudig
+2025-02-04,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,161.8,Radar
+2025-02-04,Marinevliegkamp De Kooy,3,Onbekend,52.9233,4.7806,90.4,Akoestisch
+2025-02-04,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,182.2,Akoestisch
+2025-02-05,Vliegbasis Volkel,3,Mini-drone,51.6573,5.6889,250.1,Akoestisch
+2025-02-05,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,150.3,Akoestisch
+2025-02-05,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,154.3,Akoestisch
+2025-02-05,Vliegbasis Woensdrecht,1,Mini-drone,51.4489,4.3422,66,Akoestisch
+2025-02-05,Vliegbasis Eindhoven,3,Mini-drone,51.45,5.3744,140.1,Visueel
+2025-02-06,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,110.5,Meervoudig
+2025-02-06,Vliegbasis Leeuwarden,1,Mini-drone,53.2289,5.7556,248.5,Akoestisch
+2025-02-06,Marinevliegkamp De Kooy,6,Quadcopter,52.9233,4.7806,59,Akoestisch
+2025-02-06,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,196.7,Meervoudig
+2025-02-06,Vliegbasis Eindhoven,1,Vleugel-drone,51.45,5.3744,52.4,Akoestisch
+2025-02-07,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,217.7,Visueel
+2025-02-07,Vliegbasis Leeuwarden,2,Quadcopter,53.2289,5.7556,67.6,Visueel
+2025-02-07,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,248.1,Visueel
+2025-02-07,Vliegbasis Woensdrecht,4,Vleugel-drone,51.4489,4.3422,118.5,Meervoudig
+2025-02-07,Vliegbasis Eindhoven,4,Onbekend,51.45,5.3744,214.4,Akoestisch
+2025-02-08,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,84.2,Meervoudig
+2025-02-08,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,257.8,Meervoudig
+2025-02-08,Marinevliegkamp De Kooy,2,Quadcopter,52.9233,4.7806,56.8,Meervoudig
+2025-02-08,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,181.3,Akoestisch
+2025-02-08,Vliegbasis Eindhoven,5,Quadcopter,51.45,5.3744,123.1,Radar
+2025-02-09,Vliegbasis Volkel,6,Vleugel-drone,51.6573,5.6889,155.6,Visueel
+2025-02-09,Vliegbasis Leeuwarden,1,Quadcopter,53.2289,5.7556,270.5,Meervoudig
+2025-02-09,Marinevliegkamp De Kooy,4,Vleugel-drone,52.9233,4.7806,270.7,Radar
+2025-02-09,Vliegbasis Woensdrecht,3,Quadcopter,51.4489,4.3422,242,Akoestisch
+2025-02-09,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,145.2,Meervoudig
+2025-02-10,Vliegbasis Volkel,5,Quadcopter,51.6573,5.6889,88.6,Radar
+2025-02-10,Vliegbasis Leeuwarden,2,Mini-drone,53.2289,5.7556,52.9,Akoestisch
+2025-02-10,Marinevliegkamp De Kooy,5,Mini-drone,52.9233,4.7806,173.4,Visueel
+2025-02-10,Vliegbasis Woensdrecht,3,Vleugel-drone,51.4489,4.3422,190.2,Radar
+2025-02-10,Vliegbasis Eindhoven,4,Mini-drone,51.45,5.3744,201.2,Meervoudig
+2025-02-11,Vliegbasis Volkel,2,Mini-drone,51.6573,5.6889,148.6,Visueel
+2025-02-11,Vliegbasis Leeuwarden,1,Mini-drone,53.2289,5.7556,104.8,Meervoudig
+2025-02-11,Marinevliegkamp De Kooy,6,Quadcopter,52.9233,4.7806,282.2,Akoestisch
+2025-02-11,Vliegbasis Woensdrecht,1,Mini-drone,51.4489,4.3422,220.3,Radar
+2025-02-11,Vliegbasis Eindhoven,6,Mini-drone,51.45,5.3744,102.4,Radar
+2025-02-12,Vliegbasis Volkel,3,Vleugel-drone,51.6573,5.6889,249.7,Radar
+2025-02-12,Vliegbasis Leeuwarden,3,Vleugel-drone,53.2289,5.7556,154.4,Akoestisch
+2025-02-12,Marinevliegkamp De Kooy,5,Vleugel-drone,52.9233,4.7806,206.1,Radar
+2025-02-12,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,93.7,Visueel
+2025-02-12,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,276.9,Radar
+2025-02-13,Vliegbasis Volkel,5,Mini-drone,51.6573,5.6889,181.3,Radar
+2025-02-13,Vliegbasis Leeuwarden,1,Mini-drone,53.2289,5.7556,165.5,Radar
+2025-02-13,Marinevliegkamp De Kooy,3,Vleugel-drone,52.9233,4.7806,258.3,Radar
+2025-02-13,Vliegbasis Woensdrecht,1,Mini-drone,51.4489,4.3422,166.8,Radar
+2025-02-13,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,248.7,Akoestisch
+2025-02-14,Vliegbasis Volkel,3,Vleugel-drone,51.6573,5.6889,215.4,Meervoudig
+2025-02-14,Vliegbasis Leeuwarden,2,Vleugel-drone,53.2289,5.7556,211.8,Visueel
+2025-02-14,Marinevliegkamp De Kooy,3,Vleugel-drone,52.9233,4.7806,220.2,Meervoudig
+2025-02-14,Vliegbasis Woensdrecht,3,Vleugel-drone,51.4489,4.3422,154.8,Meervoudig
+2025-02-14,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,294.3,Visueel
+2025-02-15,Vliegbasis Volkel,30,Vleugel-drone,51.6573,5.6889,77,Akoestisch
+2025-02-15,Vliegbasis Leeuwarden,4,Onbekend,53.2289,5.7556,130.1,Visueel
+2025-02-15,Marinevliegkamp De Kooy,6,Onbekend,52.9233,4.7806,96.6,Visueel
+2025-02-15,Vliegbasis Woensdrecht,3,Quadcopter,51.4489,4.3422,129.1,Akoestisch
+2025-02-15,Vliegbasis Eindhoven,4,Mini-drone,51.45,5.3744,206.1,Akoestisch
+2025-02-16,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,188.3,Radar
+2025-02-16,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,162.6,Meervoudig
+2025-02-16,Marinevliegkamp De Kooy,4,Mini-drone,52.9233,4.7806,134.7,Radar
+2025-02-16,Vliegbasis Woensdrecht,4,Quadcopter,51.4489,4.3422,91.8,Akoestisch
+2025-02-16,Vliegbasis Eindhoven,4,Onbekend,51.45,5.3744,173,Akoestisch
+2025-02-17,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,85.9,Radar
+2025-02-17,Vliegbasis Leeuwarden,3,Onbekend,53.2289,5.7556,109.3,Meervoudig
+2025-02-17,Marinevliegkamp De Kooy,4,Onbekend,52.9233,4.7806,111.1,Meervoudig
+2025-02-17,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,243.1,Meervoudig
+2025-02-17,Vliegbasis Eindhoven,5,Onbekend,51.45,5.3744,287,Radar
+2025-02-18,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,244,Visueel
+2025-02-18,Vliegbasis Leeuwarden,2,Quadcopter,53.2289,5.7556,140.5,Akoestisch
+2025-02-18,Marinevliegkamp De Kooy,3,Onbekend,52.9233,4.7806,50,Akoestisch
+2025-02-18,Vliegbasis Eindhoven,7,Quadcopter,51.45,5.3744,297.1,Radar
+2025-02-19,Vliegbasis Volkel,2,Quadcopter,51.6573,5.6889,219.6,Radar
+2025-02-19,Vliegbasis Leeuwarden,3,Onbekend,53.2289,5.7556,167.8,Radar
+2025-02-19,Marinevliegkamp De Kooy,4,Quadcopter,52.9233,4.7806,281.6,Meervoudig
+2025-02-19,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,252,Akoestisch
+2025-02-19,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,220.4,Visueel
+2025-02-20,Vliegbasis Volkel,4,Quadcopter,51.6573,5.6889,63.2,Meervoudig
+2025-02-20,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,292.8,Akoestisch
+2025-02-20,Marinevliegkamp De Kooy,5,Vleugel-drone,52.9233,4.7806,84.5,Visueel
+2025-02-20,Vliegbasis Woensdrecht,1,Onbekend,51.4489,4.3422,239.4,Meervoudig
+2025-02-20,Vliegbasis Eindhoven,3,Onbekend,51.45,5.3744,240.3,Visueel
+2025-02-21,Vliegbasis Volkel,3,Vleugel-drone,51.6573,5.6889,164.3,Visueel
+2025-02-21,Marinevliegkamp De Kooy,1,Onbekend,52.9233,4.7806,146.6,Radar
+2025-02-21,Vliegbasis Woensdrecht,4,Onbekend,51.4489,4.3422,146,Meervoudig
+2025-02-21,Vliegbasis Eindhoven,4,Onbekend,51.45,5.3744,172.7,Akoestisch
+2025-02-22,Vliegbasis Volkel,4,Onbekend,51.6573,5.6889,89.7,Radar
+2025-02-22,Vliegbasis Leeuwarden,3,Vleugel-drone,53.2289,5.7556,282.5,Radar
+2025-02-22,Marinevliegkamp De Kooy,5,Quadcopter,52.9233,4.7806,97.4,Akoestisch
+2025-02-22,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,71,Radar
+2025-02-22,Vliegbasis Eindhoven,5,Mini-drone,51.45,5.3744,72,Radar
+2025-02-23,Vliegbasis Volkel,3,Mini-drone,51.6573,5.6889,195.8,Akoestisch
+2025-02-23,Vliegbasis Leeuwarden,4,Onbekend,53.2289,5.7556,259.9,Visueel
+2025-02-23,Marinevliegkamp De Kooy,7,Quadcopter,52.9233,4.7806,200.6,Meervoudig
+2025-02-23,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,149.1,Radar
+2025-02-23,Vliegbasis Eindhoven,5,Vleugel-drone,51.45,5.3744,296.6,Meervoudig
+2025-02-24,Vliegbasis Volkel,4,Onbekend,51.6573,5.6889,88.6,Akoestisch
+2025-02-24,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,51.6,Radar
+2025-02-24,Marinevliegkamp De Kooy,4,Onbekend,52.9233,4.7806,269.6,Akoestisch
+2025-02-24,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,80.6,Akoestisch
+2025-02-24,Vliegbasis Eindhoven,5,Mini-drone,51.45,5.3744,199.1,Akoestisch
+2025-02-25,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,251.9,Meervoudig
+2025-02-25,Vliegbasis Leeuwarden,4,Mini-drone,53.2289,5.7556,81.5,Akoestisch
+2025-02-25,Marinevliegkamp De Kooy,4,Vleugel-drone,52.9233,4.7806,59.2,Radar
+2025-02-25,Vliegbasis Woensdrecht,3,Quadcopter,51.4489,4.3422,134.6,Meervoudig
+2025-02-25,Vliegbasis Eindhoven,2,Vleugel-drone,51.45,5.3744,203.7,Visueel
+2025-02-26,Vliegbasis Volkel,4,Onbekend,51.6573,5.6889,232.4,Akoestisch
+2025-02-26,Vliegbasis Leeuwarden,2,Vleugel-drone,53.2289,5.7556,167.3,Meervoudig
+2025-02-26,Marinevliegkamp De Kooy,4,Onbekend,52.9233,4.7806,220.1,Radar
+2025-02-26,Vliegbasis Woensdrecht,3,Vleugel-drone,51.4489,4.3422,293.4,Visueel
+2025-02-26,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,210.5,Akoestisch
+2025-02-27,Vliegbasis Volkel,1,Mini-drone,51.6573,5.6889,268.5,Radar
+2025-02-27,Marinevliegkamp De Kooy,5,Quadcopter,52.9233,4.7806,295.8,Visueel
+2025-02-27,Vliegbasis Woensdrecht,3,Vleugel-drone,51.4489,4.3422,201.4,Akoestisch
+2025-02-27,Vliegbasis Eindhoven,3,Onbekend,51.45,5.3744,263.4,Akoestisch
+2025-02-28,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,279.4,Meervoudig
+2025-02-28,Marinevliegkamp De Kooy,4,Onbekend,52.9233,4.7806,61.5,Visueel
+2025-02-28,Vliegbasis Woensdrecht,3,Quadcopter,51.4489,4.3422,70.5,Visueel
+2025-02-28,Vliegbasis Eindhoven,2,Quadcopter,51.45,5.3744,233.4,Radar
+2025-03-01,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,266.4,Akoestisch
+2025-03-01,Vliegbasis Leeuwarden,5,Vleugel-drone,53.2289,5.7556,150.3,Radar
+2025-03-01,Marinevliegkamp De Kooy,5,Quadcopter,52.9233,4.7806,83,Akoestisch
+2025-03-01,Vliegbasis Woensdrecht,3,Quadcopter,51.4489,4.3422,102.9,Radar
+2025-03-01,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,120.2,Radar
+2025-03-02,Vliegbasis Volkel,4,Quadcopter,51.6573,5.6889,152.7,Akoestisch
+2025-03-02,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,61.2,Visueel
+2025-03-02,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,54.3,Radar
+2025-03-02,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,69.1,Meervoudig
+2025-03-02,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,78.2,Radar
+2025-03-03,Vliegbasis Volkel,7,Quadcopter,51.6573,5.6889,109.7,Meervoudig
+2025-03-03,Vliegbasis Leeuwarden,2,Quadcopter,53.2289,5.7556,126.3,Visueel
+2025-03-03,Marinevliegkamp De Kooy,4,Onbekend,52.9233,4.7806,169.5,Akoestisch
+2025-03-03,Vliegbasis Woensdrecht,1,Mini-drone,51.4489,4.3422,135.2,Akoestisch
+2025-03-03,Vliegbasis Eindhoven,4,Onbekend,51.45,5.3744,121.1,Radar
+2025-03-04,Vliegbasis Volkel,2,Vleugel-drone,51.6573,5.6889,52.9,Radar
+2025-03-04,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,152.4,Visueel
+2025-03-04,Marinevliegkamp De Kooy,4,Mini-drone,52.9233,4.7806,86.3,Radar
+2025-03-04,Vliegbasis Woensdrecht,4,Mini-drone,51.4489,4.3422,282.4,Meervoudig
+2025-03-04,Vliegbasis Eindhoven,5,Quadcopter,51.45,5.3744,153.9,Visueel
+2025-03-05,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,172.6,Meervoudig
+2025-03-05,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,291.7,Akoestisch
+2025-03-05,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,138.9,Visueel
+2025-03-05,Vliegbasis Woensdrecht,1,Mini-drone,51.4489,4.3422,172,Visueel
+2025-03-05,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,105.5,Visueel
+2025-03-06,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,79.3,Radar
+2025-03-06,Vliegbasis Leeuwarden,4,Onbekend,53.2289,5.7556,114.8,Akoestisch
+2025-03-06,Marinevliegkamp De Kooy,3,Onbekend,52.9233,4.7806,171.8,Meervoudig
+2025-03-06,Vliegbasis Woensdrecht,3,Quadcopter,51.4489,4.3422,196,Radar
+2025-03-06,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,137.5,Akoestisch
+2025-03-07,Vliegbasis Volkel,3,Onbekend,51.6573,5.6889,245.2,Radar
+2025-03-07,Vliegbasis Leeuwarden,3,Vleugel-drone,53.2289,5.7556,267.6,Akoestisch
+2025-03-07,Marinevliegkamp De Kooy,3,Onbekend,52.9233,4.7806,225.8,Visueel
+2025-03-07,Vliegbasis Woensdrecht,3,Quadcopter,51.4489,4.3422,59.3,Radar
+2025-03-07,Vliegbasis Eindhoven,1,Mini-drone,51.45,5.3744,119.2,Meervoudig
+2025-03-08,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,85,Meervoudig
+2025-03-08,Vliegbasis Leeuwarden,4,Vleugel-drone,53.2289,5.7556,204.9,Meervoudig
+2025-03-08,Marinevliegkamp De Kooy,8,Onbekend,52.9233,4.7806,73.1,Meervoudig
+2025-03-08,Vliegbasis Woensdrecht,2,Vleugel-drone,51.4489,4.3422,271.8,Radar
+2025-03-08,Vliegbasis Eindhoven,4,Mini-drone,51.45,5.3744,61.4,Akoestisch
+2025-03-09,Vliegbasis Volkel,3,Onbekend,51.6573,5.6889,76.4,Akoestisch
+2025-03-09,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,288.4,Akoestisch
+2025-03-09,Marinevliegkamp De Kooy,5,Mini-drone,52.9233,4.7806,61.1,Visueel
+2025-03-09,Vliegbasis Woensdrecht,4,Quadcopter,51.4489,4.3422,214.2,Meervoudig
+2025-03-09,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,187.1,Radar
+2025-03-10,Vliegbasis Volkel,3,Mini-drone,51.6573,5.6889,202.8,Meervoudig
+2025-03-10,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,288.2,Meervoudig
+2025-03-10,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,188.2,Akoestisch
+2025-03-10,Vliegbasis Woensdrecht,2,Quadcopter,51.4489,4.3422,87.8,Meervoudig
+2025-03-10,Vliegbasis Eindhoven,2,Onbekend,51.45,5.3744,120.7,Radar
+2025-03-11,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,173.6,Meervoudig
+2025-03-11,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,163.6,Meervoudig
+2025-03-11,Marinevliegkamp De Kooy,2,Quadcopter,52.9233,4.7806,262.3,Radar
+2025-03-11,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,181.8,Akoestisch
+2025-03-11,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,292,Visueel
+2025-03-12,Vliegbasis Volkel,3,Vleugel-drone,51.6573,5.6889,124.9,Meervoudig
+2025-03-12,Vliegbasis Leeuwarden,2,Mini-drone,53.2289,5.7556,257,Akoestisch
+2025-03-12,Marinevliegkamp De Kooy,4,Onbekend,52.9233,4.7806,181.6,Visueel
+2025-03-12,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,126.8,Radar
+2025-03-12,Vliegbasis Eindhoven,1,Quadcopter,51.45,5.3744,182.5,Radar
+2025-03-13,Vliegbasis Volkel,1,Vleugel-drone,51.6573,5.6889,178.9,Visueel
+2025-03-13,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,220.8,Meervoudig
+2025-03-13,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,175.6,Akoestisch
+2025-03-13,Vliegbasis Woensdrecht,2,Vleugel-drone,51.4489,4.3422,91.6,Visueel
+2025-03-13,Vliegbasis Eindhoven,5,Mini-drone,51.45,5.3744,243.2,Radar
+2025-03-14,Vliegbasis Leeuwarden,4,Mini-drone,53.2289,5.7556,67.6,Visueel
+2025-03-14,Marinevliegkamp De Kooy,3,Onbekend,52.9233,4.7806,79.1,Visueel
+2025-03-14,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,164.6,Meervoudig
+2025-03-14,Vliegbasis Eindhoven,2,Quadcopter,51.45,5.3744,200.9,Akoestisch
+2025-03-15,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,219.1,Visueel
+2025-03-15,Vliegbasis Leeuwarden,3,Onbekend,53.2289,5.7556,255.5,Radar
+2025-03-15,Marinevliegkamp De Kooy,5,Vleugel-drone,52.9233,4.7806,150.2,Visueel
+2025-03-15,Vliegbasis Woensdrecht,4,Quadcopter,51.4489,4.3422,246.4,Radar
+2025-03-15,Vliegbasis Eindhoven,3,Onbekend,51.45,5.3744,173.3,Visueel
+2025-03-16,Vliegbasis Volkel,3,Quadcopter,51.6573,5.6889,196.6,Meervoudig
+2025-03-16,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,82.4,Visueel
+2025-03-16,Marinevliegkamp De Kooy,5,Quadcopter,52.9233,4.7806,68.8,Akoestisch
+2025-03-16,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,185.3,Akoestisch
+2025-03-16,Vliegbasis Eindhoven,3,Quadcopter,51.45,5.3744,210.8,Visueel
+2025-03-17,Vliegbasis Volkel,2,Quadcopter,51.6573,5.6889,261.5,Meervoudig
+2025-03-17,Vliegbasis Leeuwarden,2,Quadcopter,53.2289,5.7556,65,Meervoudig
+2025-03-17,Marinevliegkamp De Kooy,3,Onbekend,52.9233,4.7806,215.4,Akoestisch
+2025-03-17,Vliegbasis Eindhoven,2,Vleugel-drone,51.45,5.3744,187.1,Akoestisch
+2025-03-18,Vliegbasis Volkel,4,Quadcopter,51.6573,5.6889,154.8,Akoestisch
+2025-03-18,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,85.4,Radar
+2025-03-18,Marinevliegkamp De Kooy,4,Quadcopter,52.9233,4.7806,74.6,Meervoudig
+2025-03-18,Vliegbasis Woensdrecht,1,Onbekend,51.4489,4.3422,269.5,Radar
+2025-03-18,Vliegbasis Eindhoven,2,Vleugel-drone,51.45,5.3744,299,Meervoudig
+2025-03-19,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,174.6,Radar
+2025-03-19,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,255.3,Meervoudig
+2025-03-19,Marinevliegkamp De Kooy,3,Quadcopter,52.9233,4.7806,282.4,Akoestisch
+2025-03-19,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,271.9,Visueel
+2025-03-19,Vliegbasis Eindhoven,3,Mini-drone,51.45,5.3744,58.2,Meervoudig
+2025-03-20,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,276.6,Akoestisch
+2025-03-20,Vliegbasis Leeuwarden,2,Vleugel-drone,53.2289,5.7556,284.5,Akoestisch
+2025-03-20,Marinevliegkamp De Kooy,3,Mini-drone,52.9233,4.7806,73.3,Akoestisch
+2025-03-20,Vliegbasis Woensdrecht,2,Vleugel-drone,51.4489,4.3422,192,Meervoudig
+2025-03-20,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,157.8,Radar
+2025-03-21,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,56.1,Meervoudig
+2025-03-21,Vliegbasis Leeuwarden,4,Vleugel-drone,53.2289,5.7556,289.4,Radar
+2025-03-21,Marinevliegkamp De Kooy,4,Quadcopter,52.9233,4.7806,291.1,Meervoudig
+2025-03-21,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,89.1,Akoestisch
+2025-03-21,Vliegbasis Eindhoven,5,Vleugel-drone,51.45,5.3744,261.2,Visueel
+2025-03-22,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,299.3,Visueel
+2025-03-22,Vliegbasis Leeuwarden,2,Quadcopter,53.2289,5.7556,98.5,Visueel
+2025-03-22,Marinevliegkamp De Kooy,6,Vleugel-drone,52.9233,4.7806,235.7,Visueel
+2025-03-22,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,104.5,Akoestisch
+2025-03-22,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,146.3,Radar
+2025-03-23,Vliegbasis Volkel,2,Mini-drone,51.6573,5.6889,137.7,Radar
+2025-03-23,Vliegbasis Leeuwarden,4,Mini-drone,53.2289,5.7556,121,Radar
+2025-03-23,Marinevliegkamp De Kooy,6,Onbekend,52.9233,4.7806,212.3,Radar
+2025-03-23,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,235.4,Akoestisch
+2025-03-23,Vliegbasis Eindhoven,6,Quadcopter,51.45,5.3744,147.1,Meervoudig
+2025-03-24,Vliegbasis Volkel,3,Mini-drone,51.6573,5.6889,287.4,Radar
+2025-03-24,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,252.3,Meervoudig
+2025-03-24,Marinevliegkamp De Kooy,4,Quadcopter,52.9233,4.7806,191.4,Meervoudig
+2025-03-24,Vliegbasis Woensdrecht,3,Vleugel-drone,51.4489,4.3422,125.6,Radar
+2025-03-24,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,289.8,Meervoudig
+2025-03-25,Vliegbasis Volkel,5,Onbekend,51.6573,5.6889,131.9,Visueel
+2025-03-25,Vliegbasis Leeuwarden,4,Onbekend,53.2289,5.7556,59.8,Akoestisch
+2025-03-25,Marinevliegkamp De Kooy,5,Mini-drone,52.9233,4.7806,165.1,Radar
+2025-03-25,Vliegbasis Woensdrecht,2,Quadcopter,51.4489,4.3422,242.1,Radar
+2025-03-25,Vliegbasis Eindhoven,2,Onbekend,51.45,5.3744,207,Radar
+2025-03-26,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,238.7,Akoestisch
+2025-03-26,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,243.3,Radar
+2025-03-26,Marinevliegkamp De Kooy,4,Vleugel-drone,52.9233,4.7806,240.6,Akoestisch
+2025-03-26,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,105.2,Meervoudig
+2025-03-26,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,282.8,Meervoudig
+2025-03-27,Vliegbasis Volkel,3,Vleugel-drone,51.6573,5.6889,149.6,Radar
+2025-03-27,Vliegbasis Leeuwarden,2,Mini-drone,53.2289,5.7556,159,Akoestisch
+2025-03-27,Marinevliegkamp De Kooy,5,Quadcopter,52.9233,4.7806,113.2,Meervoudig
+2025-03-27,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,183.3,Visueel
+2025-03-27,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,52.1,Visueel
+2025-03-28,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,215.3,Meervoudig
+2025-03-28,Vliegbasis Leeuwarden,3,Quadcopter,53.2289,5.7556,151.2,Akoestisch
+2025-03-28,Marinevliegkamp De Kooy,5,Mini-drone,52.9233,4.7806,278.7,Akoestisch
+2025-03-28,Vliegbasis Woensdrecht,4,Mini-drone,51.4489,4.3422,94.3,Radar
+2025-03-28,Vliegbasis Eindhoven,3,Mini-drone,51.45,5.3744,151.1,Akoestisch
+2025-03-29,Vliegbasis Volkel,3,Quadcopter,51.6573,5.6889,199,Radar
+2025-03-29,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,178.1,Radar
+2025-03-29,Marinevliegkamp De Kooy,4,Onbekend,52.9233,4.7806,248.8,Meervoudig
+2025-03-29,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,229.1,Visueel
+2025-03-29,Vliegbasis Eindhoven,4,Onbekend,51.45,5.3744,156.2,Visueel
+2025-03-30,Vliegbasis Volkel,5,Quadcopter,51.6573,5.6889,119.2,Visueel
+2025-03-30,Vliegbasis Leeuwarden,2,Vleugel-drone,53.2289,5.7556,247.2,Visueel
+2025-03-30,Marinevliegkamp De Kooy,3,Onbekend,52.9233,4.7806,241.5,Radar
+2025-03-30,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,203.2,Radar
+2025-03-30,Vliegbasis Eindhoven,5,Mini-drone,51.45,5.3744,162.9,Visueel
+2025-03-31,Vliegbasis Leeuwarden,3,Vleugel-drone,53.2289,5.7556,119.7,Akoestisch
+2025-03-31,Marinevliegkamp De Kooy,4,Quadcopter,52.9233,4.7806,97.3,Meervoudig
+2025-03-31,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,81,Akoestisch
+2025-03-31,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,192.5,Radar
+2025-04-01,Vliegbasis Volkel,3,Mini-drone,51.6573,5.6889,153.4,Meervoudig
+2025-04-01,Vliegbasis Leeuwarden,2,Mini-drone,53.2289,5.7556,264.5,Radar
+2025-04-01,Marinevliegkamp De Kooy,6,Onbekend,52.9233,4.7806,119.4,Radar
+2025-04-01,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,213.4,Meervoudig
+2025-04-01,Vliegbasis Eindhoven,3,Mini-drone,51.45,5.3744,107.3,Akoestisch
+2025-04-02,Vliegbasis Volkel,3,Mini-drone,51.6573,5.6889,148.4,Visueel
+2025-04-02,Vliegbasis Leeuwarden,2,Quadcopter,53.2289,5.7556,244.3,Visueel
+2025-04-02,Marinevliegkamp De Kooy,5,Mini-drone,52.9233,4.7806,127.6,Visueel
+2025-04-02,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,92.8,Meervoudig
+2025-04-02,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,184.2,Visueel
+2025-04-03,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,111.7,Akoestisch
+2025-04-03,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,174.7,Akoestisch
+2025-04-03,Marinevliegkamp De Kooy,4,Vleugel-drone,52.9233,4.7806,81.6,Meervoudig
+2025-04-03,Vliegbasis Eindhoven,2,Vleugel-drone,51.45,5.3744,73,Visueel
+2025-04-04,Vliegbasis Volkel,2,Vleugel-drone,51.6573,5.6889,199.4,Visueel
+2025-04-04,Vliegbasis Leeuwarden,2,Quadcopter,53.2289,5.7556,197.9,Visueel
+2025-04-04,Marinevliegkamp De Kooy,4,Vleugel-drone,52.9233,4.7806,99.3,Akoestisch
+2025-04-04,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,67.7,Meervoudig
+2025-04-04,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,102.6,Visueel
+2025-04-05,Vliegbasis Volkel,5,Mini-drone,51.6573,5.6889,266,Visueel
+2025-04-05,Vliegbasis Leeuwarden,3,Onbekend,53.2289,5.7556,116.4,Akoestisch
+2025-04-05,Marinevliegkamp De Kooy,9,Mini-drone,52.9233,4.7806,267.1,Visueel
+2025-04-05,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,87.3,Radar
+2025-04-05,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,245.4,Meervoudig
+2025-04-06,Vliegbasis Volkel,3,Vleugel-drone,51.6573,5.6889,281.3,Visueel
+2025-04-06,Vliegbasis Leeuwarden,6,Onbekend,53.2289,5.7556,130,Visueel
+2025-04-06,Marinevliegkamp De Kooy,2,Mini-drone,52.9233,4.7806,116.5,Visueel
+2025-04-06,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,97.6,Visueel
+2025-04-06,Vliegbasis Eindhoven,3,Quadcopter,51.45,5.3744,190.6,Radar
+2025-04-07,Vliegbasis Volkel,2,Vleugel-drone,51.6573,5.6889,147.3,Radar
+2025-04-07,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,234.8,Akoestisch
+2025-04-07,Vliegbasis Eindhoven,5,Mini-drone,51.45,5.3744,67.2,Visueel
+2025-04-08,Vliegbasis Volkel,4,Quadcopter,51.6573,5.6889,252.2,Meervoudig
+2025-04-08,Vliegbasis Leeuwarden,4,Onbekend,53.2289,5.7556,249.2,Radar
+2025-04-08,Marinevliegkamp De Kooy,4,Onbekend,52.9233,4.7806,254.1,Akoestisch
+2025-04-08,Vliegbasis Eindhoven,5,Mini-drone,51.45,5.3744,222.5,Radar
+2025-04-09,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,257,Akoestisch
+2025-04-09,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,294.9,Radar
+2025-04-09,Marinevliegkamp De Kooy,4,Onbekend,52.9233,4.7806,206.5,Akoestisch
+2025-04-09,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,261.4,Visueel
+2025-04-09,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,185.1,Visueel
+2025-04-10,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,201.4,Akoestisch
+2025-04-10,Vliegbasis Leeuwarden,1,Mini-drone,53.2289,5.7556,141.2,Radar
+2025-04-10,Marinevliegkamp De Kooy,4,Quadcopter,52.9233,4.7806,74.8,Visueel
+2025-04-10,Vliegbasis Woensdrecht,2,Vleugel-drone,51.4489,4.3422,69.1,Radar
+2025-04-10,Vliegbasis Eindhoven,2,Onbekend,51.45,5.3744,228.1,Visueel
+2025-04-11,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,160.2,Visueel
+2025-04-11,Vliegbasis Leeuwarden,11,Mini-drone,53.2289,5.7556,162.5,Meervoudig
+2025-04-11,Marinevliegkamp De Kooy,2,Quadcopter,52.9233,4.7806,89.2,Akoestisch
+2025-04-11,Vliegbasis Eindhoven,3,Mini-drone,51.45,5.3744,171.5,Radar
+2025-04-12,Vliegbasis Volkel,5,Mini-drone,51.6573,5.6889,193.9,Visueel
+2025-04-12,Vliegbasis Leeuwarden,12,Vleugel-drone,53.2289,5.7556,225.3,Meervoudig
+2025-04-12,Marinevliegkamp De Kooy,7,Mini-drone,52.9233,4.7806,295.4,Meervoudig
+2025-04-12,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,262.8,Meervoudig
+2025-04-12,Vliegbasis Eindhoven,6,Mini-drone,51.45,5.3744,178.5,Visueel
+2025-04-13,Vliegbasis Volkel,6,Vleugel-drone,51.6573,5.6889,140.2,Visueel
+2025-04-13,Vliegbasis Leeuwarden,11,Vleugel-drone,53.2289,5.7556,192,Radar
+2025-04-13,Marinevliegkamp De Kooy,4,Onbekend,52.9233,4.7806,132.5,Meervoudig
+2025-04-13,Vliegbasis Woensdrecht,3,Vleugel-drone,51.4489,4.3422,102.9,Visueel
+2025-04-13,Vliegbasis Eindhoven,3,Quadcopter,51.45,5.3744,71.3,Visueel
+2025-04-14,Vliegbasis Volkel,3,Mini-drone,51.6573,5.6889,101.2,Radar
+2025-04-14,Vliegbasis Leeuwarden,10,Quadcopter,53.2289,5.7556,177.7,Meervoudig
+2025-04-14,Marinevliegkamp De Kooy,3,Quadcopter,52.9233,4.7806,243,Akoestisch
+2025-04-14,Vliegbasis Woensdrecht,1,Mini-drone,51.4489,4.3422,189.5,Radar
+2025-04-14,Vliegbasis Eindhoven,2,Onbekend,51.45,5.3744,100.9,Akoestisch
+2025-04-15,Vliegbasis Volkel,3,Vleugel-drone,51.6573,5.6889,66.7,Visueel
+2025-04-15,Vliegbasis Leeuwarden,1,Quadcopter,53.2289,5.7556,283.9,Visueel
+2025-04-15,Marinevliegkamp De Kooy,4,Quadcopter,52.9233,4.7806,66.2,Meervoudig
+2025-04-15,Vliegbasis Woensdrecht,3,Quadcopter,51.4489,4.3422,209.2,Visueel
+2025-04-15,Vliegbasis Eindhoven,5,Mini-drone,51.45,5.3744,176.7,Akoestisch
+2025-04-16,Vliegbasis Volkel,4,Onbekend,51.6573,5.6889,102.6,Meervoudig
+2025-04-16,Vliegbasis Leeuwarden,3,Onbekend,53.2289,5.7556,108.7,Radar
+2025-04-16,Marinevliegkamp De Kooy,2,Onbekend,52.9233,4.7806,64.5,Akoestisch
+2025-04-16,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,76.8,Akoestisch
+2025-04-16,Vliegbasis Eindhoven,3,Mini-drone,51.45,5.3744,133.7,Radar
+2025-04-17,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,66.9,Meervoudig
+2025-04-17,Vliegbasis Leeuwarden,2,Mini-drone,53.2289,5.7556,51.1,Meervoudig
+2025-04-17,Marinevliegkamp De Kooy,4,Quadcopter,52.9233,4.7806,58,Radar
+2025-04-17,Vliegbasis Woensdrecht,1,Quadcopter,51.4489,4.3422,54.1,Akoestisch
+2025-04-17,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,151.9,Radar
+2025-04-18,Vliegbasis Volkel,4,Quadcopter,51.6573,5.6889,190.8,Akoestisch
+2025-04-18,Vliegbasis Leeuwarden,5,Onbekend,53.2289,5.7556,177.1,Akoestisch
+2025-04-18,Marinevliegkamp De Kooy,5,Onbekend,52.9233,4.7806,110.6,Meervoudig
+2025-04-18,Vliegbasis Woensdrecht,2,Quadcopter,51.4489,4.3422,159.1,Akoestisch
+2025-04-18,Vliegbasis Eindhoven,3,Onbekend,51.45,5.3744,175.4,Akoestisch
+2025-04-19,Vliegbasis Volkel,3,Onbekend,51.6573,5.6889,235.5,Radar
+2025-04-19,Vliegbasis Leeuwarden,2,Vleugel-drone,53.2289,5.7556,97.2,Akoestisch
+2025-04-19,Marinevliegkamp De Kooy,7,Quadcopter,52.9233,4.7806,288.7,Radar
+2025-04-19,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,117.3,Akoestisch
+2025-04-19,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,161.1,Visueel
+2025-04-20,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,161.7,Meervoudig
+2025-04-20,Vliegbasis Leeuwarden,6,Mini-drone,53.2289,5.7556,89.2,Radar
+2025-04-20,Marinevliegkamp De Kooy,7,Mini-drone,52.9233,4.7806,266.5,Meervoudig
+2025-04-20,Vliegbasis Woensdrecht,1,Vleugel-drone,51.4489,4.3422,89.3,Meervoudig
+2025-04-20,Vliegbasis Eindhoven,3,Onbekend,51.45,5.3744,257.2,Akoestisch
+2025-04-21,Vliegbasis Volkel,4,Quadcopter,51.6573,5.6889,57.9,Visueel
+2025-04-21,Vliegbasis Leeuwarden,1,Vleugel-drone,53.2289,5.7556,263.4,Akoestisch
+2025-04-21,Marinevliegkamp De Kooy,4,Mini-drone,52.9233,4.7806,93.4,Radar
+2025-04-21,Vliegbasis Woensdrecht,1,Quadcopter,51.4489,4.3422,197.1,Radar
+2025-04-21,Vliegbasis Eindhoven,3,Onbekend,51.45,5.3744,293.2,Akoestisch
+2025-04-22,Vliegbasis Volkel,1,Vleugel-drone,51.6573,5.6889,298.2,Visueel
+2025-04-22,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,222.8,Meervoudig
+2025-04-22,Marinevliegkamp De Kooy,1,Quadcopter,52.9233,4.7806,61.9,Radar
+2025-04-22,Vliegbasis Woensdrecht,1,Quadcopter,51.4489,4.3422,281,Meervoudig
+2025-04-22,Vliegbasis Eindhoven,2,Vleugel-drone,51.45,5.3744,290.4,Akoestisch
+2025-04-23,Vliegbasis Volkel,5,Onbekend,51.6573,5.6889,87.3,Radar
+2025-04-23,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,299.3,Visueel
+2025-04-23,Marinevliegkamp De Kooy,4,Quadcopter,52.9233,4.7806,119.2,Akoestisch
+2025-04-23,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,89.1,Visueel
+2025-04-23,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,187.2,Meervoudig
+2025-04-24,Vliegbasis Volkel,5,Onbekend,51.6573,5.6889,92.6,Meervoudig
+2025-04-24,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,273.3,Visueel
+2025-04-24,Marinevliegkamp De Kooy,3,Onbekend,52.9233,4.7806,98.1,Meervoudig
+2025-04-24,Vliegbasis Eindhoven,6,Vleugel-drone,51.45,5.3744,65.1,Visueel
+2025-04-25,Vliegbasis Volkel,2,Vleugel-drone,51.6573,5.6889,192.2,Akoestisch
+2025-04-25,Marinevliegkamp De Kooy,5,Vleugel-drone,52.9233,4.7806,202.4,Radar
+2025-04-25,Vliegbasis Woensdrecht,1,Mini-drone,51.4489,4.3422,94.1,Radar
+2025-04-25,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,246.2,Meervoudig
+2025-04-26,Vliegbasis Volkel,5,Onbekend,51.6573,5.6889,111.5,Radar
+2025-04-26,Vliegbasis Leeuwarden,5,Mini-drone,53.2289,5.7556,154,Visueel
+2025-04-26,Marinevliegkamp De Kooy,5,Quadcopter,52.9233,4.7806,109.6,Visueel
+2025-04-26,Vliegbasis Woensdrecht,4,Onbekend,51.4489,4.3422,96.4,Akoestisch
+2025-04-26,Vliegbasis Eindhoven,5,Quadcopter,51.45,5.3744,52.7,Visueel
+2025-04-27,Vliegbasis Volkel,3,Vleugel-drone,51.6573,5.6889,179.7,Meervoudig
+2025-04-27,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,50.3,Meervoudig
+2025-04-27,Marinevliegkamp De Kooy,4,Quadcopter,52.9233,4.7806,149.7,Meervoudig
+2025-04-27,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,84.9,Akoestisch
+2025-04-28,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,142.5,Akoestisch
+2025-04-28,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,236,Akoestisch
+2025-04-28,Marinevliegkamp De Kooy,5,Vleugel-drone,52.9233,4.7806,193.5,Akoestisch
+2025-04-28,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,82.5,Meervoudig
+2025-04-28,Vliegbasis Eindhoven,2,Vleugel-drone,51.45,5.3744,179.6,Visueel
+2025-04-29,Vliegbasis Volkel,5,Onbekend,51.6573,5.6889,244.6,Visueel
+2025-04-29,Vliegbasis Leeuwarden,3,Vleugel-drone,53.2289,5.7556,64.8,Akoestisch
+2025-04-29,Marinevliegkamp De Kooy,3,Mini-drone,52.9233,4.7806,100.3,Meervoudig
+2025-04-29,Vliegbasis Woensdrecht,2,Quadcopter,51.4489,4.3422,198.1,Meervoudig
+2025-04-29,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,180.3,Visueel
+2025-04-30,Vliegbasis Volkel,1,Vleugel-drone,51.6573,5.6889,193.6,Visueel
+2025-04-30,Vliegbasis Leeuwarden,3,Onbekend,53.2289,5.7556,103.6,Radar
+2025-04-30,Marinevliegkamp De Kooy,2,Mini-drone,52.9233,4.7806,102.6,Meervoudig
+2025-04-30,Vliegbasis Woensdrecht,1,Onbekend,51.4489,4.3422,248.2,Akoestisch
+2025-04-30,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,220.9,Akoestisch
+2025-05-01,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,107.2,Akoestisch
+2025-05-01,Vliegbasis Leeuwarden,1,Vleugel-drone,53.2289,5.7556,140.9,Meervoudig
+2025-05-01,Marinevliegkamp De Kooy,1,Onbekend,52.9233,4.7806,119.7,Meervoudig
+2025-05-01,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,54.8,Akoestisch
+2025-05-01,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,290.6,Akoestisch
+2025-05-02,Vliegbasis Volkel,3,Onbekend,51.6573,5.6889,57.8,Akoestisch
+2025-05-02,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,233.8,Akoestisch
+2025-05-02,Marinevliegkamp De Kooy,5,Vleugel-drone,52.9233,4.7806,133.8,Meervoudig
+2025-05-02,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,96.1,Visueel
+2025-05-03,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,277.1,Visueel
+2025-05-03,Vliegbasis Leeuwarden,2,Mini-drone,53.2289,5.7556,199.3,Meervoudig
+2025-05-03,Marinevliegkamp De Kooy,5,Vleugel-drone,52.9233,4.7806,155.2,Akoestisch
+2025-05-03,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,185.2,Meervoudig
+2025-05-03,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,203.8,Akoestisch
+2025-05-04,Vliegbasis Volkel,4,Quadcopter,51.6573,5.6889,281.9,Radar
+2025-05-04,Vliegbasis Leeuwarden,1,Mini-drone,53.2289,5.7556,88.8,Radar
+2025-05-04,Marinevliegkamp De Kooy,4,Vleugel-drone,52.9233,4.7806,134.4,Akoestisch
+2025-05-04,Vliegbasis Woensdrecht,4,Mini-drone,51.4489,4.3422,227.8,Radar
+2025-05-04,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,251.4,Visueel
+2025-05-05,Vliegbasis Volkel,2,Quadcopter,51.6573,5.6889,69,Akoestisch
+2025-05-05,Vliegbasis Leeuwarden,2,Quadcopter,53.2289,5.7556,239,Akoestisch
+2025-05-05,Marinevliegkamp De Kooy,4,Mini-drone,52.9233,4.7806,190,Meervoudig
+2025-05-05,Vliegbasis Woensdrecht,4,Quadcopter,51.4489,4.3422,248.9,Visueel
+2025-05-05,Vliegbasis Eindhoven,4,Onbekend,51.45,5.3744,73.7,Akoestisch
+2025-05-06,Vliegbasis Volkel,2,Vleugel-drone,51.6573,5.6889,257.7,Meervoudig
+2025-05-06,Vliegbasis Leeuwarden,2,Mini-drone,53.2289,5.7556,216.5,Radar
+2025-05-06,Marinevliegkamp De Kooy,5,Quadcopter,52.9233,4.7806,124.4,Radar
+2025-05-06,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,259.1,Meervoudig
+2025-05-06,Vliegbasis Eindhoven,4,Mini-drone,51.45,5.3744,220,Akoestisch
+2025-05-07,Vliegbasis Volkel,3,Onbekend,51.6573,5.6889,133.7,Akoestisch
+2025-05-07,Marinevliegkamp De Kooy,3,Vleugel-drone,52.9233,4.7806,102.9,Visueel
+2025-05-07,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,136.5,Meervoudig
+2025-05-07,Vliegbasis Eindhoven,3,Onbekend,51.45,5.3744,187.4,Meervoudig
+2025-05-08,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,76.1,Visueel
+2025-05-08,Vliegbasis Leeuwarden,2,Mini-drone,53.2289,5.7556,182.8,Visueel
+2025-05-08,Marinevliegkamp De Kooy,5,Mini-drone,52.9233,4.7806,145,Radar
+2025-05-08,Vliegbasis Woensdrecht,3,Quadcopter,51.4489,4.3422,148.7,Meervoudig
+2025-05-08,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,166.9,Akoestisch
+2025-05-09,Vliegbasis Volkel,6,Mini-drone,51.6573,5.6889,207.5,Meervoudig
+2025-05-09,Vliegbasis Leeuwarden,2,Vleugel-drone,53.2289,5.7556,165.7,Visueel
+2025-05-09,Marinevliegkamp De Kooy,1,Mini-drone,52.9233,4.7806,114.2,Radar
+2025-05-09,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,89.8,Meervoudig
+2025-05-09,Vliegbasis Eindhoven,5,Vleugel-drone,51.45,5.3744,285.3,Akoestisch
+2025-05-10,Vliegbasis Volkel,5,Quadcopter,51.6573,5.6889,219.8,Akoestisch
+2025-05-10,Vliegbasis Leeuwarden,3,Quadcopter,53.2289,5.7556,61.4,Meervoudig
+2025-05-10,Marinevliegkamp De Kooy,6,Onbekend,52.9233,4.7806,295.1,Meervoudig
+2025-05-10,Vliegbasis Woensdrecht,2,Vleugel-drone,51.4489,4.3422,141.2,Akoestisch
+2025-05-10,Vliegbasis Eindhoven,5,Quadcopter,51.45,5.3744,157,Akoestisch
+2025-05-11,Vliegbasis Volkel,3,Mini-drone,51.6573,5.6889,63.9,Visueel
+2025-05-11,Vliegbasis Leeuwarden,1,Quadcopter,53.2289,5.7556,52.7,Meervoudig
+2025-05-11,Marinevliegkamp De Kooy,11,Onbekend,52.9233,4.7806,211.9,Akoestisch
+2025-05-11,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,63.8,Radar
+2025-05-11,Vliegbasis Eindhoven,2,Quadcopter,51.45,5.3744,151.8,Meervoudig
+2025-05-12,Vliegbasis Volkel,3,Onbekend,51.6573,5.6889,83.5,Radar
+2025-05-12,Vliegbasis Leeuwarden,1,Mini-drone,53.2289,5.7556,132.4,Radar
+2025-05-12,Marinevliegkamp De Kooy,8,Mini-drone,52.9233,4.7806,291.2,Meervoudig
+2025-05-12,Vliegbasis Woensdrecht,1,Onbekend,51.4489,4.3422,117.9,Akoestisch
+2025-05-12,Vliegbasis Eindhoven,3,Mini-drone,51.45,5.3744,227.2,Radar
+2025-05-13,Vliegbasis Volkel,4,Quadcopter,51.6573,5.6889,118.9,Akoestisch
+2025-05-13,Vliegbasis Leeuwarden,2,Mini-drone,53.2289,5.7556,74.6,Radar
+2025-05-13,Marinevliegkamp De Kooy,9,Onbekend,52.9233,4.7806,136.6,Akoestisch
+2025-05-13,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,98.3,Visueel
+2025-05-13,Vliegbasis Eindhoven,1,Onbekend,51.45,5.3744,101.7,Radar
+2025-05-14,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,196.7,Akoestisch
+2025-05-14,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,208.5,Visueel
+2025-05-14,Marinevliegkamp De Kooy,10,Quadcopter,52.9233,4.7806,145.5,Meervoudig
+2025-05-14,Vliegbasis Woensdrecht,1,Vleugel-drone,51.4489,4.3422,125.5,Meervoudig
+2025-05-14,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,58.6,Visueel
+2025-05-15,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,179.6,Meervoudig
+2025-05-15,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,188.1,Visueel
+2025-05-15,Marinevliegkamp De Kooy,9,Quadcopter,52.9233,4.7806,147,Visueel
+2025-05-15,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,203.8,Radar
+2025-05-15,Vliegbasis Eindhoven,5,Quadcopter,51.45,5.3744,221,Meervoudig
+2025-05-16,Vliegbasis Volkel,3,Quadcopter,51.6573,5.6889,214.7,Meervoudig
+2025-05-16,Vliegbasis Leeuwarden,1,Quadcopter,53.2289,5.7556,277.2,Akoestisch
+2025-05-16,Marinevliegkamp De Kooy,10,Onbekend,52.9233,4.7806,209.8,Meervoudig
+2025-05-16,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,197.9,Visueel
+2025-05-16,Vliegbasis Eindhoven,3,Onbekend,51.45,5.3744,94.9,Visueel
+2025-05-17,Vliegbasis Volkel,2,Quadcopter,51.6573,5.6889,287.4,Meervoudig
+2025-05-17,Vliegbasis Leeuwarden,4,Vleugel-drone,53.2289,5.7556,263.7,Radar
+2025-05-17,Marinevliegkamp De Kooy,8,Quadcopter,52.9233,4.7806,60.8,Akoestisch
+2025-05-17,Vliegbasis Woensdrecht,5,Vleugel-drone,51.4489,4.3422,257,Akoestisch
+2025-05-17,Vliegbasis Eindhoven,6,Mini-drone,51.45,5.3744,215.8,Visueel
+2025-05-18,Vliegbasis Volkel,6,Mini-drone,51.6573,5.6889,160.6,Visueel
+2025-05-18,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,142.1,Akoestisch
+2025-05-18,Marinevliegkamp De Kooy,10,Vleugel-drone,52.9233,4.7806,76.5,Akoestisch
+2025-05-18,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,157,Radar
+2025-05-18,Vliegbasis Eindhoven,3,Quadcopter,51.45,5.3744,163.6,Radar
+2025-05-19,Vliegbasis Volkel,2,Vleugel-drone,51.6573,5.6889,67.7,Akoestisch
+2025-05-19,Vliegbasis Leeuwarden,1,Mini-drone,53.2289,5.7556,245.6,Radar
+2025-05-19,Marinevliegkamp De Kooy,10,Onbekend,52.9233,4.7806,165.9,Akoestisch
+2025-05-19,Vliegbasis Woensdrecht,1,Mini-drone,51.4489,4.3422,298.7,Visueel
+2025-05-19,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,89.4,Visueel
+2025-05-20,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,76.1,Radar
+2025-05-20,Vliegbasis Leeuwarden,1,Vleugel-drone,53.2289,5.7556,96.3,Meervoudig
+2025-05-20,Marinevliegkamp De Kooy,10,Quadcopter,52.9233,4.7806,76.9,Akoestisch
+2025-05-20,Vliegbasis Woensdrecht,1,Quadcopter,51.4489,4.3422,107,Meervoudig
+2025-05-20,Vliegbasis Eindhoven,3,Quadcopter,51.45,5.3744,243.1,Akoestisch
+2025-05-21,Vliegbasis Volkel,1,Onbekend,51.6573,5.6889,192.8,Radar
+2025-05-21,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,154.9,Visueel
+2025-05-21,Marinevliegkamp De Kooy,11,Mini-drone,52.9233,4.7806,70.6,Radar
+2025-05-21,Vliegbasis Woensdrecht,3,Quadcopter,51.4489,4.3422,235,Akoestisch
+2025-05-21,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,199.3,Radar
+2025-05-22,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,149.5,Visueel
+2025-05-22,Marinevliegkamp De Kooy,9,Mini-drone,52.9233,4.7806,206.8,Radar
+2025-05-22,Vliegbasis Woensdrecht,1,Quadcopter,51.4489,4.3422,236.9,Meervoudig
+2025-05-22,Vliegbasis Eindhoven,5,Mini-drone,51.45,5.3744,157.1,Visueel
+2025-05-23,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,56.6,Akoestisch
+2025-05-23,Vliegbasis Leeuwarden,2,Onbekend,53.2289,5.7556,126.9,Radar
+2025-05-23,Marinevliegkamp De Kooy,9,Onbekend,52.9233,4.7806,243.9,Akoestisch
+2025-05-23,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,257.9,Meervoudig
+2025-05-23,Vliegbasis Eindhoven,4,Onbekend,51.45,5.3744,219.4,Akoestisch
+2025-05-24,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,270,Meervoudig
+2025-05-24,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,227.3,Radar
+2025-05-24,Marinevliegkamp De Kooy,10,Mini-drone,52.9233,4.7806,207.5,Visueel
+2025-05-24,Vliegbasis Woensdrecht,3,Vleugel-drone,51.4489,4.3422,251.1,Meervoudig
+2025-05-24,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,258.4,Radar
+2025-05-25,Vliegbasis Volkel,7,Mini-drone,51.6573,5.6889,250.1,Akoestisch
+2025-05-25,Vliegbasis Leeuwarden,4,Quadcopter,53.2289,5.7556,81.3,Meervoudig
+2025-05-25,Marinevliegkamp De Kooy,11,Onbekend,52.9233,4.7806,76.9,Visueel
+2025-05-25,Vliegbasis Woensdrecht,1,Mini-drone,51.4489,4.3422,206,Meervoudig
+2025-05-25,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,204.7,Radar
+2025-05-26,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,257.7,Meervoudig
+2025-05-26,Vliegbasis Leeuwarden,1,Vleugel-drone,53.2289,5.7556,255,Radar
+2025-05-26,Marinevliegkamp De Kooy,7,Quadcopter,52.9233,4.7806,151.6,Visueel
+2025-05-26,Vliegbasis Woensdrecht,4,Mini-drone,51.4489,4.3422,256.7,Radar
+2025-05-26,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,145.3,Akoestisch
+2025-05-27,Vliegbasis Volkel,1,Vleugel-drone,51.6573,5.6889,97.2,Akoestisch
+2025-05-27,Vliegbasis Leeuwarden,2,Mini-drone,53.2289,5.7556,152.5,Radar
+2025-05-27,Marinevliegkamp De Kooy,9,Vleugel-drone,52.9233,4.7806,191.7,Radar
+2025-05-27,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,56.7,Radar
+2025-05-28,Vliegbasis Volkel,2,Quadcopter,51.6573,5.6889,121.4,Akoestisch
+2025-05-28,Vliegbasis Leeuwarden,1,Vleugel-drone,53.2289,5.7556,57.1,Radar
+2025-05-28,Marinevliegkamp De Kooy,8,Vleugel-drone,52.9233,4.7806,210,Radar
+2025-05-28,Vliegbasis Woensdrecht,5,Mini-drone,51.4489,4.3422,198.4,Meervoudig
+2025-05-28,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,139.7,Akoestisch
+2025-05-29,Vliegbasis Volkel,3,Quadcopter,51.6573,5.6889,133.4,Akoestisch
+2025-05-29,Vliegbasis Leeuwarden,2,Quadcopter,53.2289,5.7556,279.4,Visueel
+2025-05-29,Marinevliegkamp De Kooy,9,Quadcopter,52.9233,4.7806,269.6,Akoestisch
+2025-05-29,Vliegbasis Woensdrecht,1,Onbekend,51.4489,4.3422,58.4,Meervoudig
+2025-05-29,Vliegbasis Eindhoven,1,Quadcopter,51.45,5.3744,170.4,Meervoudig
+2025-05-30,Vliegbasis Volkel,3,Onbekend,51.6573,5.6889,188.3,Visueel
+2025-05-30,Vliegbasis Leeuwarden,3,Vleugel-drone,53.2289,5.7556,165.8,Visueel
+2025-05-30,Marinevliegkamp De Kooy,10,Mini-drone,52.9233,4.7806,103.6,Meervoudig
+2025-05-30,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,168.7,Radar
+2025-05-30,Vliegbasis Eindhoven,2,Quadcopter,51.45,5.3744,78.1,Meervoudig
+2025-05-31,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,111.3,Akoestisch
+2025-05-31,Vliegbasis Leeuwarden,4,Vleugel-drone,53.2289,5.7556,159.1,Radar
+2025-05-31,Marinevliegkamp De Kooy,8,Mini-drone,52.9233,4.7806,123.3,Akoestisch
+2025-05-31,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,62,Radar
+2025-05-31,Vliegbasis Eindhoven,3,Quadcopter,51.45,5.3744,89.2,Akoestisch
+2025-06-01,Vliegbasis Volkel,2,Quadcopter,51.6573,5.6889,227,Visueel
+2025-06-01,Vliegbasis Leeuwarden,3,Quadcopter,53.2289,5.7556,196.3,Visueel
+2025-06-01,Marinevliegkamp De Kooy,10,Mini-drone,52.9233,4.7806,104.4,Radar
+2025-06-01,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,296.8,Visueel
+2025-06-01,Vliegbasis Eindhoven,5,Quadcopter,51.45,5.3744,151,Meervoudig
+2025-06-02,Vliegbasis Volkel,1,Onbekend,51.6573,5.6889,191.9,Meervoudig
+2025-06-02,Vliegbasis Leeuwarden,1,Mini-drone,53.2289,5.7556,98.5,Akoestisch
+2025-06-02,Marinevliegkamp De Kooy,9,Quadcopter,52.9233,4.7806,65.7,Visueel
+2025-06-02,Vliegbasis Woensdrecht,2,Vleugel-drone,51.4489,4.3422,141.9,Radar
+2025-06-02,Vliegbasis Eindhoven,3,Mini-drone,51.45,5.3744,149.7,Meervoudig
+2025-06-03,Vliegbasis Volkel,3,Mini-drone,51.6573,5.6889,242.3,Akoestisch
+2025-06-03,Vliegbasis Leeuwarden,2,Quadcopter,53.2289,5.7556,201.6,Meervoudig
+2025-06-03,Marinevliegkamp De Kooy,9,Quadcopter,52.9233,4.7806,101.5,Akoestisch
+2025-06-03,Vliegbasis Woensdrecht,1,Quadcopter,51.4489,4.3422,136.9,Meervoudig
+2025-06-03,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,297.1,Visueel
+2025-06-04,Vliegbasis Volkel,1,Quadcopter,51.6573,5.6889,261.7,Akoestisch
+2025-06-04,Marinevliegkamp De Kooy,7,Quadcopter,52.9233,4.7806,143.3,Akoestisch
+2025-06-04,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,169.1,Meervoudig
+2025-06-04,Vliegbasis Eindhoven,3,Onbekend,51.45,5.3744,230,Radar
+2025-06-05,Vliegbasis Volkel,3,Mini-drone,51.6573,5.6889,150,Meervoudig
+2025-06-05,Vliegbasis Leeuwarden,2,Vleugel-drone,53.2289,5.7556,146.3,Radar
+2025-06-05,Marinevliegkamp De Kooy,9,Vleugel-drone,52.9233,4.7806,208.2,Visueel
+2025-06-05,Vliegbasis Woensdrecht,3,Quadcopter,51.4489,4.3422,217.1,Visueel
+2025-06-06,Vliegbasis Volkel,3,Quadcopter,51.6573,5.6889,222.8,Akoestisch
+2025-06-06,Vliegbasis Leeuwarden,2,Vleugel-drone,53.2289,5.7556,102.8,Akoestisch
+2025-06-06,Marinevliegkamp De Kooy,9,Vleugel-drone,52.9233,4.7806,236.8,Visueel
+2025-06-06,Vliegbasis Woensdrecht,2,Vleugel-drone,51.4489,4.3422,252.7,Meervoudig
+2025-06-06,Vliegbasis Eindhoven,4,Mini-drone,51.45,5.3744,99,Visueel
+2025-06-07,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,180.5,Visueel
+2025-06-07,Vliegbasis Leeuwarden,3,Vleugel-drone,53.2289,5.7556,136.5,Akoestisch
+2025-06-07,Marinevliegkamp De Kooy,9,Mini-drone,52.9233,4.7806,89.9,Visueel
+2025-06-07,Vliegbasis Woensdrecht,2,Mini-drone,51.4489,4.3422,231,Visueel
+2025-06-07,Vliegbasis Eindhoven,7,Quadcopter,51.45,5.3744,88,Radar
+2025-06-08,Vliegbasis Volkel,5,Mini-drone,51.6573,5.6889,118.5,Radar
+2025-06-08,Vliegbasis Leeuwarden,1,Mini-drone,53.2289,5.7556,282.4,Visueel
+2025-06-08,Marinevliegkamp De Kooy,9,Quadcopter,52.9233,4.7806,167.7,Radar
+2025-06-08,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,100.6,Meervoudig
+2025-06-08,Vliegbasis Eindhoven,5,Onbekend,51.45,5.3744,165.2,Akoestisch
+2025-06-09,Vliegbasis Volkel,2,Quadcopter,51.6573,5.6889,79.6,Meervoudig
+2025-06-09,Vliegbasis Leeuwarden,3,Quadcopter,53.2289,5.7556,93.7,Radar
+2025-06-09,Marinevliegkamp De Kooy,8,Vleugel-drone,52.9233,4.7806,286.2,Radar
+2025-06-09,Vliegbasis Eindhoven,2,Onbekend,51.45,5.3744,139.1,Akoestisch
+2025-06-10,Vliegbasis Volkel,4,Onbekend,51.6573,5.6889,281.8,Visueel
+2025-06-10,Vliegbasis Leeuwarden,4,Mini-drone,53.2289,5.7556,214.2,Radar
+2025-06-10,Marinevliegkamp De Kooy,9,Mini-drone,52.9233,4.7806,67.1,Meervoudig
+2025-06-10,Vliegbasis Woensdrecht,1,Onbekend,51.4489,4.3422,116.5,Radar
+2025-06-10,Vliegbasis Eindhoven,20,Vleugel-drone,51.45,5.3744,119.6,Radar
+2025-06-11,Vliegbasis Volkel,4,Onbekend,51.6573,5.6889,242.4,Meervoudig
+2025-06-11,Vliegbasis Leeuwarden,1,Mini-drone,53.2289,5.7556,229.5,Radar
+2025-06-11,Marinevliegkamp De Kooy,8,Mini-drone,52.9233,4.7806,225.3,Meervoudig
+2025-06-11,Vliegbasis Woensdrecht,1,Mini-drone,51.4489,4.3422,85.2,Radar
+2025-06-11,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,159.3,Radar
+2025-06-12,Vliegbasis Volkel,3,Onbekend,51.6573,5.6889,123,Visueel
+2025-06-12,Vliegbasis Leeuwarden,2,Mini-drone,53.2289,5.7556,88.1,Radar
+2025-06-12,Marinevliegkamp De Kooy,10,Mini-drone,52.9233,4.7806,252.3,Visueel
+2025-06-12,Vliegbasis Woensdrecht,3,Vleugel-drone,51.4489,4.3422,200.9,Visueel
+2025-06-12,Vliegbasis Eindhoven,2,Onbekend,51.45,5.3744,243.1,Visueel
+2025-06-13,Vliegbasis Volkel,4,Quadcopter,51.6573,5.6889,179.9,Radar
+2025-06-13,Vliegbasis Leeuwarden,4,Onbekend,53.2289,5.7556,223.9,Visueel
+2025-06-13,Marinevliegkamp De Kooy,8,Quadcopter,52.9233,4.7806,278.7,Meervoudig
+2025-06-13,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,157.2,Akoestisch
+2025-06-13,Vliegbasis Eindhoven,2,Vleugel-drone,51.45,5.3744,145,Visueel
+2025-06-14,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,292.6,Visueel
+2025-06-14,Vliegbasis Leeuwarden,4,Vleugel-drone,53.2289,5.7556,213.4,Akoestisch
+2025-06-14,Marinevliegkamp De Kooy,11,Mini-drone,52.9233,4.7806,264.1,Visueel
+2025-06-14,Vliegbasis Woensdrecht,3,Vleugel-drone,51.4489,4.3422,104.9,Akoestisch
+2025-06-14,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,162.3,Visueel
+2025-06-15,Vliegbasis Volkel,3,Quadcopter,51.6573,5.6889,78.3,Meervoudig
+2025-06-15,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,222.4,Akoestisch
+2025-06-15,Marinevliegkamp De Kooy,9,Vleugel-drone,52.9233,4.7806,74.6,Visueel
+2025-06-15,Vliegbasis Woensdrecht,4,Mini-drone,51.4489,4.3422,61.3,Radar
+2025-06-15,Vliegbasis Eindhoven,6,Quadcopter,51.45,5.3744,107.6,Meervoudig
+2025-06-16,Vliegbasis Volkel,3,Mini-drone,51.6573,5.6889,86.5,Radar
+2025-06-16,Vliegbasis Leeuwarden,3,Quadcopter,53.2289,5.7556,133.7,Meervoudig
+2025-06-16,Marinevliegkamp De Kooy,9,Vleugel-drone,52.9233,4.7806,165.1,Visueel
+2025-06-16,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,155.9,Meervoudig
+2025-06-16,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,214.6,Akoestisch
+2025-06-17,Vliegbasis Volkel,2,Vleugel-drone,51.6573,5.6889,100.9,Visueel
+2025-06-17,Vliegbasis Leeuwarden,1,Vleugel-drone,53.2289,5.7556,100.8,Akoestisch
+2025-06-17,Marinevliegkamp De Kooy,8,Mini-drone,52.9233,4.7806,139.3,Akoestisch
+2025-06-17,Vliegbasis Woensdrecht,4,Vleugel-drone,51.4489,4.3422,94.3,Radar
+2025-06-17,Vliegbasis Eindhoven,4,Quadcopter,51.45,5.3744,194.1,Akoestisch
+2025-06-18,Vliegbasis Volkel,5,Quadcopter,51.6573,5.6889,148.9,Visueel
+2025-06-18,Vliegbasis Leeuwarden,1,Onbekend,53.2289,5.7556,251,Akoestisch
+2025-06-18,Marinevliegkamp De Kooy,8,Onbekend,52.9233,4.7806,235.9,Meervoudig
+2025-06-18,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,70.2,Visueel
+2025-06-18,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,73.9,Visueel
+2025-06-19,Vliegbasis Volkel,2,Onbekend,51.6573,5.6889,207.7,Visueel
+2025-06-19,Vliegbasis Leeuwarden,1,Mini-drone,53.2289,5.7556,265.3,Akoestisch
+2025-06-19,Marinevliegkamp De Kooy,10,Onbekend,52.9233,4.7806,144.7,Visueel
+2025-06-19,Vliegbasis Woensdrecht,1,Quadcopter,51.4489,4.3422,224.7,Akoestisch
+2025-06-19,Vliegbasis Eindhoven,4,Mini-drone,51.45,5.3744,207.4,Visueel
+2025-06-20,Vliegbasis Volkel,4,Onbekend,51.6573,5.6889,228.9,Akoestisch
+2025-06-20,Marinevliegkamp De Kooy,7,Vleugel-drone,52.9233,4.7806,138.8,Visueel
+2025-06-20,Vliegbasis Woensdrecht,3,Vleugel-drone,51.4489,4.3422,235.9,Visueel
+2025-06-20,Vliegbasis Eindhoven,4,Onbekend,51.45,5.3744,238.4,Akoestisch
+2025-06-21,Vliegbasis Volkel,5,Quadcopter,51.6573,5.6889,241.5,Visueel
+2025-06-21,Vliegbasis Leeuwarden,3,Quadcopter,53.2289,5.7556,167.2,Meervoudig
+2025-06-21,Marinevliegkamp De Kooy,10,Vleugel-drone,52.9233,4.7806,128,Meervoudig
+2025-06-21,Vliegbasis Woensdrecht,5,Vleugel-drone,51.4489,4.3422,260.9,Radar
+2025-06-21,Vliegbasis Eindhoven,4,Mini-drone,51.45,5.3744,242.7,Visueel
+2025-06-22,Vliegbasis Volkel,5,Quadcopter,51.6573,5.6889,196.7,Radar
+2025-06-22,Vliegbasis Leeuwarden,4,Mini-drone,53.2289,5.7556,184.3,Visueel
+2025-06-22,Marinevliegkamp De Kooy,8,Quadcopter,52.9233,4.7806,200.4,Akoestisch
+2025-06-22,Vliegbasis Woensdrecht,5,Vleugel-drone,51.4489,4.3422,162.3,Meervoudig
+2025-06-22,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,199.7,Meervoudig
+2025-06-23,Vliegbasis Volkel,2,Mini-drone,51.6573,5.6889,287.3,Meervoudig
+2025-06-23,Vliegbasis Leeuwarden,2,Mini-drone,53.2289,5.7556,136.2,Akoestisch
+2025-06-23,Marinevliegkamp De Kooy,8,Quadcopter,52.9233,4.7806,162.8,Visueel
+2025-06-23,Vliegbasis Woensdrecht,3,Onbekend,51.4489,4.3422,97.6,Visueel
+2025-06-23,Vliegbasis Eindhoven,3,Onbekend,51.45,5.3744,189.7,Akoestisch
+2025-06-24,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,279.9,Radar
+2025-06-24,Marinevliegkamp De Kooy,7,Onbekend,52.9233,4.7806,132.9,Akoestisch
+2025-06-24,Vliegbasis Eindhoven,4,Vleugel-drone,51.45,5.3744,89.1,Akoestisch
+2025-06-25,Vliegbasis Volkel,4,Mini-drone,51.6573,5.6889,178,Visueel
+2025-06-25,Vliegbasis Leeuwarden,3,Onbekend,53.2289,5.7556,252.3,Visueel
+2025-06-25,Marinevliegkamp De Kooy,9,Onbekend,52.9233,4.7806,115.6,Radar
+2025-06-25,Vliegbasis Woensdrecht,3,Mini-drone,51.4489,4.3422,228.5,Meervoudig
+2025-06-25,Vliegbasis Eindhoven,2,Mini-drone,51.45,5.3744,67.5,Meervoudig
+2025-06-26,Vliegbasis Volkel,2,Vleugel-drone,51.6573,5.6889,245.2,Meervoudig
+2025-06-26,Vliegbasis Leeuwarden,4,Onbekend,53.2289,5.7556,237.6,Meervoudig
+2025-06-26,Marinevliegkamp De Kooy,10,Mini-drone,52.9233,4.7806,118,Visueel
+2025-06-26,Vliegbasis Woensdrecht,2,Onbekend,51.4489,4.3422,194.4,Akoestisch
+2025-06-26,Vliegbasis Eindhoven,2,Onbekend,51.45,5.3744,106.2,Meervoudig
+2025-06-27,Vliegbasis Volkel,3,Mini-drone,51.6573,5.6889,266.1,Meervoudig
+2025-06-27,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,241.5,Visueel
+2025-06-27,Marinevliegkamp De Kooy,9,Quadcopter,52.9233,4.7806,243.3,Akoestisch
+2025-06-27,Vliegbasis Woensdrecht,1,Quadcopter,51.4489,4.3422,205.5,Visueel
+2025-06-27,Vliegbasis Eindhoven,5,Vleugel-drone,51.45,5.3744,243.8,Akoestisch
+2025-06-28,Vliegbasis Volkel,3,Quadcopter,51.6573,5.6889,166.1,Visueel
+2025-06-28,Vliegbasis Leeuwarden,3,Mini-drone,53.2289,5.7556,294.7,Akoestisch
+2025-06-28,Marinevliegkamp De Kooy,10,Onbekend,52.9233,4.7806,104.4,Radar
+2025-06-28,Vliegbasis Woensdrecht,4,Quadcopter,51.4489,4.3422,276.6,Akoestisch
+2025-06-28,Vliegbasis Eindhoven,3,Vleugel-drone,51.45,5.3744,266.5,Meervoudig
+2025-06-29,Vliegbasis Volkel,4,Vleugel-drone,51.6573,5.6889,64.3,Visueel
+2025-06-29,Vliegbasis Leeuwarden,3,Quadcopter,53.2289,5.7556,154.8,Radar
+2025-06-29,Marinevliegkamp De Kooy,8,Vleugel-drone,52.9233,4.7806,176.6,Meervoudig
+2025-06-29,Vliegbasis Woensdrecht,1,Mini-drone,51.4489,4.3422,277.1,Akoestisch
+2025-06-29,Vliegbasis Eindhoven,3,Onbekend,51.45,5.3744,280.2,Visueel

@@ -1,0 +1,36 @@
+# Niet meekopiëren in container
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Git en IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Lokale data en secrets — NOOIT in image
+.streamlit/secrets.toml
+data/*.db
+data/store.db
+data/*.xlsx
+
+# Documentatie
+*.md
+docs/
+
+# Logs
+*.log
+
+# Build-artefacten
+build/
+dist/
+
+# Windows-specific
+*.bat
+Thumbs.db

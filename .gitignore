@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.Python
+
+# Virtuele omgevingen
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Lokale data — NOOIT committen
+data/store.db
+data/*.xlsx
+data/uploaded_*
+
+# Secrets — NOOIT committen
+.streamlit/secrets.toml
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Build
+build/
+dist/
+
+# Logs
+*.log

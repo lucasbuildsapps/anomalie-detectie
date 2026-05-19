@@ -1,0 +1,1497 @@
+"""Streamlit entry point. Run: streamlit run app.py"""
+from __future__ import annotations
+
+import html as _html
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+from core import annotations as anno
+from core import storage
+from core.auth import check_password
+from core.auto_mapping import guess_mapping
+from core.auto_pilot import build_findings, run_auto_pilot
+from core.briefing import briefing_filename, build_briefing_pdf
+from core.excel_export import build_excel_export, excel_filename
+from core.import_data import apply_mapping, read_table
+from core.normbeeld import (
+    AGGREGATIONS, PREDICTION_METHOD_DETAILS, PREDICTION_METHODS,
+    compute_all_normbeelds, compute_normbeeld,
+    detect_recent_alerts, _suggest_best_aggregation,
+)
+from core.registry import get_detectors
+from i18n.nl import t
+from visualizations.normbeeld_chart import render_normbeeld_chart
+
+
+# ---------------------------------------------------------------------------
+# Page config
+# ---------------------------------------------------------------------------
+st.set_page_config(
+    page_title=t("app_title"),
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+storage.init_db()
+
+# Authenticatie (alleen actief als wachtwoord is ingesteld in secrets.toml of
+# ANOMALY_PASSWORD env-var). Lokaal zonder secrets = open toegang.
+if not check_password():
+    st.stop()
+
+_DEFAULTS = {
+    "ui_theme": "light",
+    "active_page": t("nav_normbeeld"),
+    "active_dataset_id": None,
+    "horizon_days": 14,
+    "aggregation": "auto",
+    "show_settings": False,
+    "show_more_findings": False,
+    "nb_selected_location": None,
+    "nb_selected_category": "Alle categorieën",
+    "nb_methods_override": None,   # None = auto
+    "nb_n_to_show": 5,
+}
+for k, v in _DEFAULTS.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+
+# ---------------------------------------------------------------------------
+# Theme + CSS
+# ---------------------------------------------------------------------------
+PALETTES = {
+    "light": {
+        "bg":            "#fafbfc",
+        "surface":       "#ffffff",
+        "surface_alt":   "#f0f2f5",
+        "border":        "#dde1e6",
+        "border_soft":   "#eef0f3",
+        "text":          "#0a1929",
+        "text_muted":    "#56616e",
+        "accent":        "#1a4d8c",
+        "accent_text":   "#ffffff",
+        "accent_dim":    "#5b7ba5",
+        "high":          "#c53030",
+        "mid":           "#c05621",
+        "low":           "#975a16",
+        "ok":            "#2e8b57",
+    },
+    "dark": {
+        "bg":            "#0d1117",
+        "surface":       "#161b22",
+        "surface_alt":   "#1f2630",
+        "border":        "#2a3038",
+        "border_soft":   "#1c2129",
+        "text":          "#e6edf3",
+        "text_muted":    "#8b949e",
+        "accent":        "#58a6ff",
+        "accent_text":   "#0d1117",
+        "accent_dim":    "#79b8ff",
+        "high":          "#f87171",
+        "mid":           "#fb923c",
+        "low":           "#fbbf24",
+        "ok":            "#4cda86",
+    },
+}
+
+
+def _build_css(theme: str) -> str:
+    p = PALETTES[theme]
+    return f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"],
+[data-testid="stHeader"] {{
+    background: {p['bg']} !important;
+    color: {p['text']} !important;
+}}
+[data-testid="stHeader"] {{ border-bottom: 1px solid {p['border_soft']} !important; }}
+[data-testid="stSidebar"], [data-testid="stSidebar"] > div {{
+    background: {p['surface']} !important;
+    border-right: 1px solid {p['border']} !important;
+}}
+[data-testid="stSidebar"] *, .stApp p, .stApp label, .stApp span, .stApp div {{
+    color: {p['text']};
+}}
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p,
+.stApp [data-testid="stCaptionContainer"] p,
+[data-testid="stWidgetLabel"] p {{ color: {p['text_muted']} !important; }}
+
+[data-baseweb="select"] > div, [data-baseweb="input"] > div,
+[data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea,
+[data-testid="stNumberInput"] input, [data-baseweb="popover"] {{
+    background: {p['surface']} !important;
+    color: {p['text']} !important;
+    border-color: {p['border']} !important;
+}}
+[data-baseweb="popover"] li {{ color: {p['text']} !important; }}
+[data-baseweb="popover"] li:hover {{ background: {p['surface_alt']} !important; }}
+[data-baseweb="tag"] {{ background: {p['surface_alt']} !important; color: {p['text']} !important; }}
+
+.main .block-container {{
+    padding-top: 1rem; padding-bottom: 2rem; max-width: 1400px;
+}}
+
+h1, h2, h3, h4, h5 {{
+    font-family: 'Inter', sans-serif; font-weight: 600;
+    letter-spacing: -0.01em; color: {p['text']} !important;
+}}
+.stApp {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }}
+
+.section-label {{
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: {p['accent']};
+    margin: 1.25rem 0 0.5rem 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid {p['border_soft']};
+}}
+
+/* Metrics */
+[data-testid="stMetric"] {{
+    background: {p['surface']} !important;
+    border: 1px solid {p['border']} !important;
+    border-left: 3px solid {p['accent']} !important;
+    padding: 12px 16px;
+    border-radius: 2px;
+}}
+[data-testid="stMetricLabel"] p {{
+    text-transform: uppercase; letter-spacing: 0.08em;
+    font-size: 0.7rem; font-weight: 500;
+    color: {p['text_muted']} !important;
+}}
+[data-testid="stMetricValue"] {{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.3rem; font-weight: 600;
+    color: {p['text']} !important;
+    white-space: nowrap;
+}}
+
+/* Finding cards */
+.finding-card {{
+    background: {p['surface']};
+    border: 1px solid {p['border']};
+    border-left: 3px solid var(--card-color);
+    padding: 14px 18px;
+    margin-bottom: 10px;
+}}
+.finding-header {{
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 8px; flex-wrap: wrap;
+}}
+.severity-pill {{
+    display: inline-block; padding: 2px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem; font-weight: 600;
+    letter-spacing: 0.1em; color: white;
+}}
+.severity-hoog   {{ background: {p['high']}; }}
+.severity-midden {{ background: {p['mid']}; }}
+.severity-laag   {{ background: {p['low']}; color: #1a1a1a; }}
+.finding-loc {{ font-weight: 600; color: {p['text']}; }}
+.finding-date {{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem; color: {p['text_muted']};
+}}
+.finding-stat {{ color: {p['text']}; font-size: 0.92rem; margin: 4px 0; }}
+.finding-explain {{ color: {p['text']}; font-size: 0.92rem; line-height: 1.55; margin: 8px 0; }}
+.finding-meta {{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem; color: {p['text_muted']};
+    padding-top: 8px; border-top: 1px solid {p['border_soft']};
+    margin-top: 8px;
+}}
+
+/* Normbeeld kaart (compacter) */
+.nb-card {{
+    background: {p['surface']};
+    border: 1px solid {p['border']};
+    border-left: 3px solid {p['accent']};
+    padding: 12px 14px; margin-bottom: 8px;
+}}
+.nb-card .name {{ font-weight: 600; color: {p['text']}; font-size: 1rem; }}
+.nb-card .stat {{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88rem; color: {p['text']};
+    margin-top: 4px;
+}}
+.nb-card .stat .label {{ color: {p['text_muted']}; }}
+.nb-card.alert {{ border-left-color: {p['high']}; }}
+
+/* Alert banner */
+.alert-banner {{
+    background: {p['surface']};
+    border: 1px solid {p['high']};
+    border-left: 4px solid {p['high']};
+    padding: 14px 18px; margin: 10px 0 14px 0;
+}}
+.alert-banner .head {{
+    color: {p['high']}; font-weight: 700;
+    font-size: 0.9rem; letter-spacing: 0.03em;
+    text-transform: uppercase; margin-bottom: 6px;
+}}
+.alert-banner .intro {{
+    color: {p['text']}; font-size: 0.9rem;
+    margin-bottom: 8px;
+}}
+.alert-row {{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88rem; color: {p['text']};
+    padding: 3px 0;
+}}
+
+/* Severity explainer */
+.explainer {{
+    background: {p['surface_alt']};
+    border-left: 2px solid {p['accent_dim']};
+    padding: 10px 14px;
+    font-size: 0.88rem; color: {p['text']};
+    margin: 6px 0 12px 0;
+    line-height: 1.55;
+}}
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {{
+    gap: 0; background: transparent;
+    border-bottom: 1px solid {p['border']};
+}}
+.stTabs [data-baseweb="tab"] {{
+    background: transparent !important;
+    color: {p['text_muted']} !important;
+    border-radius: 0;
+    padding: 8px 16px; font-weight: 500;
+}}
+.stTabs [aria-selected="true"] {{
+    color: {p['accent']} !important;
+    border-bottom: 2px solid {p['accent']};
+}}
+
+/* ===== Primary button (forceer leesbare tekst) ===== */
+button[kind="primary"],
+button[kind="primary"] * {{
+    background: {p['accent']} !important;
+    color: {p['accent_text']} !important;
+    border-color: {p['accent']} !important;
+    border-radius: 2px !important;
+    font-weight: 600 !important;
+}}
+button[kind="primary"]:hover {{
+    background: {p['accent_dim']} !important;
+    border-color: {p['accent_dim']} !important;
+}}
+button[kind="secondary"] {{
+    background: {p['surface']} !important;
+    border: 1px solid {p['border']} !important;
+    color: {p['text']} !important;
+    border-radius: 2px !important;
+}}
+button[kind="secondary"]:hover {{
+    border-color: {p['accent']} !important;
+}}
+
+/* Cogwheel button (klein, rechtsboven) */
+.cog-button button {{
+    padding: 4px 12px !important;
+    font-size: 0.8rem !important;
+    min-height: 0 !important;
+}}
+
+/* Sidebar nav rows (vlak, met active-indicator) */
+.sidebar-nav button {{
+    width: 100%;
+    text-align: left !important;
+    padding: 10px 14px !important;
+    border: 1px solid {p['border']} !important;
+    background: {p['surface']} !important;
+    color: {p['text']} !important;
+    font-weight: 500 !important;
+    border-radius: 2px !important;
+}}
+.sidebar-nav-active button {{
+    border-left: 3px solid {p['accent']} !important;
+    background: {p['surface_alt']} !important;
+    color: {p['accent']} !important;
+    font-weight: 600 !important;
+}}
+
+div[data-testid="stExpander"] {{
+    background: {p['surface']} !important;
+    border: 1px solid {p['border']} !important;
+    border-radius: 2px !important;
+}}
+div[data-testid="stExpander"] summary {{ color: {p['text']} !important; }}
+
+.stDataFrame, .stDataFrame > div {{
+    background: {p['surface']} !important;
+    border: 1px solid {p['border']} !important;
+}}
+
+[data-testid="stFileUploader"] section {{
+    background: {p['surface']} !important;
+    border: 1px dashed {p['border']} !important;
+    color: {p['text']} !important;
+}}
+
+footer {{ visibility: hidden; }}
+
+/* Forceer zijbalk altijd zichtbaar (sommige Streamlit-versies klappen 'm
+   onzichtbaar in bij smal scherm of na een collapse) */
+[data-testid="stSidebar"] {{
+    display: block !important;
+    visibility: visible !important;
+    transform: none !important;
+    min-width: 240px !important;
+}}
+[data-testid="collapsedControl"] {{
+    display: flex !important;
+    visibility: visible !important;
+}}
+</style>
+"""
+
+
+st.markdown(_build_css(st.session_state.ui_theme), unsafe_allow_html=True)
+P = PALETTES[st.session_state.ui_theme]
+
+
+# ---------------------------------------------------------------------------
+# Cache wrapper
+# ---------------------------------------------------------------------------
+def _aggregate_df(df: pd.DataFrame, aggregation: str) -> pd.DataFrame:
+    """Resample observaties naar week/maand. Houdt locatie/categorie intact."""
+    if aggregation == "daily" or df.empty:
+        return df
+    freq = AGGREGATIONS[aggregation][0]
+    work = df.copy()
+    work["timestamp"] = pd.to_datetime(work["timestamp"])
+    group_cols = [
+        c for c in ["location_name", "category"]
+        if c in work.columns and work[c].notna().any()
+    ]
+    if group_cols:
+        work["__bucket"] = work["timestamp"].dt.to_period(
+            "M" if aggregation == "monthly" else "W"
+        ).dt.start_time
+        agg_dict = {"value": "sum"}
+        for col in ("lat", "lon"):
+            if col in work.columns:
+                agg_dict[col] = "first"
+        result = (
+            work.groupby(["__bucket"] + group_cols, dropna=False)
+            .agg(agg_dict).reset_index()
+        )
+        result = result.rename(columns={"__bucket": "timestamp"})
+    else:
+        s = work.set_index("timestamp")["value"].resample(freq).sum()
+        result = s.reset_index()
+    return result
+
+
+def _resolve_aggregation(df: pd.DataFrame, choice: str) -> str:
+    if choice == "auto":
+        return _suggest_best_aggregation(df)
+    return choice
+
+
+@st.cache_data(show_spinner=False)
+def cached_analysis(
+    dataset_id: int, data_hash: str, horizon: int,
+    aggregation: str, methods_key: str,
+):
+    df_raw = storage.load_observations(dataset_id)
+    if df_raw.empty:
+        return None
+
+    effective_agg = _resolve_aggregation(df_raw, aggregation)
+    df = _aggregate_df(df_raw, effective_agg)
+
+    group_col = (
+        "location_name" if "location_name" in df.columns
+        and df["location_name"].notna().any() else None
+    )
+    result = run_auto_pilot(df, group_col=group_col)
+    result.log.callbacks.clear()
+
+    methods = None if methods_key == "auto" else methods_key.split(",")
+    normbeelds = compute_all_normbeelds(
+        df_raw, horizon_days=horizon, methods=methods,
+        aggregation=effective_agg,
+    )
+    alerts = detect_recent_alerts(normbeelds, aggregation=effective_agg)
+    return df_raw, df, result, normbeelds, alerts, effective_agg
+
+
+# ---------------------------------------------------------------------------
+# Sidebar (Normbeeld bovenaan, geen banner, geen Instellingen-knop)
+# ---------------------------------------------------------------------------
+with st.sidebar:
+    logo_path = Path(__file__).parent / "assets" / "logo.png"
+    try:
+        if logo_path.exists():
+            st.image(str(logo_path), use_container_width=True)
+        else:
+            st.markdown(f"### {t('app_title')}")
+    except Exception:
+        st.markdown(f"### {t('app_title')}")
+    st.caption(t("app_subtitle"))
+    st.divider()
+
+    nav_items = [t("nav_normbeeld"), t("nav_data")]
+    for label in nav_items:
+        is_active = st.session_state.active_page == label
+        wrapper_cls = "sidebar-nav sidebar-nav-active" if is_active else "sidebar-nav"
+        st.markdown(f"<div class='{wrapper_cls}'>", unsafe_allow_html=True)
+        if st.button(
+            label, key=f"nav_{label}",
+            use_container_width=True, type="secondary",
+        ):
+            st.session_state.active_page = label
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.divider()
+    theme_choice = st.radio(
+        t("theme_label"),
+        [t("theme_light"), t("theme_dark")],
+        horizontal=True,
+        index=0 if st.session_state.ui_theme == "light" else 1,
+        key="theme_radio",
+    )
+    new_theme = "light" if theme_choice == t("theme_light") else "dark"
+    if new_theme != st.session_state.ui_theme:
+        st.session_state.ui_theme = new_theme
+        st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Top-right cogwheel (Instellingen)
+# ---------------------------------------------------------------------------
+def render_topbar(title: str):
+    c1, c2 = st.columns([6, 1])
+    with c1:
+        st.markdown(f"## {title}")
+    with c2:
+        st.markdown("<div class='cog-button' style='text-align:right;'>",
+                    unsafe_allow_html=True)
+        st.write("")
+        if st.button(t("btn_settings"), key="open_settings",
+                     use_container_width=True, type="secondary"):
+            st.session_state.show_settings = True
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# Settings overlay (datasets, upload, expert, weergave)
+# ---------------------------------------------------------------------------
+def page_settings():
+    c1, c2 = st.columns([5, 1])
+    with c1:
+        st.markdown("## " + t("settings_title"))
+    with c2:
+        if st.button(t("settings_close"), key="close_settings",
+                     use_container_width=True, type="primary"):
+            st.session_state.show_settings = False
+            st.rerun()
+
+    tabs = st.tabs([
+        t("settings_tab_datasets"),
+        t("settings_tab_upload"),
+        t("settings_tab_expert"),
+        t("settings_tab_theme"),
+    ])
+    with tabs[0]:
+        _settings_datasets()
+    with tabs[1]:
+        _settings_upload()
+    with tabs[2]:
+        _settings_expert()
+    with tabs[3]:
+        _settings_theme()
+
+
+def _settings_datasets():
+    datasets = storage.list_datasets()
+    if not datasets:
+        st.info("Geen datasets aanwezig. Gebruik tab Upload.")
+        return
+    for ds in datasets:
+        with st.expander(ds["name"]):
+            st.caption(f"Aangemaakt: {ds['created_at']}")
+            st.write(ds["description"] or "Geen omschrijving.")
+            st.json(ds["column_mapping"], expanded=False)
+            c1, c2 = st.columns(2)
+            with c1:
+                upd = st.file_uploader(
+                    "Bijwerken (Excel/CSV)",
+                    type=["xlsx", "xls", "csv"],
+                    key=f"upd_{ds['id']}",
+                )
+                if upd is not None and st.button(
+                    "Toevoegen", key=f"updbtn_{ds['id']}",
+                    use_container_width=True,
+                ):
+                    try:
+                        full_df = read_table(upd)
+                        normalized, stats = apply_mapping(full_df, ds["column_mapping"])
+                        n = storage.insert_observations(ds["id"], normalized)
+                        msg = f"{n} nieuwe rijen toegevoegd."
+                        if stats["dropped_total"] > 0:
+                            msg += f" ({stats['dropped_total']} rijen overgeslagen — ongeldige timestamps)"
+                        st.success(msg)
+                        st.cache_data.clear()
+                    except Exception as e:
+                        st.error(f"Bijwerken mislukt: {e}")
+            with c2:
+                if st.button(t("btn_delete"), key=f"del_{ds['id']}",
+                             use_container_width=True):
+                    storage.delete_dataset(ds["id"])
+                    st.cache_data.clear()
+                    st.success(t("msg_deleted"))
+                    st.rerun()
+
+
+def _settings_upload():
+    # Demo-knop bovenaan
+    st.markdown(
+        "**Snel beginnen:** laad de meegeleverde demo-dataset "
+        "(fictieve drone-waarnemingen rond NL-luchtmachtbases)."
+    )
+    if st.button("Laad demo-dataset", type="secondary", key="load_demo_settings"):
+        if _try_load_demo_dataset():
+            st.rerun()
+    st.divider()
+
+    uploaded = st.file_uploader(
+        "Bron-bestand", type=["xlsx", "xls", "csv"],
+        key="upload_settings",
+    )
+    if not uploaded:
+        return
+    try:
+        full_df = read_table(uploaded)
+    except Exception as e:
+        st.error(f"Lezen mislukt: {e}")
+        return
+    st.caption(f"{len(full_df)} rijen · {len(full_df.columns)} kolommen")
+    st.dataframe(full_df.head(6), use_container_width=True, hide_index=True)
+    _inline_mapping_form(full_df, uploaded.name)
+
+
+def _inline_mapping_form(full_df: pd.DataFrame, filename: str):
+    columns = list(full_df.columns)
+    none = t("none_option")
+    opt = [none] + columns
+    suggested = guess_mapping(full_df)
+
+    def _idx(value): return opt.index(value) if value in opt else 0
+    def _req_idx(value): return columns.index(value) if value in columns else 0
+
+    c1, c2 = st.columns(2)
+    with c1:
+        time_col = st.selectbox(t("field_time"), columns,
+                                index=_req_idx(suggested.get("time")), key="m_t")
+        category_col = st.selectbox(t("field_category"), opt,
+                                    index=_idx(suggested.get("category")), key="m_c")
+        lat_col = st.selectbox(t("field_lat"), opt,
+                               index=_idx(suggested.get("lat")), key="m_la")
+    with c2:
+        value_col = st.selectbox(t("field_value"), columns,
+                                 index=_req_idx(suggested.get("value")), key="m_v")
+        location_col = st.selectbox(t("field_location_name"), opt,
+                                    index=_idx(suggested.get("location_name")), key="m_l")
+        lon_col = st.selectbox(t("field_lon"), opt,
+                               index=_idx(suggested.get("lon")), key="m_lo")
+
+    chosen = {time_col, value_col, category_col, location_col, lat_col, lon_col}
+    chosen.discard(none)
+    extras = st.multiselect(
+        t("field_extras"),
+        [c for c in columns if c not in chosen],
+        default=[e for e in (suggested.get("extras") or []) if e not in chosen],
+        key="m_e",
+    )
+
+    c1, c2 = st.columns([2, 3])
+    with c1:
+        default_name = filename.rsplit(".", 1)[0]
+        name = st.text_input(t("dataset_name"), value=default_name, key="ds_n")
+    with c2:
+        desc = st.text_input(t("dataset_description"), key="ds_d")
+
+    if st.button(t("btn_save"), type="primary", key="save_ds",
+                 use_container_width=True):
+        if not name.strip():
+            st.error(t("msg_need_name"))
+            return
+        mapping = {
+            "time": time_col, "value": value_col,
+            "category": None if category_col == none else category_col,
+            "location_name": None if location_col == none else location_col,
+            "lat": None if lat_col == none else lat_col,
+            "lon": None if lon_col == none else lon_col,
+            "extras": extras,
+        }
+        try:
+            normalized, stats = apply_mapping(full_df, mapping)
+            dataset_id = storage.create_dataset(name.strip(), desc, mapping)
+            n = storage.insert_observations(dataset_id, normalized)
+            msg = t("msg_saved", n=n)
+            if stats["dropped_total"] > 0:
+                msg += (
+                    f"  ({stats['dropped_total']} rijen overgeslagen: "
+                    f"{stats['dropped_bad_time']} met ongeldige timestamp)"
+                )
+                if stats["dropped_total"] > 0.1 * stats["input_rows"]:
+                    st.warning(
+                        f"Let op: {stats['dropped_total']}/{stats['input_rows']} "
+                        f"rijen ({100*stats['dropped_total']/stats['input_rows']:.0f}%) "
+                        f"zijn overgeslagen. Controleer de kolom-koppeling, "
+                        f"vooral de tijd-kolom."
+                    )
+            st.success(msg)
+            st.session_state.active_dataset_id = dataset_id
+            st.session_state.show_settings = False
+            st.cache_data.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Opslaan mislukt: {e}")
+
+
+def _settings_expert():
+    st.caption("Handmatige methode en parameters.")
+    datasets = storage.list_datasets()
+    if not datasets:
+        st.info("Geen datasets.")
+        return
+    by_name = {d["name"]: d for d in datasets}
+    ds = by_name[st.selectbox("Dataset", list(by_name.keys()), key="exp_ds")]
+    df = storage.load_observations(ds["id"])
+    if df.empty:
+        return
+    detectors = get_detectors()
+    det = detectors[st.selectbox("Methode", list(detectors.keys()), key="exp_d")]
+    st.caption(det.plain_explanation)
+    params = {}
+    for pname, spec in det.parameters.items():
+        if spec.type == "float":
+            params[pname] = st.number_input(
+                spec.label, value=float(spec.default), key=f"ex_{pname}",
+            )
+        elif spec.type == "int":
+            params[pname] = st.number_input(
+                spec.label, value=int(spec.default), key=f"ex_{pname}",
+            )
+    if st.button("Run", type="primary", key="exp_run"):
+        results = det.detect(df, "timestamp", "value", **params)
+        n_anom = int(results["is_anomaly"].sum())
+        st.success(f"{n_anom} afwijkingen.")
+        with st.expander("Resultaten"):
+            st.dataframe(
+                results[results["is_anomaly"]].sort_values(
+                    "anomaly_score", key=abs, ascending=False),
+                use_container_width=True,
+            )
+
+
+def _settings_theme():
+    theme = st.radio(
+        t("theme_label"),
+        [t("theme_light"), t("theme_dark")],
+        index=0 if st.session_state.ui_theme == "light" else 1,
+        horizontal=True, key="theme_pick",
+    )
+    new = "light" if theme == t("theme_light") else "dark"
+    if new != st.session_state.ui_theme:
+        st.session_state.ui_theme = new
+        st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Data-specifics pagina
+# ---------------------------------------------------------------------------
+def _try_load_demo_dataset() -> bool:
+    """Importeer de test-CSV als 'Demo - drone-waarnemingen'."""
+    csv_path = Path(__file__).parent / "data" / "test_drone_waarnemingen.csv"
+    if not csv_path.exists():
+        st.error("Demo-bestand niet gevonden in data/.")
+        return False
+    try:
+        with open(csv_path, "rb") as f:
+            class _Wrapper:
+                name = "test_drone_waarnemingen.csv"
+                def __init__(self, fh): self._fh = fh
+                def read(self): return self._fh.read()
+                def seek(self, n): return self._fh.seek(n)
+            full_df = read_table(_Wrapper(f))
+        mapping = guess_mapping(full_df)
+        normalized, _ = apply_mapping(full_df, mapping)
+        ds_id = storage.create_dataset(
+            "Demo - drone-waarnemingen",
+            "Fictieve dataset met drone-waarnemingen rond NL-luchtmachtbases.",
+            mapping,
+        )
+        n = storage.insert_observations(ds_id, normalized)
+        st.session_state.active_dataset_id = ds_id
+        st.cache_data.clear()
+        st.success(f"Demo geladen ({n} rijen). Refresh om te zien.")
+        return True
+    except Exception as e:
+        st.error(f"Demo-laden mislukt: {e}")
+        return False
+
+
+def _render_empty_state():
+    """Welkomstscherm zonder datasets."""
+    st.markdown(
+        f"""
+        <div style='padding: 40px 32px; text-align: center;
+                    background: {P['surface']}; border: 1px solid {P['border']};
+                    border-radius: 4px; margin-top: 2rem;'>
+            <h2 style='margin: 0 0 8px 0; font-weight: 600;'>Welkom</h2>
+            <p style='color: {P['text_muted']}; font-size: 0.95rem; max-width: 540px; margin: 0 auto 24px auto;'>
+                Deze tool bouwt een <strong>normbeeld</strong> uit jouw data —
+                wat is normaal voor elke locatie — en signaleert afwijkingen
+                + voorspelt waar het naartoe gaat.
+            </p>
+            <p style='color: {P['text_muted']}; font-size: 0.9rem; margin-bottom: 0;'>
+                Begin door een dataset te uploaden via <strong>Instellingen</strong>
+                of laad de demo-dataset om de tool direct te zien werken.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    c1, c2, c3 = st.columns([1, 1, 1])
+    with c2:
+        st.write("")
+        if st.button("Laad demo-dataset", type="primary",
+                     use_container_width=True, key="load_demo_empty"):
+            if _try_load_demo_dataset():
+                st.rerun()
+
+
+def page_data():
+    render_topbar(t("ds_title"))
+    datasets = storage.list_datasets()
+    if not datasets:
+        _render_empty_state()
+        return
+
+    # Dataset-keuze
+    by_id = {d["id"]: d for d in datasets}
+    ids = list(by_id.keys())
+    if st.session_state.active_dataset_id not in ids:
+        st.session_state.active_dataset_id = ids[0]
+
+    chosen = st.selectbox(
+        t("ds_dataset"), ids,
+        format_func=lambda i: by_id[i]["name"],
+        index=ids.index(st.session_state.active_dataset_id),
+        key="ds_pick",
+    )
+    if chosen != st.session_state.active_dataset_id:
+        st.session_state.active_dataset_id = chosen
+        st.rerun()
+
+    ds = by_id[chosen]
+    methods_key = (
+        "auto" if st.session_state.nb_methods_override is None
+        else ",".join(st.session_state.nb_methods_override)
+    )
+    data_hash = storage.dataset_data_hash(ds["id"])
+    cached = cached_analysis(
+        ds["id"], data_hash, st.session_state.horizon_days,
+        st.session_state.aggregation, methods_key,
+    )
+    if cached is None:
+        st.warning("Dataset is leeg.")
+        return
+    df_raw, df, result, normbeelds, alerts, effective_agg = cached
+    res = result.results
+
+    # Aggregatie-keuze
+    c1, c2 = st.columns([2, 3])
+    with c1:
+        agg_options = ["auto", "daily", "weekly", "monthly"]
+        agg_labels = {
+            "auto":    f"Auto (aanbevolen: {AGGREGATIONS[effective_agg][1]})",
+            "daily":   t("agg_daily"),
+            "weekly":  t("agg_weekly"),
+            "monthly": t("agg_monthly"),
+        }
+        new_agg = st.selectbox(
+            t("agg_label"), agg_options,
+            format_func=lambda k: agg_labels[k],
+            index=agg_options.index(st.session_state.aggregation),
+            key="agg_pick",
+        )
+        if new_agg != st.session_state.aggregation:
+            st.session_state.aggregation = new_agg
+            st.rerun()
+
+    # Alerts (prominent) — keuze tussen recent en historische top
+    from core.normbeeld import recent_window_label
+    window_lbl = recent_window_label(effective_agg)
+
+    def _fmt_date(iso: str) -> str:
+        try:
+            return pd.Timestamp(iso).strftime("%d-%m-%Y")
+        except Exception:
+            return iso
+
+    # Verzamel historische top-deviaties (grootste afstand tot band)
+    all_hist_dev = []
+    for loc, nb in normbeelds.items():
+        sub = nb.historical[nb.historical["status"] != "normaal"].copy()
+        if sub.empty:
+            continue
+        sub["locatie"] = loc
+        sub["magnitude"] = (sub["actual"] - sub["expected"]).abs()
+        all_hist_dev.append(sub)
+    if all_hist_dev:
+        hist_dev_df = pd.concat(all_hist_dev, ignore_index=True)
+        hist_dev_df = hist_dev_df.sort_values("magnitude", ascending=False).head(15)
+    else:
+        hist_dev_df = pd.DataFrame()
+
+    if alerts or not hist_dev_df.empty:
+        st.markdown(
+            f"""
+            <div class="alert-banner">
+                <div class="head">{t('alerts_title')}</div>
+                <div class="intro">{_html.escape(t('alerts_intro'))}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        view_mode = st.radio(
+            "Welke afwijkingen tonen?",
+            [f"Recent ({window_lbl})", "Historische top (15 grootste ooit)"],
+            horizontal=True, key="alert_view_mode",
+            label_visibility="collapsed",
+        )
+
+        if view_mode.startswith("Recent"):
+            if alerts:
+                st.markdown(
+                    f"<div style='color:{P['text_muted']}; font-size:0.85rem; "
+                    f"margin-bottom:8px;'>"
+                    f"{len(alerts)} waarnemingen buiten normbeeld in de "
+                    f"laatste {window_lbl}</div>",
+                    unsafe_allow_html=True,
+                )
+                rows = ""
+                for a in alerts[:10]:
+                    arrow = "boven band" if a["richting"] == "boven" else "onder band"
+                    factor = (
+                        f" — {a['waarde'] / max(a['upper'], 0.5):.1f}x bovengrens"
+                        if a["richting"] == "boven" and a["upper"] > 0
+                        else ""
+                    )
+                    rows += (
+                        f"<div class='alert-row'>{_fmt_date(a['datum'])} · "
+                        f"{_html.escape(str(a['locatie']))} · "
+                        f"{a['waarde']} ({arrow}, verwacht "
+                        f"{a['lower']:.0f}-{a['upper']:.0f}){factor}</div>"
+                    )
+                st.markdown(rows, unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    f"<div style='color:{P['text_muted']}; font-size:0.85rem;'>"
+                    f"Geen recente afwijkingen in de laatste {window_lbl}."
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+        else:
+            # Historische top
+            if not hist_dev_df.empty:
+                st.markdown(
+                    f"<div style='color:{P['text_muted']}; font-size:0.85rem; "
+                    f"margin-bottom:8px;'>"
+                    f"De 15 grootste afwijkingen in de hele dataset, "
+                    f"gerangschikt op afstand tot het verwachte normbeeld.</div>",
+                    unsafe_allow_html=True,
+                )
+                rows = ""
+                for _, h in hist_dev_df.iterrows():
+                    direction = "boven band" if h["status"] == "boven" else "onder band"
+                    factor_txt = ""
+                    if h["status"] == "boven" and h["upper"] > 0:
+                        f_ = h["actual"] / max(h["upper"], 0.5)
+                        factor_txt = f" — {f_:.1f}x bovengrens"
+                    rows += (
+                        f"<div class='alert-row'>"
+                        f"{pd.Timestamp(h['date']).strftime('%d-%m-%Y')} · "
+                        f"{_html.escape(str(h['locatie']))} · "
+                        f"{int(h['actual'])} ({direction}, verwacht "
+                        f"{h['lower']:.0f}-{h['upper']:.0f}){factor_txt}</div>"
+                    )
+                st.markdown(rows, unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    f"<div style='color:{P['text_muted']}; font-size:0.85rem;'>"
+                    f"Geen historische afwijkingen in deze dataset.</div>",
+                    unsafe_allow_html=True,
+                )
+
+    # Overzicht
+    st.markdown(f"<div class='section-label'>{t('results_title')}</div>",
+                unsafe_allow_html=True)
+    n_obs = len(df_raw)
+    n_loc = (
+        df_raw["location_name"].nunique()
+        if "location_name" in df_raw.columns
+        and df_raw["location_name"].notna().any() else 0
+    )
+    period_str = "—"
+    if "timestamp" in df_raw.columns and not df_raw["timestamp"].empty:
+        ts = pd.to_datetime(df_raw["timestamp"])
+        # Compact format om afkapping te voorkomen
+        period_str = f"{ts.min().strftime('%d-%m-%Y')} t/m {ts.max().strftime('%d-%m-%Y')}"
+    n_hoog = int((res["severity"] == "hoog").sum())
+    n_mid = int((res["severity"] == "midden").sum())
+    n_laag = int((res["severity"] == "laag").sum())
+    n_anom = n_hoog + n_mid + n_laag
+
+    c1, c2 = st.columns(2)
+    c1.metric(t("results_observations"), f"{n_obs:,}".replace(",", "."))
+    c2.metric(t("results_period"), period_str)
+    c3, c4 = st.columns(2)
+    c3.metric(t("results_locations"), n_loc if n_loc else "—")
+    c4.metric(t("results_anomalies_total"),
+              f"{n_anom} ({n_hoog} hoog)")
+
+    # Data-viewer
+    with st.expander(t("ds_show_data")):
+        st.caption(t("ds_data_help"))
+        editable = df_raw.copy()
+        if "timestamp" in editable.columns:
+            editable["timestamp"] = pd.to_datetime(editable["timestamp"])
+        edited = st.data_editor(
+            editable,
+            use_container_width=True,
+            num_rows="dynamic",
+            key=f"editor_{ds['id']}",
+            hide_index=True,
+        )
+        if st.button(t("ds_save_changes"), type="primary",
+                     key=f"save_data_{ds['id']}"):
+            try:
+                # Wipe + re-insert
+                storage.clear_observations(ds["id"])
+                if not edited.empty:
+                    storage.insert_observations(ds["id"], edited)
+                st.cache_data.clear()
+                st.success("Opgeslagen.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Opslaan mislukt: {e}")
+
+    # Export
+    st.markdown(f"<div class='section-label'>Export</div>",
+                unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        try:
+            pdf_bytes = build_briefing_pdf(
+                result, ds["name"], ds["description"],
+                normbeelds=normbeelds,
+            )
+            st.download_button(
+                t("export_pdf"), data=pdf_bytes,
+                file_name=briefing_filename(ds["name"]),
+                mime="application/pdf",
+                use_container_width=True, type="secondary",
+            )
+        except Exception as e:
+            st.error(f"PDF: {e}")
+    with c2:
+        try:
+            xlsx_bytes = build_excel_export(
+                result, normbeelds, ds["name"], ds["description"]
+            )
+            st.download_button(
+                t("export_excel"), data=xlsx_bytes,
+                file_name=excel_filename(ds["name"]),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True, type="secondary",
+            )
+        except Exception as e:
+            st.error(f"Excel: {e}")
+
+    # Severity-uitleg
+    with st.expander(t("severity_explainer_title")):
+        st.markdown(t("severity_explainer"))
+
+    # Tabs (gereduceerd)
+    has_geo = (
+        "lat" in res.columns and "lon" in res.columns
+        and res["lat"].notna().any() and res["lon"].notna().any()
+    )
+    labels = [t("tab_findings")]
+    if has_geo:
+        labels.append(t("tab_map"))
+    labels.append(t("tab_timeline"))
+    tabs = st.tabs(labels)
+
+    i = 0
+    with tabs[i]:
+        _render_findings(result, ds["id"])
+    i += 1
+    if has_geo:
+        with tabs[i]:
+            _render_geomap(res)
+        i += 1
+    with tabs[i]:
+        _render_timeseries(res)
+
+
+def _render_findings(result, dataset_id: int):
+    findings = build_findings(result, top_n=50)
+    if not findings:
+        st.info(t("findings_empty"))
+        return
+
+    sev_color = {"hoog": P["high"], "midden": P["mid"], "laag": P["low"]}
+    notes_map = anno.list_annotations(dataset_id)
+
+    # Top 3 + expand
+    show_n = len(findings) if st.session_state.show_more_findings else min(3, len(findings))
+
+    st.markdown(
+        f"<div class='section-label'>"
+        f"{t('findings_top_initial')} ({show_n}/{len(findings)})</div>",
+        unsafe_allow_html=True,
+    )
+
+    for i, f in enumerate(findings[:show_n], start=1):
+        sev = f["severity"]
+        color = sev_color.get(sev, "#999")
+        exp = f["explanation"]
+        key = anno.finding_key(f["datum"], str(f["locatie"]), None)
+        existing = notes_map.get(key, {})
+
+        body_lines = []
+        if exp.get("baseline"):
+            body_lines.append(_html.escape(exp["baseline"]))
+        if exp.get("factor"):
+            body_lines.append(_html.escape(exp["factor"]))
+        if exp.get("weekday_context"):
+            body_lines.append(_html.escape(exp["weekday_context"]))
+        body_html = "<br>".join(body_lines)
+        flagged_str = ", ".join(f["methodes_aan"]) if f["methodes_aan"] else "—"
+        not_flagged_str = (
+            ", ".join(f["methodes_uit"]) if f.get("methodes_uit") else ""
+        )
+        not_flagged_html = (
+            f"<br><span style='color: {P['text_muted']};'>"
+            f"Niet aangeslagen: {_html.escape(not_flagged_str)}</span>"
+            if not_flagged_str else ""
+        )
+
+        st.markdown(
+            f"""
+            <div class="finding-card" style="--card-color: {color};">
+                <div class="finding-header">
+                    <span class="severity-pill severity-{sev}">#{i} · {sev.upper()}</span>
+                    <span class="finding-loc">{_html.escape(str(f["locatie"]))}</span>
+                    <span class="finding-date">{pd.Timestamp(f["datum"]).strftime("%d-%m-%Y")}</span>
+                </div>
+                <div class="finding-stat">{_html.escape(exp['observation'])}</div>
+                <div class="finding-explain">{body_html}</div>
+                <div class="finding-meta">
+                    <strong>{f["stemmen"]}/{f["totaal_methodes"]}</strong> methodes bevestigen:
+                    {_html.escape(flagged_str)}
+                    {not_flagged_html}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        with st.expander(
+            f"Notitie {'(bestaand)' if existing else ''} — {f['locatie']} {f['datum']}"
+        ):
+            status_opts = list(anno.STATUS_LABELS.keys())
+            cur_status = existing.get("status", "open")
+            cur_idx = status_opts.index(cur_status) if cur_status in status_opts else 0
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                new_status = st.selectbox(
+                    t("anno_status"), status_opts,
+                    format_func=lambda s: anno.STATUS_LABELS[s],
+                    index=cur_idx, key=f"anno_st_{key}",
+                )
+            with c2:
+                new_note = st.text_area(
+                    t("anno_note"), value=existing.get("note", ""),
+                    key=f"anno_nt_{key}", height=70,
+                )
+            if st.button(t("anno_save"), key=f"anno_sv_{key}",
+                         use_container_width=True, type="secondary"):
+                anno.save_annotation(dataset_id, key, new_note, new_status)
+                st.success(t("anno_saved"))
+
+    # Show more / less
+    if len(findings) > 3:
+        if st.session_state.show_more_findings:
+            if st.button(t("findings_show_less"), key="show_less",
+                         use_container_width=True):
+                st.session_state.show_more_findings = False
+                st.rerun()
+        else:
+            if st.button(t("findings_show_more"), key="show_more",
+                         use_container_width=True):
+                st.session_state.show_more_findings = True
+                st.rerun()
+
+
+def _render_geomap(res: pd.DataFrame):
+    from core.registry import get_visualizations
+    for name, v in get_visualizations().items():
+        if "kaart" in name.lower():
+            v.render(res, time_col="timestamp", value_col="value")
+            return
+    st.warning("Geen kaart-visualisatie beschikbaar.")
+
+
+def _render_timeseries(res: pd.DataFrame):
+    from core.registry import get_visualizations
+    for name, v in get_visualizations().items():
+        if "tijdreeks" in name.lower():
+            cat_col = "location_name" if "location_name" in res.columns else (
+                "category" if "category" in res.columns else None
+            )
+            v.render(
+                res, time_col="timestamp", value_col="value",
+                category_col=cat_col, theme=st.session_state.ui_theme,
+            )
+            return
+    st.warning("Geen tijdreeks-visualisatie beschikbaar.")
+
+
+# ---------------------------------------------------------------------------
+# Normbeeld pagina
+# ---------------------------------------------------------------------------
+def page_normbeeld():
+    render_topbar(t("nb_title"))
+    st.caption(t("nb_subtitle"))
+
+    datasets = storage.list_datasets()
+    if not datasets:
+        _render_empty_state()
+        return
+
+    by_id = {d["id"]: d for d in datasets}
+    ids = list(by_id.keys())
+    if st.session_state.active_dataset_id not in ids:
+        st.session_state.active_dataset_id = ids[0]
+
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        chosen = st.selectbox(
+            t("ds_dataset"), ids,
+            format_func=lambda i: by_id[i]["name"],
+            index=ids.index(st.session_state.active_dataset_id),
+            key="nb_ds_select",
+        )
+        if chosen != st.session_state.active_dataset_id:
+            st.session_state.active_dataset_id = chosen
+            st.session_state.nb_selected_location = None
+            st.rerun()
+    with c2:
+        horizon = st.number_input(
+            t("nb_horizon"),
+            min_value=1, max_value=60,
+            value=st.session_state.horizon_days, step=1,
+            key="nb_horizon_input",
+        )
+        if horizon != st.session_state.horizon_days:
+            st.session_state.horizon_days = int(horizon)
+            st.rerun()
+
+    ds = by_id[chosen]
+    methods_key = (
+        "auto" if st.session_state.nb_methods_override is None
+        else ",".join(st.session_state.nb_methods_override)
+    )
+    data_hash = storage.dataset_data_hash(ds["id"])
+    cached = cached_analysis(
+        ds["id"], data_hash, st.session_state.horizon_days,
+        st.session_state.aggregation, methods_key,
+    )
+    if cached is None:
+        st.warning("Dataset is leeg.")
+        return
+    df_raw, df, result, normbeelds, alerts, effective_agg = cached
+
+    # Aggregatie-toggle ook op normbeeld-pagina (zodat hij ook hier werkt)
+    agg_options = ["auto", "daily", "weekly", "monthly"]
+    agg_labels = {
+        "auto":    f"Auto (aanbevolen: {AGGREGATIONS[effective_agg][1]})",
+        "daily":   t("agg_daily"),
+        "weekly":  t("agg_weekly"),
+        "monthly": t("agg_monthly"),
+    }
+    new_agg = st.selectbox(
+        t("agg_label"), agg_options,
+        format_func=lambda k: agg_labels[k],
+        index=agg_options.index(st.session_state.aggregation),
+        key="nb_agg_pick",
+    )
+    if new_agg != st.session_state.aggregation:
+        st.session_state.aggregation = new_agg
+        st.rerun()
+
+    if not normbeelds:
+        st.warning(t("nb_no_data"))
+        return
+
+    # ----- Overzicht: compacte tabel + limit -----
+    unit = AGGREGATIONS[effective_agg][1]  # 'dag' / 'week' / 'maand'
+    locs = list(normbeelds.keys())
+    # Sorteer op aantal recente afwijkingen (alerts eerst)
+    locs_sorted = sorted(locs, key=lambda l: -normbeelds[l].n_recent_deviations)
+
+    st.markdown(f"<div class='section-label'>{t('nb_overview')}</div>",
+                unsafe_allow_html=True)
+
+    c1, c2 = st.columns([1, 3])
+    with c1:
+        n_to_show = st.number_input(
+            "Toon eerste",
+            min_value=1, max_value=len(locs_sorted),
+            value=min(st.session_state.nb_n_to_show, len(locs_sorted)),
+            step=1, key="nb_n_input",
+        )
+        if n_to_show != st.session_state.nb_n_to_show:
+            st.session_state.nb_n_to_show = int(n_to_show)
+            st.rerun()
+    locs_visible = locs_sorted[:int(n_to_show)]
+
+    table_rows = []
+    for loc in locs_visible:
+        nb = normbeelds[loc]
+        table_rows.append({
+            "Locatie": loc,
+            f"Verwacht /{unit}": f"{nb.expected_value:.1f}",
+            "Band": f"{nb.lower_band:.0f} – {nb.upper_band:.0f}",
+            "Recente afwijkingen": nb.n_recent_deviations,
+            "Vertrouwen": nb.confidence,
+        })
+    st.dataframe(
+        pd.DataFrame(table_rows),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # Detail-selector
+    if st.session_state.nb_selected_location not in locs_visible:
+        st.session_state.nb_selected_location = locs_visible[0]
+    selected = st.selectbox(
+        "Detail bekijken voor",
+        locs_visible,
+        index=locs_visible.index(st.session_state.nb_selected_location)
+        if st.session_state.nb_selected_location in locs_visible else 0,
+        key="nb_detail_pick",
+    )
+    if selected != st.session_state.nb_selected_location:
+        st.session_state.nb_selected_location = selected
+        st.rerun()
+
+    st.divider()
+    _render_normbeeld_detail(
+        df_raw, normbeelds[selected], selected, ds["id"], unit, effective_agg,
+    )
+
+
+def _render_nb_card_compact(loc: str, nb):
+    is_active = st.session_state.nb_selected_location == loc
+    alert_cls = "alert" if nb.n_recent_deviations > 0 else ""
+    border = f"border: 2px solid {P['accent']};" if is_active else ""
+    dev_text = (
+        f"<strong style='color:{P['high']};'>{nb.n_recent_deviations}</strong>"
+        if nb.n_recent_deviations > 0
+        else f"<strong>0</strong>"
+    )
+    st.markdown(
+        f"""
+        <div class="nb-card {alert_cls}" style="{border}">
+            <div class="name">{_html.escape(loc)}</div>
+            <div class="stat">
+                <span class="label">{t('nb_expected')}:</span>
+                <strong>{nb.expected_value:.1f}</strong>
+                · <span class="label">{t('nb_recent_dev')}:</span> {dev_text}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    label = "Geselecteerd" if is_active else "Bekijken"
+    if st.button(label, key=f"sel_{loc}",
+                 use_container_width=True,
+                 type="primary" if is_active else "secondary"):
+        st.session_state.nb_selected_location = loc
+        st.rerun()
+
+
+def _render_normbeeld_detail(df_raw, nb, location: str, dataset_id: int,
+                             unit: str = "dag", aggregation: str = "daily"):
+    st.markdown(
+        f"<div class='section-label'>{t('nb_detail')}: {_html.escape(location)}</div>",
+        unsafe_allow_html=True,
+    )
+
+    # Categorie + methode-selectie naast elkaar
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        if "category" in df_raw.columns and df_raw["category"].notna().any():
+            cats = [t("nb_all_categories")] + sorted(
+                df_raw[df_raw["location_name"] == location]["category"]
+                .dropna().unique().tolist()
+            )
+            cat_choice = st.selectbox(
+                t("nb_category"), cats,
+                index=cats.index(st.session_state.nb_selected_category)
+                if st.session_state.nb_selected_category in cats else 0,
+                key="nb_cat_select",
+            )
+            if cat_choice != st.session_state.nb_selected_category:
+                st.session_state.nb_selected_category = cat_choice
+                st.rerun()
+        else:
+            cat_choice = t("nb_all_categories")
+    with c2:
+        method_keys = list(PREDICTION_METHODS.keys())
+        method_labels = [PREDICTION_METHODS[k] for k in method_keys]
+        current = st.session_state.nb_methods_override
+        if current is None:
+            current_labels = [PREDICTION_METHODS[m] for m in nb.methods_used]
+        else:
+            current_labels = [PREDICTION_METHODS[m] for m in current if m in PREDICTION_METHODS]
+        picked = st.multiselect(
+            "Voorspelmethodes (combineerbaar)",
+            method_labels, default=current_labels,
+            help=(
+                "Voorspelmethodes proberen de waarde voor toekomstige periodes "
+                "in te schatten. Anders dan detectiemethodes (Z-score, "
+                "Isolation Forest, Change-point) — die markeren historische "
+                "afwijkingen maar voorspellen niet. Selecteer meerdere voor "
+                "een ensemble-gemiddelde."
+            ),
+            key="nb_methods_pick",
+        )
+        picked_keys = [method_keys[method_labels.index(l)] for l in picked]
+        new_override = picked_keys if picked_keys else None
+        if new_override != st.session_state.nb_methods_override:
+            st.session_state.nb_methods_override = new_override
+            st.cache_data.clear()
+            st.rerun()
+
+    # Methode-uitleg uitklapbaar
+    with st.expander("Wat doet elke voorspelmethode? (kies de beste voor jouw data)"):
+        st.markdown(
+            "De tool kiest automatisch een set methodes op basis van "
+            "de data-eigenschappen. Wil je zelf kiezen of vergelijken, "
+            "lees per methode wat ze doen:"
+        )
+        for m_key, m_label in PREDICTION_METHODS.items():
+            details = PREDICTION_METHOD_DETAILS.get(m_key, {})
+            st.markdown(
+                f"**{m_label}**  \n"
+                f"{details.get('summary', '')}  \n"
+                f"*Geschikt voor*: {details.get('good_for', '')}  \n"
+                f"*Niet geschikt voor*: {details.get('not_good_for', '')}  \n"
+                f"<span style='color: {P['text_muted']}; font-size: 0.85rem;'>"
+                f"Technisch: {details.get('technical', '')}</span>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("")
+        st.info(
+            "**Auto-keuze**: voor lange seizoensgebonden data kiest de tool "
+            "STL + ETS + Seasonal naive. Voor kortere of stationaire data "
+            "ETS + Rolling. Voor zeer korte reeksen Median + Rolling. "
+            "Wil je dat de tool **echt de beste methode** kiest via "
+            "backtesting (hold-out test), zeg het — dat kost extra "
+            "rekentijd maar is rigoureuzer."
+        )
+
+    # Herbereken normbeeld met categorie-filter / nieuwe methodes
+    cat_filter = None if cat_choice == t("nb_all_categories") else cat_choice
+    methods_for_view = st.session_state.nb_methods_override
+    nb_view = compute_normbeeld(
+        df_raw, location=location, category=cat_filter,
+        horizon_days=st.session_state.horizon_days,
+        methods=methods_for_view,
+        aggregation=aggregation,
+    )
+    if nb_view is None:
+        st.warning(t("nb_no_data"))
+        return
+
+    # Statistieken met expliciete tijdseenheid
+    c1, c2, c3 = st.columns(3)
+    c1.metric(f"Verwacht per {unit}", f"{nb_view.expected_value:.1f}")
+    c2.metric(f"Band (per {unit})",
+              f"{nb_view.lower_band:.0f} – {nb_view.upper_band:.0f}")
+    c3.metric(f"Recente afwijkingen", nb_view.n_recent_deviations)
+
+    st.caption(t("nb_band_explained"))
+    render_normbeeld_chart(nb_view, theme=st.session_state.ui_theme, height=520)
+
+    # Waarschuw als methodes silently zijn geskipt
+    if nb_view.methods_skipped:
+        skipped_labels = ", ".join(
+            PREDICTION_METHODS.get(m, m) for m in nb_view.methods_skipped
+        )
+        st.warning(
+            f"Niet uitgevoerd (te weinig data of geen pattern): {skipped_labels}"
+        )
+
+    st.markdown(
+        f"<div style='margin-top: 0.5rem; font-size: 0.92rem;'>"
+        f"<strong>Patroon:</strong> "
+        f"{_html.escape(nb_view.pattern_description)}</div>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        f"Actieve methodes: {nb_view.method_used} · "
+        f"{nb_view.n_history_periods} {AGGREGATIONS[nb_view.aggregation][2]} historie"
+    )
+
+
+APP_VERSION = "0.5.0-alpha"
+
+
+# ---------------------------------------------------------------------------
+# Router
+# ---------------------------------------------------------------------------
+if st.session_state.show_settings:
+    page_settings()
+elif st.session_state.active_page == t("nav_normbeeld"):
+    page_normbeeld()
+else:
+    page_data()
+
+
+# Versie-footer
+st.markdown(
+    f"""
+    <div style='margin-top: 3rem; padding-top: 1rem;
+                border-top: 1px solid {P["border_soft"]};
+                color: {P["text_muted"]}; font-size: 0.75rem;
+                font-family: JetBrains Mono, monospace;
+                display: flex; justify-content: space-between;'>
+        <span>Anomalie-detectie · v{APP_VERSION}</span>
+        <span>Interne tool - software in ontwikkeling</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
