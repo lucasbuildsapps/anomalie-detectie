@@ -425,7 +425,7 @@ def _resolve_aggregation(df: pd.DataFrame, choice: str) -> str:
     return choice
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner="Analyseren... (eerste keer ~10-30 sec voor grote datasets)")
 def cached_analysis(
     dataset_id: int, data_hash: str, horizon: int,
     aggregation: str, methods_key: str,

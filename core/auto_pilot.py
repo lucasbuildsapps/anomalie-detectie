@@ -155,6 +155,9 @@ def _run_methods_on_group(
     return out, per_method
 
 
+_MIN_GROUP_SIZE = 5  # detectors hebben niets te zeggen over groepen < 5 punten
+
+
 def _run_with_grouping(
     df: pd.DataFrame,
     methods: list[str],
@@ -165,8 +168,15 @@ def _run_with_grouping(
     if group_col and group_col in df.columns:
         parts = []
         merged_per_method: dict = {}
-        groups = list(df.groupby(group_col, dropna=False))
-        log.log(TAG_DETECT, f"Per groep draaien op '{group_col}' ({len(groups)} groepen)")
+        all_groups = list(df.groupby(group_col, dropna=False))
+        # Skip tiny groepen — geen zinvolle detectie op 1-4 punten
+        groups = [(k, g) for k, g in all_groups if len(g) >= _MIN_GROUP_SIZE]
+        skipped = len(all_groups) - len(groups)
+        log.log(
+            TAG_DETECT,
+            f"Per groep draaien op '{group_col}': {len(groups)} groepen "
+            f"({skipped} tiny groepen overgeslagen)",
+        )
         for key, g in groups:
             sub, per = _run_methods_on_group(
                 g, methods, sensitivity, log, group_label=str(key)
@@ -174,6 +184,8 @@ def _run_with_grouping(
             parts.append(sub)
             for name, flag in per.items():
                 merged_per_method.setdefault(name, []).append(flag)
+        if not parts:
+            return _run_methods_on_group(df, methods, sensitivity, log)
         merged = pd.concat(parts, ignore_index=True).sort_values("timestamp")
         return merged, {k: np.concatenate(v) for k, v in merged_per_method.items()}
     return _run_methods_on_group(df, methods, sensitivity, log)

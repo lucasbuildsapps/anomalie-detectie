@@ -601,7 +601,16 @@ def compute_all_normbeelds(
     horizon_days: int = 14,
     methods: list[str] | None = None,
     aggregation: str = "daily",
+    min_rows_per_location: int = 5,
+    max_locations: int = 50,
 ) -> dict[str, Normbeeld]:
+    """Bereken normbeelden voor elke locatie met genoeg data.
+
+    Performance: skipt locaties met < min_rows_per_location waarnemingen
+    (geen zinvol normbeeld mogelijk), en cap totaal aantal locaties op
+    max_locations (top by row count). Dit voorkomt minuten wachten op
+    grote datasets met veel one-off locaties.
+    """
     if "location_name" not in df.columns or df["location_name"].isna().all():
         nb = compute_normbeeld(
             df, horizon_days=horizon_days,
@@ -609,8 +618,13 @@ def compute_all_normbeelds(
         )
         return {"Alle locaties": nb} if nb else {}
 
+    # Tel rijen per locatie, sorteer aflopend, neem top N met >= min_rows
+    counts = df["location_name"].value_counts()
+    counts = counts[counts >= min_rows_per_location].head(max_locations)
+    locations = list(counts.index)
+
     out: dict[str, Normbeeld] = {}
-    for loc in sorted(df["location_name"].dropna().unique()):
+    for loc in locations:
         nb = compute_normbeeld(
             df, location=loc, horizon_days=horizon_days,
             methods=methods, aggregation=aggregation,
