@@ -587,7 +587,7 @@ def _settings_upload():
     # Demo-knop bovenaan
     st.markdown(
         "**Snel beginnen:** laad de meegeleverde demo-dataset "
-        "(fictieve drone-waarnemingen rond NL-luchtmachtbases)."
+        "(open-source data: Russian missile/drone attacks op Oekraïne, 2022-2026)."
     )
     if st.button("Laad demo-dataset", type="secondary", key="load_demo_settings"):
         if _try_load_demo_dataset():
@@ -742,34 +742,59 @@ def _settings_theme():
 # ---------------------------------------------------------------------------
 # Data-specifics pagina
 # ---------------------------------------------------------------------------
+DEMO_DATASET_NAME = "Demo - Russian missile attacks on Ukraine"
+
+
 def _try_load_demo_dataset() -> bool:
-    """Importeer de test-CSV als 'Demo - drone-waarnemingen'."""
-    csv_path = Path(__file__).parent / "data" / "test_drone_waarnemingen.csv"
+    """Importeer publieke demo: Russian missile/drone attacks op Oekraïne.
+    Bron: open-source data uit kpszsu/PvKPivden Telegram-kanalen."""
+    csv_path = Path(__file__).parent / "data" / "missile_attacks_demo.csv"
     if not csv_path.exists():
-        st.error("Demo-bestand niet gevonden in data/.")
+        st.error(f"Demo-bestand niet gevonden op {csv_path}")
         return False
+
+    # Check of dezelfde demo al bestaat — voorkom dubbele import
+    existing = [d for d in storage.list_datasets()
+                if d["name"] == DEMO_DATASET_NAME]
+    if existing:
+        st.session_state.active_dataset_id = existing[0]["id"]
+        st.info("Demo-dataset is al geladen — geactiveerd.")
+        return True
+
     try:
-        with open(csv_path, "rb") as f:
-            class _Wrapper:
-                name = "test_drone_waarnemingen.csv"
-                def __init__(self, fh): self._fh = fh
-                def read(self): return self._fh.read()
-                def seek(self, n): return self._fh.seek(n)
-            full_df = read_table(_Wrapper(f))
-        mapping = guess_mapping(full_df)
-        normalized, _ = apply_mapping(full_df, mapping)
+        # Direct via path (geen file-wrapper) — werkt overal
+        full_df = pd.read_csv(str(csv_path))
+        # Vaste mapping — bekend voor deze dataset
+        mapping = {
+            "time": "time_start",
+            "value": "launched",
+            "location_name": "target",
+            "category": "model",
+            "lat": None,
+            "lon": None,
+            "extras": ["time_end", "launch_place", "target_main",
+                       "destroyed", "not_reach_goal"],
+        }
+        normalized, stats = apply_mapping(full_df, mapping)
         ds_id = storage.create_dataset(
-            "Demo - drone-waarnemingen",
-            "Fictieve dataset met drone-waarnemingen rond NL-luchtmachtbases.",
+            DEMO_DATASET_NAME,
+            "Open-source data uit kpszsu/PvKPivden Telegram-kanalen "
+            "(2022-2026). Per aanval-waarschuwing: tijdstip, doel-regio, "
+            "wapen-type en aantal lanceringen.",
             mapping,
         )
         n = storage.insert_observations(ds_id, normalized)
         st.session_state.active_dataset_id = ds_id
         st.cache_data.clear()
-        st.success(f"Demo geladen ({n} rijen). Refresh om te zien.")
+        msg = f"Demo geladen ({n} rijen)."
+        if stats.get("dropped_total"):
+            msg += f" ({stats['dropped_total']} rijen overgeslagen)"
+        st.success(msg)
         return True
     except Exception as e:
-        st.error(f"Demo-laden mislukt: {e}")
+        st.error(f"Demo-laden mislukt: {type(e).__name__}: {e}")
+        import traceback
+        st.code(traceback.format_exc())
         return False
 
 
