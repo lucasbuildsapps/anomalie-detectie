@@ -1,7 +1,5 @@
 [theme]
 base = "light"
-
-# Operationele blauw-grijs palet, sober en serieus.
 primaryColor = "#1a4d8c"
 backgroundColor = "#fafbfc"
 secondaryBackgroundColor = "#f0f2f5"
@@ -12,5 +10,12 @@ font = "sans serif"
 gatherUsageStats = false
 
 [server]
-headless = false
-runOnSave = true
+# headless = true vereist op Streamlit Cloud (geen browser-popup poging)
+headless = true
+# runOnSave uit voor Cloud (read-only filesystem op sommige paden)
+runOnSave = false
+enableCORS = false
+enableXsrfProtection = true
+
+[client]
+showErrorDetails = true

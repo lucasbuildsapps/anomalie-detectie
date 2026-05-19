@@ -1,15 +1,33 @@
 """Streamlit entry point. Run: streamlit run app.py"""
 from __future__ import annotations
 
+import sys
+import traceback
+
+# Vroege debug-output zodat we zien dat we het scripten beginnen.
+print(">>> app.py STARTING (Python", sys.version_info[:2], ")", flush=True)
+
 import html as _html
 from pathlib import Path
 
-import pandas as pd
-import streamlit as st
+try:
+    import pandas as pd
+    import streamlit as st
+    print(">>> base imports OK", flush=True)
+except Exception as e:
+    print(f">>> CRASH in base imports: {e}", file=sys.stderr, flush=True)
+    traceback.print_exc(file=sys.stderr)
+    raise
 
-from core import annotations as anno
-from core import storage
-from core.auth import check_password
+try:
+    from core import annotations as anno
+    from core import storage
+    from core.auth import check_password
+    print(">>> core imports OK", flush=True)
+except Exception as e:
+    print(f">>> CRASH in core imports: {e}", file=sys.stderr, flush=True)
+    traceback.print_exc(file=sys.stderr)
+    raise
 from core.auto_mapping import guess_mapping
 from core.auto_pilot import build_findings, run_auto_pilot
 from core.briefing import briefing_filename, build_briefing_pdf
@@ -33,7 +51,16 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-storage.init_db()
+print(">>> page config set", flush=True)
+
+try:
+    storage.init_db()
+    print(">>> db init OK", flush=True)
+except Exception as e:
+    print(f">>> CRASH in init_db: {e}", file=sys.stderr, flush=True)
+    traceback.print_exc(file=sys.stderr)
+    st.error(f"Database-fout bij opstart: {e}")
+    st.stop()
 
 # Authenticatie (alleen actief als wachtwoord is ingesteld in secrets.toml of
 # ANOMALY_PASSWORD env-var). Lokaal zonder secrets = open toegang.
