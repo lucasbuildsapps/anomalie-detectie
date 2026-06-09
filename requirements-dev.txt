@@ -1,0 +1,3 @@
+# Ontwikkel-dependencies (niet nodig op de server / Streamlit Cloud)
+-r requirements.txt
+pytest>=8.0

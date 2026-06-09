@@ -190,9 +190,9 @@ def build_briefing_pdf(
     pdf.cell(105, 6, "Toelichting", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 9)
     for sev_name, n_sev, sev_desc in [
-        ("HOOG", n_high, "≥80% van methodes is het eens — sterke consensus"),
-        ("MIDDEN", n_mid, "50-79% — meerdere methodes bevestigen"),
-        ("LAAG", n_low, "30-49% — losse signalen, mogelijk vals alarm"),
+        ("HOOG", n_high, "(vrijwel) alle methodes eens — sterke consensus"),
+        ("MIDDEN", n_mid, "duidelijke meerderheid van methodes bevestigt"),
+        ("LAAG", n_low, "precies 2 methodes — mogelijk vals alarm"),
     ]:
         c = _severity_color(sev_name.lower())
         pdf.set_text_color(*c)

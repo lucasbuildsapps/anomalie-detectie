@@ -425,6 +425,24 @@ def _resolve_aggregation(df: pd.DataFrame, choice: str) -> str:
     return choice
 
 
+@st.cache_data(show_spinner="Backtest draait... (eenmalig per locatie)")
+def cached_detail_normbeeld(
+    dataset_id: int, data_hash: str, location: str,
+    category: str | None, horizon: int, methods_key: str, aggregation: str,
+):
+    """Detail-normbeeld voor één locatie, met backtest-gestuurde
+    methode-selectie als de gebruiker niets heeft gekozen."""
+    df = storage.load_observations(dataset_id)
+    if df.empty:
+        return None
+    methods = None if methods_key == "auto" else methods_key.split(",")
+    return compute_normbeeld(
+        df, location=location, category=category,
+        horizon_days=horizon, methods=methods,
+        aggregation=aggregation, select="backtest",
+    )
+
+
 @st.cache_data(show_spinner="Analyseren... (eerste keer ~10-30 sec voor grote datasets)")
 def cached_analysis(
     dataset_id: int, data_hash: str, horizon: int,
@@ -466,6 +484,13 @@ with st.sidebar:
     except Exception:
         st.markdown(f"### {t('app_title')}")
     st.caption(t("app_subtitle"))
+    # Streamlit Cloud heeft een ephemeral filesystem: data verdwijnt bij
+    # herstart. Waarschuw de gebruiker zodat dit geen verrassing is.
+    if Path("/mount/src").exists():
+        st.caption(
+            "⚠ Demo-omgeving: geüploade data kan bij een herstart "
+            "gewist worden."
+        )
     st.divider()
 
     nav_items = [t("nav_normbeeld"), t("nav_data")]
@@ -1020,12 +1045,32 @@ def page_data():
     c4.metric(t("results_anomalies_total"),
               f"{n_anom} ({n_hoog} hoog)")
 
-    # Data-viewer
+    # Data-viewer — toont alleen de recentste N rijen in de editor (browser
+    # wordt traag bij duizenden rijen). Bij opslaan blijven de niet-getoonde
+    # rijen onaangetast.
     with st.expander(t("ds_show_data")):
         st.caption(t("ds_data_help"))
-        editable = df_raw.copy()
-        if "timestamp" in editable.columns:
-            editable["timestamp"] = pd.to_datetime(editable["timestamp"])
+        full = df_raw.copy()
+        if "timestamp" in full.columns:
+            full["timestamp"] = pd.to_datetime(full["timestamp"])
+            full = full.sort_values("timestamp").reset_index(drop=True)
+
+        max_n = len(full)
+        slice_n = st.number_input(
+            "Bewerk laatste N rijen",
+            min_value=min(50, max_n), max_value=max_n,
+            value=min(500, max_n), step=50,
+            key=f"editor_n_{ds['id']}",
+            help="Oudere rijen blijven bij opslaan ongewijzigd staan.",
+        )
+        hidden = full.iloc[:max_n - int(slice_n)]
+        editable = full.iloc[max_n - int(slice_n):]
+        if len(hidden):
+            st.caption(
+                f"{len(hidden)} oudere rijen verborgen — die blijven bij "
+                f"opslaan ongewijzigd."
+            )
+
         edited = st.data_editor(
             editable,
             use_container_width=True,
@@ -1036,10 +1081,10 @@ def page_data():
         if st.button(t("ds_save_changes"), type="primary",
                      key=f"save_data_{ds['id']}"):
             try:
-                # Wipe + re-insert
+                combined = pd.concat([hidden, edited], ignore_index=True)
                 storage.clear_observations(ds["id"])
-                if not edited.empty:
-                    storage.insert_observations(ds["id"], edited)
+                if not combined.empty:
+                    storage.insert_observations(ds["id"], combined)
                 st.cache_data.clear()
                 st.success("Opgeslagen.")
                 st.rerun()
@@ -1106,22 +1151,36 @@ def page_data():
 
 
 def _render_findings(result, dataset_id: int):
-    findings = build_findings(result, top_n=50)
-    if not findings:
+    all_findings = build_findings(result, top_n=100)
+    if not all_findings:
         st.info(t("findings_empty"))
         return
+
+    # Hoog + midden zijn het echte signaal; laag-vertrouwen gaat ingeklapt
+    # onderaan (alert-moeheid voorkomen).
+    findings = [f for f in all_findings if f["severity"] in ("hoog", "midden")]
+    low_findings = [f for f in all_findings if f["severity"] == "laag"]
 
     sev_color = {"hoog": P["high"], "midden": P["mid"], "laag": P["low"]}
     notes_map = anno.list_annotations(dataset_id)
 
+    if not findings:
+        st.info(
+            "Geen afwijkingen met hoog of midden vertrouwen. "
+            f"Er zijn wel {len(low_findings)} laag-vertrouwen signalen "
+            "(zie onderaan)."
+            if low_findings else t("findings_empty")
+        )
+
     # Top 3 + expand
     show_n = len(findings) if st.session_state.show_more_findings else min(3, len(findings))
 
-    st.markdown(
-        f"<div class='section-label'>"
-        f"{t('findings_top_initial')} ({show_n}/{len(findings)})</div>",
-        unsafe_allow_html=True,
-    )
+    if findings:
+        st.markdown(
+            f"<div class='section-label'>"
+            f"{t('findings_top_initial')} ({show_n}/{len(findings)})</div>",
+            unsafe_allow_html=True,
+        )
 
     for i, f in enumerate(findings[:show_n], start=1):
         sev = f["severity"]
@@ -1203,6 +1262,23 @@ def _render_findings(result, dataset_id: int):
                          use_container_width=True):
                 st.session_state.show_more_findings = True
                 st.rerun()
+
+    # Laag-vertrouwen signalen: standaard ingeklapt, compacte regels
+    if low_findings:
+        with st.expander(
+            f"Laag-vertrouwen signalen ({len(low_findings)}) — "
+            f"2 methodes eens, mogelijk vals alarm"
+        ):
+            rows = ""
+            for f in low_findings[:40]:
+                rows += (
+                    f"<div class='alert-row'>"
+                    f"{pd.Timestamp(f['datum']).strftime('%d-%m-%Y')} · "
+                    f"{_html.escape(str(f['locatie']))} · "
+                    f"{f['waarde']} waarnemingen · "
+                    f"{f['stemmen']}/{f['totaal_methodes']} stemmen</div>"
+                )
+            st.markdown(rows, unsafe_allow_html=True)
 
 
 def _render_geomap(res: pd.DataFrame):
@@ -1475,14 +1551,17 @@ def _render_normbeeld_detail(df_raw, nb, location: str, dataset_id: int,
             "rekentijd maar is rigoureuzer."
         )
 
-    # Herbereken normbeeld met categorie-filter / nieuwe methodes
+    # Herbereken normbeeld met categorie-filter / nieuwe methodes.
+    # Zonder handmatige keuze: backtest kiest de empirisch beste methodes.
     cat_filter = None if cat_choice == t("nb_all_categories") else cat_choice
     methods_for_view = st.session_state.nb_methods_override
-    nb_view = compute_normbeeld(
-        df_raw, location=location, category=cat_filter,
-        horizon_days=st.session_state.horizon_days,
-        methods=methods_for_view,
-        aggregation=aggregation,
+    methods_key = (
+        "auto" if methods_for_view is None else ",".join(methods_for_view)
+    )
+    nb_view = cached_detail_normbeeld(
+        dataset_id, storage.dataset_data_hash(dataset_id),
+        location, cat_filter,
+        st.session_state.horizon_days, methods_key, aggregation,
     )
     if nb_view is None:
         st.warning(t("nb_no_data"))
@@ -1498,14 +1577,38 @@ def _render_normbeeld_detail(df_raw, nb, location: str, dataset_id: int,
     st.caption(t("nb_band_explained"))
     render_normbeeld_chart(nb_view, theme=st.session_state.ui_theme, height=520)
 
-    # Waarschuw als methodes silently zijn geskipt
+    # Waarschuw als methodes zijn geskipt (mét reden)
     if nb_view.methods_skipped:
-        skipped_labels = ", ".join(
-            PREDICTION_METHODS.get(m, m) for m in nb_view.methods_skipped
+        reasons = "; ".join(
+            f"{PREDICTION_METHODS.get(m, m)}: "
+            f"{nb_view.skip_reasons.get(m, 'onbekend')}"
+            for m in nb_view.methods_skipped
         )
-        st.warning(
-            f"Niet uitgevoerd (te weinig data of geen pattern): {skipped_labels}"
+        st.warning(f"Niet uitgevoerd — {reasons}")
+
+    # Voorspelnauwkeurigheid (backtest) — eerlijkheid over hoe goed dit werkt
+    if nb_view.backtest_scores:
+        st.markdown(
+            "<div class='section-label'>Voorspelnauwkeurigheid (backtest)</div>",
+            unsafe_allow_html=True,
         )
+        st.caption(
+            "Elke methode is getest door recente periodes achter te houden, "
+            "te voorspellen en te vergelijken met de werkelijkheid. Lager = "
+            "beter. Het normbeeld combineert de beste twee methodes."
+        )
+        bt_rows = [
+            {
+                "Methode": PREDICTION_METHODS.get(k, k),
+                "Gem. voorspelfout": f"{v:.0f}%",
+                "Gebruikt": "✓" if k in nb_view.methods_used else "",
+            }
+            for k, v in sorted(
+                nb_view.backtest_scores.items(), key=lambda x: x[1]
+            )
+        ]
+        st.dataframe(pd.DataFrame(bt_rows), use_container_width=True,
+                     hide_index=True)
 
     st.markdown(
         f"<div style='margin-top: 0.5rem; font-size: 0.92rem;'>"
@@ -1519,7 +1622,7 @@ def _render_normbeeld_detail(df_raw, nb, location: str, dataset_id: int,
     )
 
 
-APP_VERSION = "0.5.0-alpha"
+APP_VERSION = "0.6.0-alpha"
 
 
 # ---------------------------------------------------------------------------

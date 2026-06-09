@@ -43,9 +43,14 @@ STRINGS = {
     "severity_explainer_title": "Wat betekent hoog / midden / laag?",
     "severity_explainer": (
         "Elke afwijking wordt door meerdere onafhankelijke algoritmes "
-        "gecontroleerd. De classificatie geeft aan hoeveel het over een "
-        "afwijking eens zijn. Hoog = sterke consensus (≥80% van methodes); "
-        "midden = 50-79%; laag = 30-49% (mogelijk vals alarm)."
+        "gecontroleerd; de classificatie telt hoeveel er een punt markeren. "
+        "Minimaal 2 methodes moeten het eens zijn voordat iets een afwijking "
+        "heet — één enkele methode is ruis. **Hoog** = (vrijwel) alle "
+        "methodes zijn het eens; **midden** = een duidelijke meerderheid; "
+        "**laag** = precies 2 methodes (mogelijk vals alarm, standaard "
+        "ingeklapt). Verschillende methodes zoeken verschillende dingen "
+        "(pieken, niveauverschuivingen, seizoens-afwijkingen), dus "
+        "unanimiteit is zeldzaam en betekenisvol."
     ),
 
     # Aggregatie

@@ -25,12 +25,46 @@ from core.profiler import DataProfile, profile_data
 from core.registry import get_detectors
 
 
-SEVERITY_HIGH_FRAC = 0.8
-SEVERITY_MID_FRAC = 0.5
-SEVERITY_LOW_FRAC = 0.3
+# Steering-doelband voor de auto-tuning: fractie rijen met severity
+# hoog óf midden (het "signaal" dat een analist daadwerkelijk bekijkt).
+TARGET_SIGNAL_MIN = 0.003
+TARGET_SIGNAL_MAX = 0.05
 
-TARGET_HIGH_MIN = 0.005
-TARGET_HIGH_MAX = 0.03
+
+def classify_severity(votes: np.ndarray, n_methods: int) -> np.ndarray:
+    """Severity op basis van absolute stem-aantallen, niet fracties.
+
+    Grondregel: minimaal 2 onafhankelijke methodes moeten een punt markeren
+    voordat het überhaupt een afwijking heet — één enkele methode is ruis.
+    Expliciete tabel per methode-aantal (fracties werken niet bij 3 methodes,
+    waar 'hoog = ≥80%' de facto unanimiteit eiste en 1 stem al 'laag' gaf):
+
+        n=1:  1 stem  → laag   (corroboratie onmogelijk; zwak signaal)
+        n=2:  2       → midden
+        n=3:  3 → hoog, 2 → midden
+        n=4:  4 → hoog, 3 → midden, 2 → laag
+        n>=5: >=n-1 → hoog, 3..n-2 → midden, 2 → laag
+    """
+    votes = np.asarray(votes)
+    sev = np.full(len(votes), None, dtype=object)
+    if n_methods <= 0:
+        return sev
+    if n_methods == 1:
+        sev[votes >= 1] = "laag"
+    elif n_methods == 2:
+        sev[votes >= 2] = "midden"
+    elif n_methods == 3:
+        sev[votes == 2] = "midden"
+        sev[votes >= 3] = "hoog"
+    elif n_methods == 4:
+        sev[votes == 2] = "laag"
+        sev[votes == 3] = "midden"
+        sev[votes >= 4] = "hoog"
+    else:
+        sev[votes == 2] = "laag"
+        sev[(votes >= 3) & (votes <= n_methods - 2)] = "midden"
+        sev[votes >= n_methods - 1] = "hoog"
+    return sev
 
 
 @dataclass
@@ -143,14 +177,9 @@ def _run_methods_on_group(
 
     out["votes"] = votes
     n_methods = max(1, len(per_method))
-    fracs = votes / n_methods
-    severity = np.full(len(out), None, dtype=object)
-    severity[fracs >= SEVERITY_HIGH_FRAC] = "hoog"
-    severity[(fracs >= SEVERITY_MID_FRAC) & (fracs < SEVERITY_HIGH_FRAC)] = "midden"
-    severity[(fracs >= SEVERITY_LOW_FRAC) & (fracs < SEVERITY_MID_FRAC)] = "laag"
-    out["severity"] = severity
+    out["severity"] = classify_severity(votes, n_methods)
     out["is_anomaly"] = out["severity"].notna()
-    out["anomaly_score"] = fracs
+    out["anomaly_score"] = votes / n_methods
 
     return out, per_method
 
@@ -243,16 +272,20 @@ def run_auto_pilot(
             df, methods, sensitivity, group_col, log
         )
         n_high = int((results["severity"] == "hoog").sum())
+        n_mid = int((results["severity"] == "midden").sum())
         n_total = max(1, len(results))
-        rate_high = n_high / n_total
-        log.log(TAG_VOTING, f"  → {n_high} hoog ({rate_high * 100:.1f}% van rijen)")
+        # Stuur op hoog+midden: dát is wat de analist bekijkt
+        rate_signal = (n_high + n_mid) / n_total
+        log.log(TAG_VOTING,
+                f"  → {n_high} hoog + {n_mid} midden "
+                f"({rate_signal * 100:.1f}% van rijen)")
 
-        if rate_high < TARGET_HIGH_MIN and sensitivity != "soepel":
-            log.log(TAG_TUNE, "Te weinig signaal — terug naar 'soepel'")
+        if rate_signal < TARGET_SIGNAL_MIN and sensitivity != "soepel":
+            log.log(TAG_TUNE, "Te weinig signaal — naar 'soepel'")
             sensitivity = "soepel"
             continue
-        if rate_high > TARGET_HIGH_MAX and sensitivity != "streng":
-            log.log(TAG_TUNE, "Te veel signaal — terug naar 'streng'")
+        if rate_signal > TARGET_SIGNAL_MAX and sensitivity != "streng":
+            log.log(TAG_TUNE, "Te veel signaal — naar 'streng'")
             sensitivity = "streng"
             continue
         break
@@ -261,9 +294,9 @@ def run_auto_pilot(
     n_high = int((results["severity"] == "hoog").sum())
     n_mid = int((results["severity"] == "midden").sum())
     n_low = int((results["severity"] == "laag").sum())
-    log.log(TAG_VOTING, f"HOOG  (≥{SEVERITY_HIGH_FRAC * 100:.0f}% methodes): {n_high}")
-    log.log(TAG_VOTING, f"MID   (≥{SEVERITY_MID_FRAC * 100:.0f}%):  {n_mid}")
-    log.log(TAG_VOTING, f"LAAG  (≥{SEVERITY_LOW_FRAC * 100:.0f}%):  {n_low}")
+    log.log(TAG_VOTING, f"HOOG  ((vrijwel) alle methodes eens): {n_high}")
+    log.log(TAG_VOTING, f"MID   (meerderheid eens):  {n_mid}")
+    log.log(TAG_VOTING, f"LAAG  (2 methodes eens):  {n_low}")
 
     duration = time.time() - start
     log.log(TAG_DONE, f"Analyse voltooid in {duration:.1f}s")

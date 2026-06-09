@@ -129,49 +129,52 @@ def _safe(v):
 
 
 def insert_observations(dataset_id: int, df: pd.DataFrame) -> int:
-    """Insert rows; deduplicate via row_hash. Returns count newly inserted."""
-    inserted = 0
+    """Insert rows in één batch; dedupe via INSERT OR IGNORE op row_hash.
+    Returns count daadwerkelijk nieuw ingevoegd."""
+    rows: list[tuple] = []
+    for _, row in df.iterrows():
+        ts_raw = row.get("timestamp")
+        if pd.isna(ts_raw):
+            continue
+        ts = pd.Timestamp(ts_raw).isoformat()
+
+        extras = {
+            k: _safe(v) for k, v in row.items() if k not in STANDARD_FIELDS
+        }
+        extras_json = json.dumps(extras, default=str)
+
+        key_str = "|".join(
+            str(_safe(row.get(c))) for c in
+            ["timestamp", "value", "category",
+             "location_name", "lat", "lon"]
+        ) + "|" + extras_json
+        row_hash = hashlib.sha256(key_str.encode()).hexdigest()
+
+        rows.append((
+            dataset_id,
+            ts,
+            None if pd.isna(row.get("value")) else float(row["value"]),
+            _safe(row.get("category")),
+            _safe(row.get("location_name")),
+            None if pd.isna(row.get("lat")) else float(row["lat"]),
+            None if pd.isna(row.get("lon")) else float(row["lon"]),
+            extras_json,
+            row_hash,
+        ))
+
+    if not rows:
+        return 0
+
     with _conn() as con:
-        for _, row in df.iterrows():
-            extras = {
-                k: _safe(v) for k, v in row.items() if k not in STANDARD_FIELDS
-            }
-            extras_json = json.dumps(extras, default=str)
-
-            ts_raw = row.get("timestamp")
-            if pd.isna(ts_raw):
-                continue
-            ts = pd.Timestamp(ts_raw).isoformat()
-
-            key_str = "|".join(
-                str(_safe(row.get(c))) for c in
-                ["timestamp", "value", "category",
-                 "location_name", "lat", "lon"]
-            ) + "|" + extras_json
-            row_hash = hashlib.sha256(key_str.encode()).hexdigest()
-
-            try:
-                con.execute(
-                    "INSERT INTO observations "
-                    "(dataset_id, timestamp, value, category, "
-                    " location_name, lat, lon, extras, row_hash) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        dataset_id,
-                        ts,
-                        None if pd.isna(row.get("value")) else float(row["value"]),
-                        _safe(row.get("category")),
-                        _safe(row.get("location_name")),
-                        None if pd.isna(row.get("lat")) else float(row["lat"]),
-                        None if pd.isna(row.get("lon")) else float(row["lon"]),
-                        extras_json,
-                        row_hash,
-                    ),
-                )
-                inserted += 1
-            except sqlite3.IntegrityError:
-                pass
-    return inserted
+        before = con.total_changes
+        con.executemany(
+            "INSERT OR IGNORE INTO observations "
+            "(dataset_id, timestamp, value, category, "
+            " location_name, lat, lon, extras, row_hash) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rows,
+        )
+        return con.total_changes - before
 
 
 def load_observations(dataset_id: int) -> pd.DataFrame:

@@ -55,7 +55,7 @@ In deze implementatie wordt per rij een feature-vector gebouwd uit:
         "n_estimators": ParameterSpec(
             label="Aantal bomen",
             type="int",
-            default=100,
+            default=50,
             min=20,
             max=500,
             step=10,
@@ -63,7 +63,7 @@ In deze implementatie wordt per rij een feature-vector gebouwd uit:
         ),
     }
 
-    def detect(self, df, time_col, value_col, contamination=0.05, n_estimators=100):
+    def detect(self, df, time_col, value_col, contamination=0.05, n_estimators=50):
         out = df.copy().sort_values(time_col).reset_index(drop=True)
         out[time_col] = pd.to_datetime(out[time_col])
 
