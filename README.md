@@ -1,4 +1,4 @@
-# Anomalie-detectie — Normbeeld & afwijkingsanalyse
+# SENTINEL — Normbeeld & afwijkingsanalyse
 
 Een Streamlit-tool voor analisten: upload tijdreeksdata (waarnemingen,
 incidenten, bewegingen), en de tool bouwt per locatie een **normbeeld** —
@@ -32,17 +32,29 @@ Klik daarna op **"Laad demo-dataset"** voor een gevuld voorbeeld
    de empirisch beste methodes en toont de eerlijke voorspelfout.
 4. **Afwijkingsdetectie** — 5 onafhankelijke detectie-algoritmes stemmen;
    severity vereist minimaal 2 stemmen (hoog = vrijwel unaniem).
-5. **Export** — PDF-briefing en Excel-rapport.
+5. **Vergelijken** — twee reeksen overlay met automatische lag-detectie
+   ("reeks B volgt A met ~X perioden", via cross-correlatie), plus
+   change-point markers (significante niveau-verschuivingen) en
+   seizoensindicatie op de tijdlijn.
+6. **Export** — PDF-briefing en Excel-rapport.
+
+## Opslag
+
+Standaard lokaal SQLite (`data/store.db`). Voor blijvende, gedeelde opslag
+(bv. op Streamlit Cloud) koppel je een externe Postgres door `database_url`
+als secret te zetten — de code schakelt automatisch over. Zie
+`SETUP_DATABASE.md`. Toegang loopt via één gedeeld teamwachtwoord (`auth.py`).
 
 ## Architectuur
 
 ```
 app.py                  Streamlit UI (pagina's, styling, routing)
 core/
-  storage.py            SQLite-laag (datasets, observaties, annotaties)
+  storage.py            Opslag via SQLAlchemy (SQLite of Postgres)
   import_data.py        Excel/CSV-parsing + kolom-mapping
   auto_mapping.py       Kolom-rol detectie (heuristieken)
   normbeeld.py          Normbeeld: forecast, banden, backtest  ← kern
+  comparison.py         Cross-correlatie/lag, change-points, seizoen
   auto_pilot.py         Detectie-ensemble + severity-stemming
   profiler.py           Data-profilering (seizoen, trend, stationariteit)
   explanations.py       Plain-language uitleg per bevinding

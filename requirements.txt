@@ -11,3 +11,7 @@ statsmodels>=0.14,<0.16
 folium>=0.15,<1.0
 streamlit-folium>=0.18,<1.0
 fpdf2>=2.7,<3.0
+sqlalchemy>=2.0,<3.0
+# Postgres-driver (alleen nodig wanneer een externe database wordt gebruikt;
+# de prebuilt 'binary'-variant vereist geen compiler).
+psycopg[binary]>=3.1

@@ -41,6 +41,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 CMD ["streamlit", "run", "app.py", \
      "--server.address=0.0.0.0", \
      "--server.port=8501", \
-     "--server.enableCORS=false", \
      "--server.enableXsrfProtection=true", \
      "--browser.gatherUsageStats=false"]

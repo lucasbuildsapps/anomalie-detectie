@@ -14,7 +14,7 @@ gatherUsageStats = false
 headless = true
 # runOnSave uit voor Cloud (read-only filesystem op sommige paden)
 runOnSave = false
-enableCORS = false
+# XSRF-bescherming aan (veiliger); CORS daarom op default laten.
 enableXsrfProtection = true
 
 [client]
