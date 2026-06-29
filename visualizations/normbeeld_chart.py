@@ -64,6 +64,7 @@ def render_normbeeld_chart(
     theme: str = "light",
     height: int = 480,
     show_title: bool = False,
+    change_points: list[dict] | None = None,
 ):
     p = _palette(theme)
     hist = nb.historical.copy()
@@ -152,6 +153,23 @@ def render_normbeeld_chart(
         name="Voorspelling (ensemble)",
         hovertemplate="<b>Ensemble</b><br>%{x|%d %b}: %{y:.1f}<extra></extra>",
     ))
+
+    # --- Significante momenten (change-points): waar het niveau verschoof ---
+    if change_points:
+        for cp in change_points:
+            fig.add_vline(
+                x=cp["date"],
+                line=dict(color=p["above"] if cp["direction"] == "stijging"
+                          else p["below"], width=1, dash="dash"),
+            )
+            fig.add_annotation(
+                x=cp["date"], y=1.04, yref="paper",
+                text=("▲" if cp["direction"] == "stijging" else "▼"),
+                showarrow=False,
+                font=dict(size=11,
+                          color=p["above"] if cp["direction"] == "stijging"
+                          else p["below"]),
+            )
 
     # --- "Nu"-lijn ---
     now_date = hist["date"].iloc[-1]

@@ -38,8 +38,13 @@ from core.normbeeld import (
     compute_all_normbeelds, compute_normbeeld,
     detect_recent_alerts, _suggest_best_aggregation,
 )
+from core.comparison import (
+    build_series, cross_correlation_lag, detect_change_points,
+    seasonality_profile,
+)
 from core.registry import get_detectors
 from i18n.nl import t
+from visualizations.comparison_chart import render_lag_curve, render_overlay
 from visualizations.normbeeld_chart import render_normbeeld_chart
 
 
@@ -1601,8 +1606,42 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
               f"{nb_view.lower_band:.0f} – {nb_view.upper_band:.0f}")
     c3.metric(f"Recente afwijkingen", nb_view.n_recent_deviations)
 
+    # Significante momenten (niveau-verschuivingen) optioneel tonen
+    show_cp = st.checkbox(
+        "Toon significante momenten (waar het normbeeld verschoof)",
+        value=True, key="nb_show_cp",
+    )
+    hist_series = nb_view.historical.set_index("date")["actual"]
+    change_points = detect_change_points(hist_series) if show_cp else None
+
     st.caption(t("nb_band_explained"))
-    render_normbeeld_chart(nb_view, theme=st.session_state.ui_theme, height=520)
+    render_normbeeld_chart(
+        nb_view, theme=st.session_state.ui_theme, height=520,
+        change_points=change_points,
+    )
+
+    # Seizoens-indicatie + significante momenten in tekst
+    season = seasonality_profile(hist_series, nb_view.aggregation)
+    cols = st.columns(2)
+    with cols[0]:
+        if season:
+            st.markdown(
+                f"**Seizoenspatroon** — drukst rond *{season['peak']}*, "
+                f"rustigst rond *{season['trough']}* "
+                f"(±{season['amplitude_pct']:.0f}% verschil)."
+            )
+        else:
+            st.markdown("**Seizoenspatroon** — geen duidelijk patroon.")
+    with cols[1]:
+        if change_points:
+            lines = "  \n".join(
+                f"{cp['date'].strftime('%d-%m-%Y')}: {cp['direction']} "
+                f"({cp['before']:.0f} → {cp['after']:.0f})"
+                for cp in change_points[:4]
+            )
+            st.markdown(f"**Significante momenten**  \n{lines}")
+        elif show_cp:
+            st.markdown("**Significante momenten** — geen sterke verschuiving.")
 
     # Waarschuw als methodes zijn geskipt (mét reden)
     if nb_view.methods_skipped:
@@ -1649,7 +1688,156 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
     )
 
 
-APP_VERSION = "0.6.0-alpha"
+# ---------------------------------------------------------------------------
+# Vergelijken: twee reeksen overlay + lag-detectie
+# ---------------------------------------------------------------------------
+def _series_picker(df, regions, key_prefix: str, default_region: str):
+    """Regio + categorie-multiselect; returnt (region, categories, label)."""
+    region = st.selectbox(
+        "Regio", regions,
+        index=regions.index(default_region) if default_region in regions else 0,
+        key=f"{key_prefix}_region",
+    )
+    cats: list[str] = []
+    if "category" in df.columns and df["category"].notna().any():
+        avail = sorted(
+            df[df["location_name"] == region]["category"].dropna().unique().tolist()
+        )
+        if avail:
+            cats = st.multiselect(
+                "Categorieën (leeg = alle)", avail, default=[],
+                key=f"{key_prefix}_cats",
+            )
+    label = region if not cats else f"{region} ({', '.join(cats)})"
+    return region, cats, label
+
+
+def page_compare():
+    render_topbar(t("nav_compare"))
+    st.caption(
+        "Plot twee reeksen samen en ontdek het verband: volgt de ene op de "
+        "andere, en met hoeveel vertraging? (bv. een aanvalsgolf en de "
+        "tegenreactie daarna)."
+    )
+
+    datasets = storage.list_datasets()
+    if not datasets:
+        _render_empty_state()
+        return
+
+    by_id = {d["id"]: d for d in datasets}
+    ids = list(by_id.keys())
+    if st.session_state.active_dataset_id not in ids:
+        st.session_state.active_dataset_id = ids[0]
+    chosen = st.selectbox(
+        t("ds_dataset"), ids, format_func=lambda i: by_id[i]["name"],
+        index=ids.index(st.session_state.active_dataset_id),
+        key="cmp_ds_select",
+    )
+    if chosen != st.session_state.active_dataset_id:
+        st.session_state.active_dataset_id = chosen
+        st.rerun()
+
+    df = storage.load_observations(chosen)
+    if df.empty:
+        st.warning("Dataset is leeg.")
+        return
+    if "location_name" not in df.columns or df["location_name"].isna().all():
+        st.info("Vergelijken vereist een locatie/regio-kolom in de dataset.")
+        return
+
+    # Aggregatie
+    agg_options = ["daily", "weekly", "monthly"]
+    agg = st.selectbox(
+        t("agg_label"), agg_options,
+        format_func=lambda k: {"daily": t("agg_daily"), "weekly": t("agg_weekly"),
+                               "monthly": t("agg_monthly")}[k],
+        index=agg_options.index(
+            _resolve_aggregation(df, st.session_state.aggregation)
+        ),
+        key="cmp_agg",
+    )
+
+    # Regio's gesorteerd op activiteit, voor zinnige defaults
+    region_totals = df.groupby("location_name")["value"].sum().sort_values(
+        ascending=False
+    )
+    regions = list(region_totals.index)
+    if len(regions) < 1:
+        st.info("Geen regio's beschikbaar.")
+        return
+    default_a = regions[0]
+    default_b = regions[1] if len(regions) > 1 else regions[0]
+
+    st.markdown("<div class='section-label'>Twee reeksen kiezen</div>",
+                unsafe_allow_html=True)
+    cA, cB = st.columns(2)
+    with cA:
+        st.markdown(f"**Reeks A**")
+        reg_a, cats_a, label_a = _series_picker(df, regions, "cmp_a", default_a)
+    with cB:
+        st.markdown(f"**Reeks B**")
+        reg_b, cats_b, label_b = _series_picker(df, regions, "cmp_b", default_b)
+
+    series_a = build_series(df, reg_a, cats_a, agg)
+    series_b = build_series(df, reg_b, cats_b, agg)
+    if series_a.empty or series_b.empty:
+        st.warning("Eén van de reeksen heeft geen data.")
+        return
+
+    lag = cross_correlation_lag(series_a, series_b, agg)
+
+    # Lag-bevinding in mensentaal
+    align = st.checkbox(
+        "Reeks B uitlijnen op de gevonden vertraging", value=False,
+        key="cmp_align",
+    )
+    shift = lag.best_lag if (lag and align and lag.best_lag > 0) else 0
+
+    st.markdown("<div class='section-label'>Overlay</div>",
+                unsafe_allow_html=True)
+    render_overlay(
+        series_a, series_b, label_a, label_b,
+        theme=st.session_state.ui_theme, shift_b_by=shift,
+    )
+
+    if lag is not None:
+        unit = lag.unit
+        if abs(lag.best_corr) < 0.2:
+            verdict = (
+                f"**Geen sterk verband** gevonden tussen {label_a} en "
+                f"{label_b} (max. correlatie {lag.best_corr:.2f})."
+            )
+        elif lag.best_lag > 0:
+            verdict = (
+                f"**{label_b} volgt {label_a}** met ongeveer "
+                f"**{lag.best_lag} {unit}{'en' if lag.best_lag != 1 else ''}** "
+                f"vertraging (correlatie {lag.best_corr:.2f})."
+            )
+        elif lag.best_lag < 0:
+            verdict = (
+                f"**{label_a} volgt {label_b}** met ongeveer "
+                f"**{abs(lag.best_lag)} {unit}{'en' if abs(lag.best_lag) != 1 else ''}** "
+                f"vertraging (correlatie {lag.best_corr:.2f})."
+            )
+        else:
+            verdict = (
+                f"**{label_a} en {label_b} bewegen gelijktijdig** "
+                f"(correlatie {lag.best_corr:.2f}, geen vertraging)."
+            )
+        st.markdown(verdict)
+        st.caption(
+            "Cross-correlatie: voor elke mogelijke vertraging meten we hoe "
+            "sterk de twee reeksen samenhangen. De hoogste balk is de meest "
+            "waarschijnlijke vertraging. Let op: correlatie is geen bewijs "
+            "van oorzaak."
+        )
+        render_lag_curve(lag, label_a, label_b, theme=st.session_state.ui_theme)
+    else:
+        st.info("Te weinig overlappende data voor een betrouwbare lag-analyse.")
+
+
+APP_VERSION = "0.7.0-alpha"
 
 
 # ---------------------------------------------------------------------------
@@ -1659,6 +1847,8 @@ if st.session_state.show_settings:
     page_settings()
 elif st.session_state.active_page == t("nav_normbeeld"):
     page_normbeeld()
+elif st.session_state.active_page == t("nav_compare"):
+    page_compare()
 else:
     page_data()
 
