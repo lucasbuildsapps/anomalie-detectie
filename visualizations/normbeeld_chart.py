@@ -65,6 +65,7 @@ def render_normbeeld_chart(
     height: int = 480,
     show_title: bool = False,
     change_points: list[dict] | None = None,
+    markers: list[dict] | None = None,
 ):
     p = _palette(theme)
     hist = nb.historical.copy()
@@ -169,6 +170,25 @@ def render_normbeeld_chart(
                 font=dict(size=11,
                           color=p["above"] if cp["direction"] == "stijging"
                           else p["below"]),
+            )
+
+    # --- Handmatige markeringen (bv. staakt-het-vuren) ---
+    if markers:
+        first_date = pd.Timestamp(hist["date"].iloc[0])
+        last_date = pd.Timestamp(fc["date"].iloc[-1]) if not fc.empty \
+            else pd.Timestamp(hist["date"].iloc[-1])
+        for mk in markers:
+            md = pd.Timestamp(mk["date"])
+            if md < first_date or md > last_date:
+                continue  # buiten zichtbaar bereik
+            fig.add_vline(
+                x=md, line=dict(color=p["axis"], width=1.5, dash="solid"),
+            )
+            fig.add_annotation(
+                x=md, y=1.0, yref="paper",
+                text=mk.get("label", ""), showarrow=False,
+                font=dict(size=10, color=p["axis"]),
+                bgcolor=p["plot_bg"], xanchor="left", yanchor="bottom",
             )
 
     # --- "Nu"-lijn ---

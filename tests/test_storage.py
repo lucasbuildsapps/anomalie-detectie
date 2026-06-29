@@ -61,3 +61,32 @@ def test_clear_observations_keeps_dataset():
     storage.clear_observations(ds)
     assert len(storage.load_observations(ds)) == 0
     assert any(d["id"] == ds for d in storage.list_datasets())
+
+
+def test_events_add_list_delete():
+    eid = storage.add_event("2025-02-15", "Staakt-het-vuren")
+    events = storage.list_events()
+    assert len(events) == 1
+    assert events[0]["label"] == "Staakt-het-vuren"
+    assert events[0]["event_date"] == "2025-02-15"
+    storage.delete_event(eid)
+    assert storage.list_events() == []
+
+
+def test_events_sorted_by_date():
+    storage.add_event("2025-06-01", "B")
+    storage.add_event("2025-01-01", "A")
+    dates = [e["event_date"] for e in storage.list_events()]
+    assert dates == sorted(dates)
+
+
+def test_annotations_roundtrip():
+    ds = storage.create_dataset("test", "", {})
+    storage.upsert_annotation(ds, "key1", "notitie", "bevestigd")
+    got = storage.get_annotation_row(ds, "key1")
+    assert got["status"] == "bevestigd"
+    assert got["note"] == "notitie"
+    # Update zelfde key
+    storage.upsert_annotation(ds, "key1", "anders", "vals_alarm")
+    assert storage.get_annotation_row(ds, "key1")["status"] == "vals_alarm"
+    assert len(storage.list_annotation_rows(ds)) == 1

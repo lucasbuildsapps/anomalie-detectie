@@ -67,6 +67,17 @@ annotations_t = Table(
     UniqueConstraint("dataset_id", "finding_key", name="uq_anno_dataset_key"),
 )
 
+# Globale, door de analist beheerde markeringen (bv. staakt-het-vuren-datum).
+# Bewust niet aan één dataset gebonden: een gebeurtenis in de echte wereld is
+# relevant voor elke reeks, ook bij cross-dataset vergelijken.
+events_t = Table(
+    "events", _metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("event_date", String(32), nullable=False),
+    Column("label", Text, nullable=False),
+    Column("created_at", String(64), nullable=False),
+)
+
 
 # ---------------------------------------------------------------------------
 # Engine (per URL gecachet zodat tests die DB_PATH monkeypatchen werken)
@@ -323,3 +334,30 @@ def list_annotation_rows(dataset_id: int) -> dict:
         }
         for r in rows
     }
+
+
+# ---------------------------------------------------------------------------
+# Markeringen (handmatige gebeurtenissen op de tijdlijn)
+# ---------------------------------------------------------------------------
+def add_event(event_date: str, label: str) -> int:
+    with _engine().begin() as con:
+        result = con.execute(insert(events_t).values(
+            event_date=event_date, label=label, created_at=_now_iso(),
+        ))
+        return int(result.inserted_primary_key[0])
+
+
+def list_events() -> list[dict]:
+    with _engine().connect() as con:
+        rows = con.execute(
+            select(events_t).order_by(events_t.c.event_date)
+        ).mappings().all()
+    return [
+        {"id": r["id"], "event_date": r["event_date"], "label": r["label"]}
+        for r in rows
+    ]
+
+
+def delete_event(event_id: int) -> None:
+    with _engine().begin() as con:
+        con.execute(delete(events_t).where(events_t.c.id == event_id))

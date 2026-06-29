@@ -29,6 +29,7 @@ def render_overlay(
     label_a: str, label_b: str,
     theme: str = "light",
     change_points: list[dict] | None = None,
+    markers: list[dict] | None = None,
     shift_b_by: int = 0,
 ):
     """Twee reeksen op één tijd-as met dubbele y-as. Optioneel reeks B
@@ -74,6 +75,19 @@ def render_overlay(
                 text=("▲" if cp["direction"] == "stijging" else "▼"),
                 showarrow=False,
                 font=dict(size=11, color=p["now"]),
+            )
+
+    if markers:
+        for mk in markers:
+            fig.add_vline(
+                x=pd.Timestamp(mk["date"]),
+                line=dict(color=p["axis"], width=1.5, dash="solid"),
+            )
+            fig.add_annotation(
+                x=pd.Timestamp(mk["date"]), y=1.0, yref="paper",
+                text=mk.get("label", ""), showarrow=False,
+                font=dict(size=10, color=p["axis"]),
+                bgcolor=p["bg"], xanchor="left", yanchor="bottom",
             )
 
     fig.update_layout(

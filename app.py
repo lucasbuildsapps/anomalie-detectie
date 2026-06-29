@@ -39,8 +39,7 @@ from core.normbeeld import (
     detect_recent_alerts, _suggest_best_aggregation,
 )
 from core.comparison import (
-    build_series, cross_correlation_lag, detect_change_points,
-    seasonality_profile,
+    build_series, cross_correlation_lag, seasonality_profile,
 )
 from core.registry import get_detectors
 from i18n.nl import t
@@ -84,11 +83,103 @@ _DEFAULTS = {
     "nb_selected_category": "Alle categorieën",
     "nb_selected_categories": [],   # [] = alle categorieën
     "nb_methods_override": None,   # None = auto
+    "nb_preset": "auto",
     "nb_n_to_show": 5,
 }
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
         st.session_state[k] = v
+
+
+# Voorspel-presets: elk combineert intern meerdere methodes. De gebruiker
+# kiest één preset; de tool doet de combinatie. 'auto' laat de backtest de
+# nauwkeurigste twee kiezen.
+METHOD_PRESETS = {
+    "auto":   ("Automatisch (aanbevolen)", None),
+    "season": ("Seizoensgericht",          ["stl", "ets", "seasonal_naive"]),
+    "trend":  ("Trend & stabiel",          ["ets", "rolling"]),
+    "simple": ("Eenvoudig & robuust",      ["median", "rolling"]),
+}
+PRESET_HELP = {
+    "auto": "Test alle methodes op jouw data (backtest) en kiest automatisch "
+            "de twee nauwkeurigste. Beste keuze als je twijfelt.",
+    "season": "Voor data met een duidelijk terugkerend patroon (per week of "
+              "maand). Combineert STL + Holt-Winters + seasonal naive.",
+    "trend": "Voor data met een trend maar zonder sterk seizoen. Combineert "
+             "Holt-Winters + voortschrijdend gemiddelde.",
+    "simple": "Voor korte of grillige reeksen waar modellen onbetrouwbaar "
+              "zijn. Combineert mediaan + voortschrijdend gemiddelde.",
+}
+
+
+def _recommend_preset(nb) -> str:
+    """Beveel een preset aan op basis van de data-eigenschappen."""
+    try:
+        hist = nb.historical.set_index("date")["actual"]
+        seasonal = seasonality_profile(hist, nb.aggregation) is not None
+    except Exception:
+        seasonal = False
+    n = nb.n_history_periods
+    if n < 14:
+        return "simple"
+    if seasonal and n >= 21:
+        return "season"
+    return "trend"
+
+
+def _event_markers() -> list[dict]:
+    """Door de analist toegevoegde markeringen, klaar om te plotten."""
+    out = []
+    for e in storage.list_events():
+        try:
+            out.append({"date": pd.Timestamp(e["event_date"]),
+                        "label": e["label"]})
+        except Exception:
+            continue
+    return out
+
+
+def _render_markers_manager(key_prefix: str = "mk"):
+    """Beheer eigen markeringen: voeg datum + label toe, of verwijder.
+    Gedeeld over alle grafieken (een gebeurtenis geldt voor elke reeks)."""
+    events = storage.list_events()
+    title = (f"Eigen markeringen ({len(events)})" if events
+             else "Eigen markeringen toevoegen")
+    with st.expander(title):
+        st.caption(
+            "Markeer momenten die je zelf wilt tonen (bv. een staakt-het-vuren "
+            "of beleidswijziging). Ze verschijnen als verticale lijn in de "
+            "grafieken — handig om te zien wat er ná dat moment gebeurde."
+        )
+        c1, c2, c3 = st.columns([1.2, 2, 1])
+        with c1:
+            d = st.date_input("Datum", key=f"{key_prefix}_ev_date")
+        with c2:
+            lbl = st.text_input("Label", key=f"{key_prefix}_ev_label",
+                                placeholder="bv. Staakt-het-vuren")
+        with c3:
+            st.write("")
+            st.write("")
+            if st.button("Toevoegen", key=f"{key_prefix}_ev_add",
+                         use_container_width=True, type="secondary"):
+                if lbl.strip():
+                    storage.add_event(pd.Timestamp(d).date().isoformat(),
+                                      lbl.strip())
+                    st.rerun()
+                else:
+                    st.warning("Geef een label op.")
+        for e in events:
+            cc1, cc2 = st.columns([5, 1])
+            with cc1:
+                st.markdown(
+                    f"{pd.Timestamp(e['event_date']).strftime('%d-%m-%Y')} — "
+                    f"{_html.escape(e['label'])}"
+                )
+            with cc2:
+                if st.button("Verwijder", key=f"{key_prefix}_ev_del_{e['id']}",
+                             use_container_width=True):
+                    storage.delete_event(e["id"])
+                    st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -483,17 +574,34 @@ def cached_analysis(
 # Sidebar (Normbeeld bovenaan, geen banner, geen Instellingen-knop)
 # ---------------------------------------------------------------------------
 with st.sidebar:
+    _logo_svg = f"""
+    <svg viewBox="0 0 48 48" width="38" height="38" fill="none"
+         xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
+      <path d="M24 3 L41 9 V23 C41 34 33.5 41.5 24 45 C14.5 41.5 7 34 7 23 V9 Z"
+            stroke="{P['accent']}" stroke-width="2.4" fill="{P['accent']}11"
+            stroke-linejoin="round"/>
+      <circle cx="24" cy="22" r="7" stroke="{P['accent']}" stroke-width="2.2"/>
+      <circle cx="24" cy="22" r="2.6" fill="{P['accent']}"/>
+      <line x1="24" y1="22" x2="24" y2="6.5" stroke="{P['accent']}"
+            stroke-width="1.4" stroke-dasharray="2 2"/>
+    </svg>
+    """
     st.markdown(
         f"""
-        <div style="padding: 4px 0 2px 0;">
-            <div style="font-family: 'JetBrains Mono', monospace;
-                        font-size: 1.5rem; font-weight: 700;
-                        letter-spacing: 0.22em; color: {P['accent']};">
-                {t('app_title')}
-            </div>
-            <div style="font-size: 0.72rem; color: {P['text_muted']};
-                        letter-spacing: 0.04em; margin-top: 2px;">
-                {t('app_subtitle')}
+        <div style="display:flex; align-items:center; gap:10px;
+                    padding: 4px 0 2px 0;">
+            {_logo_svg}
+            <div>
+                <div style="font-family: 'JetBrains Mono', monospace;
+                            font-size: 1.45rem; font-weight: 700;
+                            letter-spacing: 0.18em; color: {P['accent']};
+                            line-height: 1.1;">
+                    {t('app_title')}
+                </div>
+                <div style="font-size: 0.68rem; color: {P['text_muted']};
+                            letter-spacing: 0.03em;">
+                    {t('app_subtitle')}
+                </div>
             </div>
         </div>
         """,
@@ -509,7 +617,7 @@ with st.sidebar:
         )
     st.divider()
 
-    nav_items = [t("nav_normbeeld"), t("nav_data"), t("nav_compare")]
+    nav_items = [t("nav_normbeeld"), t("nav_compare")]
     for label in nav_items:
         is_active = st.session_state.active_page == label
         wrapper_cls = "sidebar-nav sidebar-nav-active" if is_active else "sidebar-nav"
@@ -625,6 +733,10 @@ def _settings_datasets():
                     st.cache_data.clear()
                     st.success(t("msg_deleted"))
                     st.rerun()
+
+            st.markdown("---")
+            st.markdown("**Ruwe data bekijken / bewerken**")
+            _render_data_editor(ds)
 
 
 def _settings_upload():
@@ -872,253 +984,56 @@ def _render_empty_state():
                 st.rerun()
 
 
-def page_data():
-    render_topbar()  # geen "Data-specifics" kop meer
-    datasets = storage.list_datasets()
-    if not datasets:
-        _render_empty_state()
+def _render_data_editor(ds: dict):
+    """Bekijk/bewerk de ruwe data van een dataset (gebruikt in Instellingen)."""
+    df_raw = storage.load_observations(ds["id"])
+    if df_raw.empty:
+        st.caption("Deze dataset bevat nog geen rijen.")
         return
-
-    # Dataset-keuze
-    by_id = {d["id"]: d for d in datasets}
-    ids = list(by_id.keys())
-    if st.session_state.active_dataset_id not in ids:
-        st.session_state.active_dataset_id = ids[0]
-
-    chosen = st.selectbox(
-        t("ds_dataset"), ids,
-        format_func=lambda i: by_id[i]["name"],
-        index=ids.index(st.session_state.active_dataset_id),
-        key="ds_pick",
+    st.caption(t("ds_data_help"))
+    full = df_raw.copy()
+    if "timestamp" in full.columns:
+        full["timestamp"] = pd.to_datetime(full["timestamp"])
+        full = full.sort_values("timestamp").reset_index(drop=True)
+    max_n = len(full)
+    slice_n = st.number_input(
+        "Bewerk laatste N rijen",
+        min_value=min(50, max_n), max_value=max_n,
+        value=min(500, max_n), step=50,
+        key=f"editor_n_{ds['id']}",
+        help="Oudere rijen blijven bij opslaan ongewijzigd staan.",
     )
-    if chosen != st.session_state.active_dataset_id:
-        st.session_state.active_dataset_id = chosen
-        st.rerun()
-
-    ds = by_id[chosen]
-    methods_key = (
-        "auto" if st.session_state.nb_methods_override is None
-        else ",".join(st.session_state.nb_methods_override)
-    )
-    data_hash = storage.dataset_data_hash(ds["id"])
-    cached = cached_analysis(
-        ds["id"], data_hash, st.session_state.horizon_days,
-        st.session_state.aggregation, methods_key,
-    )
-    if cached is None:
-        st.warning("Dataset is leeg.")
-        return
-    df_raw, df, result, normbeelds, alerts, effective_agg = cached
-    res = result.results
-
-    # Aggregatie-keuze
-    c1, c2 = st.columns([2, 3])
-    with c1:
-        agg_options = ["auto", "daily", "weekly", "monthly"]
-        agg_labels = {
-            "auto":    f"Auto (aanbevolen: {AGGREGATIONS[effective_agg][1]})",
-            "daily":   t("agg_daily"),
-            "weekly":  t("agg_weekly"),
-            "monthly": t("agg_monthly"),
-        }
-        new_agg = st.selectbox(
-            t("agg_label"), agg_options,
-            format_func=lambda k: agg_labels[k],
-            index=agg_options.index(st.session_state.aggregation),
-            key="agg_pick",
+    hidden = full.iloc[:max_n - int(slice_n)]
+    editable = full.iloc[max_n - int(slice_n):]
+    if len(hidden):
+        st.caption(
+            f"{len(hidden)} oudere rijen verborgen — die blijven bij "
+            f"opslaan ongewijzigd."
         )
-        if new_agg != st.session_state.aggregation:
-            st.session_state.aggregation = new_agg
-            st.rerun()
-
-    # Alerts (prominent) — keuze tussen recent en historische top
-    from core.normbeeld import recent_window_label
-    window_lbl = recent_window_label(effective_agg)
-
-    def _fmt_date(iso: str) -> str:
+    edited = st.data_editor(
+        editable, use_container_width=True, num_rows="dynamic",
+        key=f"editor_{ds['id']}", hide_index=True,
+    )
+    if st.button(t("ds_save_changes"), type="primary", key=f"save_data_{ds['id']}"):
         try:
-            return pd.Timestamp(iso).strftime("%d-%m-%Y")
-        except Exception:
-            return iso
+            combined = pd.concat([hidden, edited], ignore_index=True)
+            storage.clear_observations(ds["id"])
+            if not combined.empty:
+                storage.insert_observations(ds["id"], combined)
+            st.cache_data.clear()
+            st.success("Opgeslagen.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Opslaan mislukt: {e}")
 
-    # Verzamel historische top-deviaties (grootste afstand tot band)
-    all_hist_dev = []
-    for loc, nb in normbeelds.items():
-        sub = nb.historical[nb.historical["status"] != "normaal"].copy()
-        if sub.empty:
-            continue
-        sub["locatie"] = loc
-        sub["magnitude"] = (sub["actual"] - sub["expected"]).abs()
-        all_hist_dev.append(sub)
-    if all_hist_dev:
-        hist_dev_df = pd.concat(all_hist_dev, ignore_index=True)
-        hist_dev_df = hist_dev_df.sort_values("magnitude", ascending=False).head(15)
-    else:
-        hist_dev_df = pd.DataFrame()
 
-    if alerts or not hist_dev_df.empty:
-        st.markdown(
-            f"""
-            <div class="alert-banner">
-                <div class="head">{t('alerts_title')}</div>
-                <div class="intro">{_html.escape(t('alerts_intro'))}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        view_mode = st.radio(
-            "Welke afwijkingen tonen?",
-            [f"Recent ({window_lbl})", "Historische top (15 grootste ooit)"],
-            horizontal=True, key="alert_view_mode",
-            label_visibility="collapsed",
-        )
-
-        if view_mode.startswith("Recent"):
-            if alerts:
-                st.markdown(
-                    f"<div style='color:{P['text_muted']}; font-size:0.85rem; "
-                    f"margin-bottom:8px;'>"
-                    f"{len(alerts)} waarnemingen buiten normbeeld in de "
-                    f"laatste {window_lbl}</div>",
-                    unsafe_allow_html=True,
-                )
-                rows = ""
-                for a in alerts[:10]:
-                    arrow = "boven band" if a["richting"] == "boven" else "onder band"
-                    factor = (
-                        f" — {a['waarde'] / max(a['upper'], 0.5):.1f}x bovengrens"
-                        if a["richting"] == "boven" and a["upper"] > 0
-                        else ""
-                    )
-                    rows += (
-                        f"<div class='alert-row'>{_fmt_date(a['datum'])} · "
-                        f"{_html.escape(str(a['locatie']))} · "
-                        f"{a['waarde']} ({arrow}, verwacht "
-                        f"{a['lower']:.0f}-{a['upper']:.0f}){factor}</div>"
-                    )
-                st.markdown(rows, unsafe_allow_html=True)
-            else:
-                st.markdown(
-                    f"<div style='color:{P['text_muted']}; font-size:0.85rem;'>"
-                    f"Geen recente afwijkingen in de laatste {window_lbl}."
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-        else:
-            # Historische top
-            if not hist_dev_df.empty:
-                st.markdown(
-                    f"<div style='color:{P['text_muted']}; font-size:0.85rem; "
-                    f"margin-bottom:8px;'>"
-                    f"De 15 grootste afwijkingen in de hele dataset, "
-                    f"gerangschikt op afstand tot het verwachte normbeeld.</div>",
-                    unsafe_allow_html=True,
-                )
-                rows = ""
-                for _, h in hist_dev_df.iterrows():
-                    direction = "boven band" if h["status"] == "boven" else "onder band"
-                    factor_txt = ""
-                    if h["status"] == "boven" and h["upper"] > 0:
-                        f_ = h["actual"] / max(h["upper"], 0.5)
-                        factor_txt = f" — {f_:.1f}x bovengrens"
-                    rows += (
-                        f"<div class='alert-row'>"
-                        f"{pd.Timestamp(h['date']).strftime('%d-%m-%Y')} · "
-                        f"{_html.escape(str(h['locatie']))} · "
-                        f"{int(h['actual'])} ({direction}, verwacht "
-                        f"{h['lower']:.0f}-{h['upper']:.0f}){factor_txt}</div>"
-                    )
-                st.markdown(rows, unsafe_allow_html=True)
-            else:
-                st.markdown(
-                    f"<div style='color:{P['text_muted']}; font-size:0.85rem;'>"
-                    f"Geen historische afwijkingen in deze dataset.</div>",
-                    unsafe_allow_html=True,
-                )
-
-    # Overzicht
-    st.markdown(f"<div class='section-label'>{t('results_title')}</div>",
-                unsafe_allow_html=True)
-    n_obs = len(df_raw)
-    n_loc = (
-        df_raw["location_name"].nunique()
-        if "location_name" in df_raw.columns
-        and df_raw["location_name"].notna().any() else 0
-    )
-    period_str = "—"
-    if "timestamp" in df_raw.columns and not df_raw["timestamp"].empty:
-        ts = pd.to_datetime(df_raw["timestamp"])
-        # Compact format om afkapping te voorkomen
-        period_str = f"{ts.min().strftime('%d-%m-%Y')} t/m {ts.max().strftime('%d-%m-%Y')}"
-    n_hoog = int((res["severity"] == "hoog").sum())
-    n_mid = int((res["severity"] == "midden").sum())
-    n_laag = int((res["severity"] == "laag").sum())
-    n_anom = n_hoog + n_mid + n_laag
-
-    c1, c2 = st.columns(2)
-    c1.metric(t("results_observations"), f"{n_obs:,}".replace(",", "."))
-    c2.metric(t("results_period"), period_str)
-    c3, c4 = st.columns(2)
-    c3.metric(t("results_locations"), n_loc if n_loc else "—")
-    c4.metric(t("results_anomalies_total"),
-              f"{n_anom} ({n_hoog} hoog)")
-
-    # Data-viewer — toont alleen de recentste N rijen in de editor (browser
-    # wordt traag bij duizenden rijen). Bij opslaan blijven de niet-getoonde
-    # rijen onaangetast.
-    with st.expander(t("ds_show_data")):
-        st.caption(t("ds_data_help"))
-        full = df_raw.copy()
-        if "timestamp" in full.columns:
-            full["timestamp"] = pd.to_datetime(full["timestamp"])
-            full = full.sort_values("timestamp").reset_index(drop=True)
-
-        max_n = len(full)
-        slice_n = st.number_input(
-            "Bewerk laatste N rijen",
-            min_value=min(50, max_n), max_value=max_n,
-            value=min(500, max_n), step=50,
-            key=f"editor_n_{ds['id']}",
-            help="Oudere rijen blijven bij opslaan ongewijzigd staan.",
-        )
-        hidden = full.iloc[:max_n - int(slice_n)]
-        editable = full.iloc[max_n - int(slice_n):]
-        if len(hidden):
-            st.caption(
-                f"{len(hidden)} oudere rijen verborgen — die blijven bij "
-                f"opslaan ongewijzigd."
-            )
-
-        edited = st.data_editor(
-            editable,
-            use_container_width=True,
-            num_rows="dynamic",
-            key=f"editor_{ds['id']}",
-            hide_index=True,
-        )
-        if st.button(t("ds_save_changes"), type="primary",
-                     key=f"save_data_{ds['id']}"):
-            try:
-                combined = pd.concat([hidden, edited], ignore_index=True)
-                storage.clear_observations(ds["id"])
-                if not combined.empty:
-                    storage.insert_observations(ds["id"], combined)
-                st.cache_data.clear()
-                st.success("Opgeslagen.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Opslaan mislukt: {e}")
-
-    # Export
-    st.markdown(f"<div class='section-label'>Export</div>",
-                unsafe_allow_html=True)
+def _render_exports(result, normbeelds, ds: dict):
+    """PDF-briefing + Excel-export (gebruikt op de normbeeld-pagina)."""
     c1, c2 = st.columns(2)
     with c1:
         try:
             pdf_bytes = build_briefing_pdf(
-                result, ds["name"], ds["description"],
-                normbeelds=normbeelds,
+                result, ds["name"], ds["description"], normbeelds=normbeelds,
             )
             st.download_button(
                 t("export_pdf"), data=pdf_bytes,
@@ -1131,7 +1046,7 @@ def page_data():
     with c2:
         try:
             xlsx_bytes = build_excel_export(
-                result, normbeelds, ds["name"], ds["description"]
+                result, normbeelds, ds["name"], ds["description"],
             )
             st.download_button(
                 t("export_excel"), data=xlsx_bytes,
@@ -1142,191 +1057,7 @@ def page_data():
         except Exception as e:
             st.error(f"Excel: {e}")
 
-    # Severity-uitleg
-    with st.expander(t("severity_explainer_title")):
-        st.markdown(t("severity_explainer"))
 
-    # Tabs (gereduceerd)
-    has_geo = (
-        "lat" in res.columns and "lon" in res.columns
-        and res["lat"].notna().any() and res["lon"].notna().any()
-    )
-    labels = [t("tab_findings")]
-    if has_geo:
-        labels.append(t("tab_map"))
-    labels.append(t("tab_timeline"))
-    tabs = st.tabs(labels)
-
-    i = 0
-    with tabs[i]:
-        _render_findings(result, ds["id"])
-    i += 1
-    if has_geo:
-        with tabs[i]:
-            _render_geomap(res)
-        i += 1
-    with tabs[i]:
-        _render_timeseries(res)
-
-
-def _render_findings(result, dataset_id: int):
-    all_findings = build_findings(result, top_n=100)
-    if not all_findings:
-        st.info(t("findings_empty"))
-        return
-
-    # Hoog + midden zijn het echte signaal; laag-vertrouwen gaat ingeklapt
-    # onderaan (alert-moeheid voorkomen).
-    findings = [f for f in all_findings if f["severity"] in ("hoog", "midden")]
-    low_findings = [f for f in all_findings if f["severity"] == "laag"]
-
-    sev_color = {"hoog": P["high"], "midden": P["mid"], "laag": P["low"]}
-    notes_map = anno.list_annotations(dataset_id)
-
-    if not findings:
-        st.info(
-            "Geen afwijkingen met hoog of midden vertrouwen. "
-            f"Er zijn wel {len(low_findings)} laag-vertrouwen signalen "
-            "(zie onderaan)."
-            if low_findings else t("findings_empty")
-        )
-
-    # Top 3 + expand
-    show_n = len(findings) if st.session_state.show_more_findings else min(3, len(findings))
-
-    if findings:
-        st.markdown(
-            f"<div class='section-label'>"
-            f"{t('findings_top_initial')} ({show_n}/{len(findings)})</div>",
-            unsafe_allow_html=True,
-        )
-
-    for i, f in enumerate(findings[:show_n], start=1):
-        sev = f["severity"]
-        color = sev_color.get(sev, "#999")
-        exp = f["explanation"]
-        key = anno.finding_key(f["datum"], str(f["locatie"]), None)
-        existing = notes_map.get(key, {})
-
-        body_lines = []
-        if exp.get("baseline"):
-            body_lines.append(_html.escape(exp["baseline"]))
-        if exp.get("factor"):
-            body_lines.append(_html.escape(exp["factor"]))
-        if exp.get("weekday_context"):
-            body_lines.append(_html.escape(exp["weekday_context"]))
-        body_html = "<br>".join(body_lines)
-        flagged_str = ", ".join(f["methodes_aan"]) if f["methodes_aan"] else "—"
-        not_flagged_str = (
-            ", ".join(f["methodes_uit"]) if f.get("methodes_uit") else ""
-        )
-        not_flagged_html = (
-            f"<br><span style='color: {P['text_muted']};'>"
-            f"Niet aangeslagen: {_html.escape(not_flagged_str)}</span>"
-            if not_flagged_str else ""
-        )
-
-        st.markdown(
-            f"""
-            <div class="finding-card" style="--card-color: {color};">
-                <div class="finding-header">
-                    <span class="severity-pill severity-{sev}">#{i} · {sev.upper()}</span>
-                    <span class="finding-loc">{_html.escape(str(f["locatie"]))}</span>
-                    <span class="finding-date">{pd.Timestamp(f["datum"]).strftime("%d-%m-%Y")}</span>
-                </div>
-                <div class="finding-stat">{_html.escape(exp['observation'])}</div>
-                <div class="finding-explain">{body_html}</div>
-                <div class="finding-meta">
-                    <strong>{f["stemmen"]}/{f["totaal_methodes"]}</strong> methodes bevestigen:
-                    {_html.escape(flagged_str)}
-                    {not_flagged_html}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        with st.expander(
-            f"Notitie {'(bestaand)' if existing else ''} — {f['locatie']} {f['datum']}"
-        ):
-            status_opts = list(anno.STATUS_LABELS.keys())
-            cur_status = existing.get("status", "open")
-            cur_idx = status_opts.index(cur_status) if cur_status in status_opts else 0
-            c1, c2 = st.columns([1, 2])
-            with c1:
-                new_status = st.selectbox(
-                    t("anno_status"), status_opts,
-                    format_func=lambda s: anno.STATUS_LABELS[s],
-                    index=cur_idx, key=f"anno_st_{key}",
-                )
-            with c2:
-                new_note = st.text_area(
-                    t("anno_note"), value=existing.get("note", ""),
-                    key=f"anno_nt_{key}", height=70,
-                )
-            if st.button(t("anno_save"), key=f"anno_sv_{key}",
-                         use_container_width=True, type="secondary"):
-                anno.save_annotation(dataset_id, key, new_note, new_status)
-                st.success(t("anno_saved"))
-
-    # Show more / less
-    if len(findings) > 3:
-        if st.session_state.show_more_findings:
-            if st.button(t("findings_show_less"), key="show_less",
-                         use_container_width=True):
-                st.session_state.show_more_findings = False
-                st.rerun()
-        else:
-            if st.button(t("findings_show_more"), key="show_more",
-                         use_container_width=True):
-                st.session_state.show_more_findings = True
-                st.rerun()
-
-    # Laag-vertrouwen signalen: standaard ingeklapt, compacte regels
-    if low_findings:
-        with st.expander(
-            f"Laag-vertrouwen signalen ({len(low_findings)}) — "
-            f"2 methodes eens, mogelijk vals alarm"
-        ):
-            rows = ""
-            for f in low_findings[:40]:
-                rows += (
-                    f"<div class='alert-row'>"
-                    f"{pd.Timestamp(f['datum']).strftime('%d-%m-%Y')} · "
-                    f"{_html.escape(str(f['locatie']))} · "
-                    f"{f['waarde']} waarnemingen · "
-                    f"{f['stemmen']}/{f['totaal_methodes']} stemmen</div>"
-                )
-            st.markdown(rows, unsafe_allow_html=True)
-
-
-def _render_geomap(res: pd.DataFrame):
-    from core.registry import get_visualizations
-    for name, v in get_visualizations().items():
-        if "kaart" in name.lower():
-            v.render(res, time_col="timestamp", value_col="value")
-            return
-    st.warning("Geen kaart-visualisatie beschikbaar.")
-
-
-def _render_timeseries(res: pd.DataFrame):
-    from core.registry import get_visualizations
-    for name, v in get_visualizations().items():
-        if "tijdreeks" in name.lower():
-            cat_col = "location_name" if "location_name" in res.columns else (
-                "category" if "category" in res.columns else None
-            )
-            v.render(
-                res, time_col="timestamp", value_col="value",
-                category_col=cat_col, theme=st.session_state.ui_theme,
-            )
-            return
-    st.warning("Geen tijdreeks-visualisatie beschikbaar.")
-
-
-# ---------------------------------------------------------------------------
-# Normbeeld pagina
-# ---------------------------------------------------------------------------
 def page_normbeeld():
     render_topbar(t("nb_title"))
     st.caption(t("nb_subtitle"))
@@ -1402,9 +1133,8 @@ def page_normbeeld():
         return
 
     unit = AGGREGATIONS[effective_agg][1]  # 'dag' / 'week' / 'maand'
-    locs = list(normbeelds.keys())
-    # Sorteer op aantal recente afwijkingen (alerts eerst)
-    locs_sorted = sorted(locs, key=lambda l: -normbeelds[l].n_recent_deviations)
+    # Regio's alfabetisch (voorspelbare volgorde voor de analist)
+    locs_sorted = sorted(normbeelds.keys(), key=lambda s: s.lower())
 
     # ----- Regio direct selecteerbaar (geen doorklik-stap) -----
     if st.session_state.nb_selected_location not in locs_sorted:
@@ -1426,53 +1156,11 @@ def page_normbeeld():
         df_raw, normbeelds[selected], selected, ds["id"], unit, effective_agg,
     )
 
-    # ----- Overzichtstabel alle regio's (onderaan, inklapbaar) -----
+    # ----- Export (briefing + Excel) -----
     st.divider()
-    with st.expander(f"{t('nb_overview')} ({len(locs_sorted)} regio's)"):
-        table_rows = []
-        for loc in locs_sorted:
-            nb = normbeelds[loc]
-            table_rows.append({
-                "Regio": loc,
-                f"Verwacht /{unit}": f"{nb.expected_value:.1f}",
-                "Band": f"{nb.lower_band:.0f} – {nb.upper_band:.0f}",
-                "Recente afwijkingen": nb.n_recent_deviations,
-                "Vertrouwen": nb.confidence,
-            })
-        st.dataframe(
-            pd.DataFrame(table_rows),
-            use_container_width=True, hide_index=True,
-        )
-
-
-def _render_nb_card_compact(loc: str, nb):
-    is_active = st.session_state.nb_selected_location == loc
-    alert_cls = "alert" if nb.n_recent_deviations > 0 else ""
-    border = f"border: 2px solid {P['accent']};" if is_active else ""
-    dev_text = (
-        f"<strong style='color:{P['high']};'>{nb.n_recent_deviations}</strong>"
-        if nb.n_recent_deviations > 0
-        else f"<strong>0</strong>"
-    )
-    st.markdown(
-        f"""
-        <div class="nb-card {alert_cls}" style="{border}">
-            <div class="name">{_html.escape(loc)}</div>
-            <div class="stat">
-                <span class="label">{t('nb_expected')}:</span>
-                <strong>{nb.expected_value:.1f}</strong>
-                · <span class="label">{t('nb_recent_dev')}:</span> {dev_text}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    label = "Geselecteerd" if is_active else "Bekijken"
-    if st.button(label, key=f"sel_{loc}",
-                 use_container_width=True,
-                 type="primary" if is_active else "secondary"):
-        st.session_state.nb_selected_location = loc
-        st.rerun()
+    st.markdown(f"<div class='section-label'>Export</div>",
+                unsafe_allow_html=True)
+    _render_exports(result, normbeelds, ds)
 
 
 def _render_normbeeld_detail(df_raw, nb, location: str, dataset_id: int,
@@ -1506,31 +1194,34 @@ def _render_normbeeld_detail(df_raw, nb, location: str, dataset_id: int,
                 st.rerun()
             selected_cats = picked_cats
     with c2:
-        method_keys = list(PREDICTION_METHODS.keys())
-        method_labels = [PREDICTION_METHODS[k] for k in method_keys]
-        current = st.session_state.nb_methods_override
-        if current is None:
-            current_labels = [PREDICTION_METHODS[m] for m in nb.methods_used]
-        else:
-            current_labels = [PREDICTION_METHODS[m] for m in current if m in PREDICTION_METHODS]
-        picked = st.multiselect(
-            "Voorspelmethodes (combineerbaar)",
-            method_labels, default=current_labels,
-            help=(
-                "Voorspelmethodes proberen de waarde voor toekomstige periodes "
-                "in te schatten. Anders dan detectiemethodes (Z-score, "
-                "Isolation Forest, Change-point) — die markeren historische "
-                "afwijkingen maar voorspellen niet. Selecteer meerdere voor "
-                "een ensemble-gemiddelde."
-            ),
-            key="nb_methods_pick",
+        recommended = _recommend_preset(nb)
+        preset_keys = list(METHOD_PRESETS.keys())
+
+        def _preset_label(k: str) -> str:
+            base = METHOD_PRESETS[k][0]
+            return f"{base}  ·  aanbevolen" if k == recommended else base
+
+        cur_preset = st.session_state.nb_preset
+        if cur_preset not in preset_keys:
+            cur_preset = "auto"
+        preset = st.selectbox(
+            "Voorspelmethode",
+            preset_keys, index=preset_keys.index(cur_preset),
+            format_func=_preset_label,
+            help="Elke optie combineert intern meerdere voorspelmethodes — "
+                 "je hoeft niets handmatig te mengen. De tool maakt de keuze; "
+                 "je kunt 'm overrulen.",
+            key="nb_preset_pick",
         )
-        picked_keys = [method_keys[method_labels.index(l)] for l in picked]
-        new_override = picked_keys if picked_keys else None
-        if new_override != st.session_state.nb_methods_override:
-            st.session_state.nb_methods_override = new_override
+        if preset != st.session_state.nb_preset:
+            st.session_state.nb_preset = preset
+            st.session_state.nb_methods_override = METHOD_PRESETS[preset][1]
             st.cache_data.clear()
             st.rerun()
+        st.caption(PRESET_HELP[preset])
+        if preset != recommended:
+            rec_label = METHOD_PRESETS[recommended][0]
+            st.caption(f"Tip: voor deze reeks ligt **{rec_label}** voor de hand.")
 
     # Volledige uitleg van de voorspelling + het normbeeld
     with st.expander("Hoe werkt de voorspelling en het normbeeld? (volledige uitleg)"):
@@ -1606,42 +1297,26 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
               f"{nb_view.lower_band:.0f} – {nb_view.upper_band:.0f}")
     c3.metric(f"Recente afwijkingen", nb_view.n_recent_deviations)
 
-    # Significante momenten (niveau-verschuivingen) optioneel tonen
-    show_cp = st.checkbox(
-        "Toon significante momenten (waar het normbeeld verschoof)",
-        value=True, key="nb_show_cp",
-    )
     hist_series = nb_view.historical.set_index("date")["actual"]
-    change_points = detect_change_points(hist_series) if show_cp else None
+    markers = _event_markers()
 
     st.caption(t("nb_band_explained"))
     render_normbeeld_chart(
         nb_view, theme=st.session_state.ui_theme, height=520,
-        change_points=change_points,
+        markers=markers,
     )
 
-    # Seizoens-indicatie + significante momenten in tekst
+    # Eigen markeringen beheren (bv. staakt-het-vuren, beleidswijziging)
+    _render_markers_manager(key_prefix="nb")
+
+    # Seizoens-indicatie in tekst
     season = seasonality_profile(hist_series, nb_view.aggregation)
-    cols = st.columns(2)
-    with cols[0]:
-        if season:
-            st.markdown(
-                f"**Seizoenspatroon** — drukst rond *{season['peak']}*, "
-                f"rustigst rond *{season['trough']}* "
-                f"(±{season['amplitude_pct']:.0f}% verschil)."
-            )
-        else:
-            st.markdown("**Seizoenspatroon** — geen duidelijk patroon.")
-    with cols[1]:
-        if change_points:
-            lines = "  \n".join(
-                f"{cp['date'].strftime('%d-%m-%Y')}: {cp['direction']} "
-                f"({cp['before']:.0f} → {cp['after']:.0f})"
-                for cp in change_points[:4]
-            )
-            st.markdown(f"**Significante momenten**  \n{lines}")
-        elif show_cp:
-            st.markdown("**Significante momenten** — geen sterke verschuiving.")
+    if season:
+        st.markdown(
+            f"**Seizoenspatroon** — drukst rond *{season['peak']}*, "
+            f"rustigst rond *{season['trough']}* "
+            f"(±{season['amplitude_pct']:.0f}% verschil)."
+        )
 
     # Waarschuw als methodes zijn geskipt (mét reden)
     if nb_view.methods_skipped:
@@ -1691,12 +1366,35 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
 # ---------------------------------------------------------------------------
 # Vergelijken: twee reeksen overlay + lag-detectie
 # ---------------------------------------------------------------------------
-def _series_picker(df, regions, key_prefix: str, default_region: str):
-    """Regio + categorie-multiselect; returnt (region, categories, label)."""
+@st.cache_data(show_spinner=False)
+def _cmp_load(dataset_id: int, data_hash: str):
+    return storage.load_observations(dataset_id)
+
+
+def _series_picker_xds(by_id: dict, key_prefix: str, default_ds_id: int,
+                       multi_dataset: bool):
+    """Kies dataset (indien meerdere) + regio + categorieën voor één reeks.
+    Returnt (series_df, region, categories, label) of None bij geen data."""
+    ids = list(by_id.keys())
+    if multi_dataset:
+        ds_id = st.selectbox(
+            "Dataset", ids,
+            format_func=lambda i: by_id[i]["name"],
+            index=ids.index(default_ds_id) if default_ds_id in ids else 0,
+            key=f"{key_prefix}_ds",
+        )
+    else:
+        ds_id = ids[0]
+    df = _cmp_load(ds_id, storage.dataset_data_hash(ds_id))
+    if df.empty or "location_name" not in df.columns \
+            or df["location_name"].isna().all():
+        st.info("Deze dataset heeft geen regio-kolom of is leeg.")
+        return None
+
+    regions = sorted(df["location_name"].dropna().unique(),
+                     key=lambda s: str(s).lower())
     region = st.selectbox(
-        "Regio", regions,
-        index=regions.index(default_region) if default_region in regions else 0,
-        key=f"{key_prefix}_region",
+        "Regio", regions, key=f"{key_prefix}_region",
     )
     cats: list[str] = []
     if "category" in df.columns and df["category"].notna().any():
@@ -1705,19 +1403,21 @@ def _series_picker(df, regions, key_prefix: str, default_region: str):
         )
         if avail:
             cats = st.multiselect(
-                "Categorieën (leeg = alle)", avail, default=[],
+                "Categorieën (leeg = alle samen)", avail, default=[],
                 key=f"{key_prefix}_cats",
             )
-    label = region if not cats else f"{region} ({', '.join(cats)})"
-    return region, cats, label
+    ds_name = by_id[ds_id]["name"]
+    parts = [region] if not cats else [f"{region} ({', '.join(cats)})"]
+    label = f"{ds_name} · {parts[0]}" if multi_dataset else parts[0]
+    return df, region, cats, label
 
 
 def page_compare():
     render_topbar(t("nav_compare"))
     st.caption(
-        "Plot twee reeksen samen en ontdek het verband: volgt de ene op de "
-        "andere, en met hoeveel vertraging? (bv. een aanvalsgolf en de "
-        "tegenreactie daarna)."
+        "Plot twee reeksen samen — uit dezelfde of uit verschillende datasets — "
+        "en ontdek het verband: volgt de ene op de andere, en met hoeveel "
+        "vertraging? (bv. RUS-aanvallen op UKR vs. UKR-aanvallen op RUS)."
     )
 
     datasets = storage.list_datasets()
@@ -1727,24 +1427,12 @@ def page_compare():
 
     by_id = {d["id"]: d for d in datasets}
     ids = list(by_id.keys())
-    if st.session_state.active_dataset_id not in ids:
-        st.session_state.active_dataset_id = ids[0]
-    chosen = st.selectbox(
-        t("ds_dataset"), ids, format_func=lambda i: by_id[i]["name"],
-        index=ids.index(st.session_state.active_dataset_id),
-        key="cmp_ds_select",
-    )
-    if chosen != st.session_state.active_dataset_id:
-        st.session_state.active_dataset_id = chosen
-        st.rerun()
-
-    df = storage.load_observations(chosen)
-    if df.empty:
-        st.warning("Dataset is leeg.")
-        return
-    if "location_name" not in df.columns or df["location_name"].isna().all():
-        st.info("Vergelijken vereist een locatie/regio-kolom in de dataset.")
-        return
+    multi = len(ids) > 1
+    if not multi:
+        st.info(
+            "Tip: voeg een tweede dataset toe (via Instellingen → Upload) om "
+            "twee databronnen te vergelijken. Nu vergelijk je binnen één dataset."
+        )
 
     # Aggregatie
     agg_options = ["daily", "weekly", "monthly"]
@@ -1753,34 +1441,32 @@ def page_compare():
         format_func=lambda k: {"daily": t("agg_daily"), "weekly": t("agg_weekly"),
                                "monthly": t("agg_monthly")}[k],
         index=agg_options.index(
-            _resolve_aggregation(df, st.session_state.aggregation)
+            _resolve_aggregation(_cmp_load(ids[0], storage.dataset_data_hash(ids[0])),
+                                 st.session_state.aggregation)
         ),
         key="cmp_agg",
     )
 
-    # Regio's gesorteerd op activiteit, voor zinnige defaults
-    region_totals = df.groupby("location_name")["value"].sum().sort_values(
-        ascending=False
-    )
-    regions = list(region_totals.index)
-    if len(regions) < 1:
-        st.info("Geen regio's beschikbaar.")
-        return
-    default_a = regions[0]
-    default_b = regions[1] if len(regions) > 1 else regions[0]
+    default_a = ids[0]
+    default_b = ids[1] if len(ids) > 1 else ids[0]
 
     st.markdown("<div class='section-label'>Twee reeksen kiezen</div>",
                 unsafe_allow_html=True)
     cA, cB = st.columns(2)
     with cA:
-        st.markdown(f"**Reeks A**")
-        reg_a, cats_a, label_a = _series_picker(df, regions, "cmp_a", default_a)
+        st.markdown("**Reeks A**")
+        pick_a = _series_picker_xds(by_id, "cmp_a", default_a, multi)
     with cB:
-        st.markdown(f"**Reeks B**")
-        reg_b, cats_b, label_b = _series_picker(df, regions, "cmp_b", default_b)
+        st.markdown("**Reeks B**")
+        pick_b = _series_picker_xds(by_id, "cmp_b", default_b, multi)
 
-    series_a = build_series(df, reg_a, cats_a, agg)
-    series_b = build_series(df, reg_b, cats_b, agg)
+    if pick_a is None or pick_b is None:
+        return
+    df_a, reg_a, cats_a, label_a = pick_a
+    df_b, reg_b, cats_b, label_b = pick_b
+
+    series_a = build_series(df_a, reg_a, cats_a, agg)
+    series_b = build_series(df_b, reg_b, cats_b, agg)
     if series_a.empty or series_b.empty:
         st.warning("Eén van de reeksen heeft geen data.")
         return
@@ -1799,7 +1485,11 @@ def page_compare():
     render_overlay(
         series_a, series_b, label_a, label_b,
         theme=st.session_state.ui_theme, shift_b_by=shift,
+        markers=_event_markers(),
     )
+
+    # Eigen markeringen ook hier beheren (bv. staakt-het-vuren-datum)
+    _render_markers_manager(key_prefix="cmp")
 
     if lag is not None:
         unit = lag.unit
@@ -1837,7 +1527,7 @@ def page_compare():
         st.info("Te weinig overlappende data voor een betrouwbare lag-analyse.")
 
 
-APP_VERSION = "0.7.0-alpha"
+APP_VERSION = "0.8.0-alpha"
 
 
 # ---------------------------------------------------------------------------
@@ -1845,12 +1535,10 @@ APP_VERSION = "0.7.0-alpha"
 # ---------------------------------------------------------------------------
 if st.session_state.show_settings:
     page_settings()
-elif st.session_state.active_page == t("nav_normbeeld"):
-    page_normbeeld()
 elif st.session_state.active_page == t("nav_compare"):
     page_compare()
 else:
-    page_data()
+    page_normbeeld()
 
 
 # Versie-footer
