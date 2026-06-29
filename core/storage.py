@@ -339,7 +339,17 @@ def list_annotation_rows(dataset_id: int) -> dict:
 # ---------------------------------------------------------------------------
 # Markeringen (handmatige gebeurtenissen op de tijdlijn)
 # ---------------------------------------------------------------------------
+def _ensure_table(table) -> None:
+    """Maak één tabel aan als hij ontbreekt. Vangt het geval op waarin een
+    oudere database (van een eerdere deploy) een nieuwere tabel mist."""
+    try:
+        table.create(_engine(), checkfirst=True)
+    except Exception:
+        pass
+
+
 def add_event(event_date: str, label: str) -> int:
+    _ensure_table(events_t)
     with _engine().begin() as con:
         result = con.execute(insert(events_t).values(
             event_date=event_date, label=label, created_at=_now_iso(),
@@ -348,10 +358,15 @@ def add_event(event_date: str, label: str) -> int:
 
 
 def list_events() -> list[dict]:
-    with _engine().connect() as con:
-        rows = con.execute(
-            select(events_t).order_by(events_t.c.event_date)
-        ).mappings().all()
+    try:
+        with _engine().connect() as con:
+            rows = con.execute(
+                select(events_t).order_by(events_t.c.event_date)
+            ).mappings().all()
+    except Exception:
+        # Tabel bestaat mogelijk nog niet in een oudere database: aanmaken.
+        _ensure_table(events_t)
+        return []
     return [
         {"id": r["id"], "event_date": r["event_date"], "label": r["label"]}
         for r in rows
@@ -359,5 +374,6 @@ def list_events() -> list[dict]:
 
 
 def delete_event(event_id: int) -> None:
+    _ensure_table(events_t)
     with _engine().begin() as con:
         con.execute(delete(events_t).where(events_t.c.id == event_id))

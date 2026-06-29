@@ -130,7 +130,11 @@ def _recommend_preset(nb) -> str:
 def _event_markers() -> list[dict]:
     """Door de analist toegevoegde markeringen, klaar om te plotten."""
     out = []
-    for e in storage.list_events():
+    try:
+        events = storage.list_events()
+    except Exception:
+        return []
+    for e in events:
         try:
             out.append({"date": pd.Timestamp(e["event_date"]),
                         "label": e["label"]})
@@ -142,7 +146,10 @@ def _event_markers() -> list[dict]:
 def _render_markers_manager(key_prefix: str = "mk"):
     """Beheer eigen markeringen: voeg datum + label toe, of verwijder.
     Gedeeld over alle grafieken (een gebeurtenis geldt voor elke reeks)."""
-    events = storage.list_events()
+    try:
+        events = storage.list_events()
+    except Exception:
+        events = []
     title = (f"Eigen markeringen ({len(events)})" if events
              else "Eigen markeringen toevoegen")
     with st.expander(title):
@@ -574,37 +581,29 @@ def cached_analysis(
 # Sidebar (Normbeeld bovenaan, geen banner, geen Instellingen-knop)
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    _logo_svg = f"""
-    <svg viewBox="0 0 48 48" width="38" height="38" fill="none"
-         xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
-      <path d="M24 3 L41 9 V23 C41 34 33.5 41.5 24 45 C14.5 41.5 7 34 7 23 V9 Z"
-            stroke="{P['accent']}" stroke-width="2.4" fill="{P['accent']}11"
-            stroke-linejoin="round"/>
-      <circle cx="24" cy="22" r="7" stroke="{P['accent']}" stroke-width="2.2"/>
-      <circle cx="24" cy="22" r="2.6" fill="{P['accent']}"/>
-      <line x1="24" y1="22" x2="24" y2="6.5" stroke="{P['accent']}"
-            stroke-width="1.4" stroke-dasharray="2 2"/>
-    </svg>
-    """
+    # Let op: HTML voor st.markdown mag GEEN regels met 4+ inspringing hebben,
+    # anders ziet Markdown het als code-blok en toont het de tags als tekst.
+    _svg = (
+        f'<svg viewBox="0 0 48 48" width="36" height="36" fill="none" '
+        f'xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
+        f'<path d="M24 3 L41 9 V23 C41 34 33.5 41.5 24 45 C14.5 41.5 7 34 7 23 V9 Z" '
+        f'stroke="{P["accent"]}" stroke-width="2.4" fill="{P["accent"]}11" '
+        f'stroke-linejoin="round"/>'
+        f'<circle cx="24" cy="22" r="7" stroke="{P["accent"]}" stroke-width="2.2"/>'
+        f'<circle cx="24" cy="22" r="2.6" fill="{P["accent"]}"/>'
+        f'<line x1="24" y1="22" x2="24" y2="6.5" stroke="{P["accent"]}" '
+        f'stroke-width="1.4" stroke-dasharray="2 2"/></svg>'
+    )
+    _wordmark = (
+        f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:1.45rem;'
+        f'font-weight:700;letter-spacing:0.18em;color:{P["accent"]};'
+        f'line-height:1.1;">{t("app_title")}</div>'
+        f'<div style="font-size:0.68rem;color:{P["text_muted"]};'
+        f'letter-spacing:0.03em;">{t("app_subtitle")}</div>'
+    )
     st.markdown(
-        f"""
-        <div style="display:flex; align-items:center; gap:10px;
-                    padding: 4px 0 2px 0;">
-            {_logo_svg}
-            <div>
-                <div style="font-family: 'JetBrains Mono', monospace;
-                            font-size: 1.45rem; font-weight: 700;
-                            letter-spacing: 0.18em; color: {P['accent']};
-                            line-height: 1.1;">
-                    {t('app_title')}
-                </div>
-                <div style="font-size: 0.68rem; color: {P['text_muted']};
-                            letter-spacing: 0.03em;">
-                    {t('app_subtitle')}
-                </div>
-            </div>
-        </div>
-        """,
+        f'<div style="display:flex;align-items:center;gap:10px;'
+        f'padding:4px 0 2px 0;">{_svg}<div>{_wordmark}</div></div>',
         unsafe_allow_html=True,
     )
     # Persistente DB actief? Toon dat; anders waarschuw voor ephemeral cloud-opslag.
