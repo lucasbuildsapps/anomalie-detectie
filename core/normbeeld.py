@@ -553,7 +553,13 @@ def compute_normbeeld(
     if location is not None and "location_name" in work.columns:
         work = work[work["location_name"] == location]
     if category is not None and "category" in work.columns:
-        work = work[work["category"] == category]
+        # category mag één waarde of een lijst (meerdere categorieën) zijn
+        if isinstance(category, (list, tuple, set)):
+            cats = list(category)
+            if cats:
+                work = work[work["category"].isin(cats)]
+        else:
+            work = work[work["category"] == category]
     if len(work) < 3:
         return None
 

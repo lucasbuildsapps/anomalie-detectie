@@ -1,17 +1,18 @@
 STRINGS = {
-    "app_title": "Anomalie-detectie",
+    "app_title": "SENTINEL",
     "app_subtitle": "Normbeeld & afwijkingsanalyse",
 
     # Sidebar (Normbeeld bovenaan)
     "nav_normbeeld": "Normbeeld",
-    "nav_data": "Data-specifics",
+    "nav_data": "Data & afwijkingen",
+    "nav_compare": "Vergelijken",
     "btn_settings": "Instellingen",
 
     "theme_label": "Weergave",
     "theme_light": "Licht",
     "theme_dark": "Donker",
 
-    # Data-specifics (was Werkruimte)
+    # Data & afwijkingen (was Werkruimte / Data-specifics)
     "ds_title": "Data-specifics",
     "ds_dataset": "Dataset",
     "ds_show_data": "Bekijk / bewerk ruwe data",
@@ -80,7 +81,9 @@ STRINGS = {
     "nb_title": "Normbeeld",
     "nb_subtitle": "Wat is normaal voor elke locatie en wat verwachten we?",
     "nb_horizon": "Forecast-horizon",
-    "nb_overview": "Overzicht per locatie",
+    "nb_region": "Regio",
+    "nb_categories": "Categorieën (meerdere mogelijk)",
+    "nb_overview": "Overzicht per regio",
     "nb_detail": "Detail",
     "nb_methods": "Voorspelmethoden (combineerbaar)",
     "nb_methods_hint": "Selecteer één of meer methodes. Het normbeeld is het gemiddelde van wat de gekozen methodes voorspellen.",

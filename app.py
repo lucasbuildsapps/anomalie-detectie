@@ -77,6 +77,7 @@ _DEFAULTS = {
     "show_more_findings": False,
     "nb_selected_location": None,
     "nb_selected_category": "Alle categorieën",
+    "nb_selected_categories": [],   # [] = alle categorieën
     "nb_methods_override": None,   # None = auto
     "nb_n_to_show": 5,
 }
@@ -428,16 +429,18 @@ def _resolve_aggregation(df: pd.DataFrame, choice: str) -> str:
 @st.cache_data(show_spinner="Backtest draait... (eenmalig per locatie)")
 def cached_detail_normbeeld(
     dataset_id: int, data_hash: str, location: str,
-    category: str | None, horizon: int, methods_key: str, aggregation: str,
+    category, horizon: int, methods_key: str, aggregation: str,
 ):
     """Detail-normbeeld voor één locatie, met backtest-gestuurde
-    methode-selectie als de gebruiker niets heeft gekozen."""
+    methode-selectie als de gebruiker niets heeft gekozen. `category` mag
+    None, een string of een tuple van categorieën zijn (hashbaar voor cache)."""
     df = storage.load_observations(dataset_id)
     if df.empty:
         return None
     methods = None if methods_key == "auto" else methods_key.split(",")
+    cat = list(category) if isinstance(category, tuple) else category
     return compute_normbeeld(
-        df, location=location, category=category,
+        df, location=location, category=cat,
         horizon_days=horizon, methods=methods,
         aggregation=aggregation, select="backtest",
     )
@@ -475,25 +478,33 @@ def cached_analysis(
 # Sidebar (Normbeeld bovenaan, geen banner, geen Instellingen-knop)
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    logo_path = Path(__file__).parent / "assets" / "logo.png"
-    try:
-        if logo_path.exists():
-            st.image(str(logo_path), use_container_width=True)
-        else:
-            st.markdown(f"### {t('app_title')}")
-    except Exception:
-        st.markdown(f"### {t('app_title')}")
-    st.caption(t("app_subtitle"))
-    # Streamlit Cloud heeft een ephemeral filesystem: data verdwijnt bij
-    # herstart. Waarschuw de gebruiker zodat dit geen verrassing is.
-    if Path("/mount/src").exists():
+    st.markdown(
+        f"""
+        <div style="padding: 4px 0 2px 0;">
+            <div style="font-family: 'JetBrains Mono', monospace;
+                        font-size: 1.5rem; font-weight: 700;
+                        letter-spacing: 0.22em; color: {P['accent']};">
+                {t('app_title')}
+            </div>
+            <div style="font-size: 0.72rem; color: {P['text_muted']};
+                        letter-spacing: 0.04em; margin-top: 2px;">
+                {t('app_subtitle')}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    # Persistente DB actief? Toon dat; anders waarschuw voor ephemeral cloud-opslag.
+    if storage.is_persistent():
+        st.caption("Verbonden met gedeelde database.")
+    elif Path("/mount/src").exists():
         st.caption(
             "⚠ Demo-omgeving: geüploade data kan bij een herstart "
             "gewist worden."
         )
     st.divider()
 
-    nav_items = [t("nav_normbeeld"), t("nav_data")]
+    nav_items = [t("nav_normbeeld"), t("nav_data"), t("nav_compare")]
     for label in nav_items:
         is_active = st.session_state.active_page == label
         wrapper_cls = "sidebar-nav sidebar-nav-active" if is_active else "sidebar-nav"
@@ -523,10 +534,13 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 # Top-right cogwheel (Instellingen)
 # ---------------------------------------------------------------------------
-def render_topbar(title: str):
+def render_topbar(title: str = ""):
     c1, c2 = st.columns([6, 1])
     with c1:
-        st.markdown(f"## {title}")
+        if title:
+            st.markdown(f"## {title}")
+        else:
+            st.write("")
     with c2:
         st.markdown("<div class='cog-button' style='text-align:right;'>",
                     unsafe_allow_html=True)
@@ -854,7 +868,7 @@ def _render_empty_state():
 
 
 def page_data():
-    render_topbar(t("ds_title"))
+    render_topbar()  # geen "Data-specifics" kop meer
     datasets = storage.list_datasets()
     if not datasets:
         _render_empty_state()
@@ -1382,62 +1396,48 @@ def page_normbeeld():
         st.warning(t("nb_no_data"))
         return
 
-    # ----- Overzicht: compacte tabel + limit -----
     unit = AGGREGATIONS[effective_agg][1]  # 'dag' / 'week' / 'maand'
     locs = list(normbeelds.keys())
     # Sorteer op aantal recente afwijkingen (alerts eerst)
     locs_sorted = sorted(locs, key=lambda l: -normbeelds[l].n_recent_deviations)
 
-    st.markdown(f"<div class='section-label'>{t('nb_overview')}</div>",
-                unsafe_allow_html=True)
-
-    c1, c2 = st.columns([1, 3])
-    with c1:
-        n_to_show = st.number_input(
-            "Toon eerste",
-            min_value=1, max_value=len(locs_sorted),
-            value=min(st.session_state.nb_n_to_show, len(locs_sorted)),
-            step=1, key="nb_n_input",
-        )
-        if n_to_show != st.session_state.nb_n_to_show:
-            st.session_state.nb_n_to_show = int(n_to_show)
-            st.rerun()
-    locs_visible = locs_sorted[:int(n_to_show)]
-
-    table_rows = []
-    for loc in locs_visible:
-        nb = normbeelds[loc]
-        table_rows.append({
-            "Locatie": loc,
-            f"Verwacht /{unit}": f"{nb.expected_value:.1f}",
-            "Band": f"{nb.lower_band:.0f} – {nb.upper_band:.0f}",
-            "Recente afwijkingen": nb.n_recent_deviations,
-            "Vertrouwen": nb.confidence,
-        })
-    st.dataframe(
-        pd.DataFrame(table_rows),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    # Detail-selector
-    if st.session_state.nb_selected_location not in locs_visible:
-        st.session_state.nb_selected_location = locs_visible[0]
+    # ----- Regio direct selecteerbaar (geen doorklik-stap) -----
+    if st.session_state.nb_selected_location not in locs_sorted:
+        st.session_state.nb_selected_location = locs_sorted[0]
     selected = st.selectbox(
-        "Detail bekijken voor",
-        locs_visible,
-        index=locs_visible.index(st.session_state.nb_selected_location)
-        if st.session_state.nb_selected_location in locs_visible else 0,
+        t("nb_region"),
+        locs_sorted,
+        index=locs_sorted.index(st.session_state.nb_selected_location),
+        format_func=lambda l: (
+            f"{l}  ·  {normbeelds[l].n_recent_deviations} recente afwijking(en)"
+        ),
         key="nb_detail_pick",
     )
     if selected != st.session_state.nb_selected_location:
         st.session_state.nb_selected_location = selected
         st.rerun()
 
-    st.divider()
     _render_normbeeld_detail(
         df_raw, normbeelds[selected], selected, ds["id"], unit, effective_agg,
     )
+
+    # ----- Overzichtstabel alle regio's (onderaan, inklapbaar) -----
+    st.divider()
+    with st.expander(f"{t('nb_overview')} ({len(locs_sorted)} regio's)"):
+        table_rows = []
+        for loc in locs_sorted:
+            nb = normbeelds[loc]
+            table_rows.append({
+                "Regio": loc,
+                f"Verwacht /{unit}": f"{nb.expected_value:.1f}",
+                "Band": f"{nb.lower_band:.0f} – {nb.upper_band:.0f}",
+                "Recente afwijkingen": nb.n_recent_deviations,
+                "Vertrouwen": nb.confidence,
+            })
+        st.dataframe(
+            pd.DataFrame(table_rows),
+            use_container_width=True, hide_index=True,
+        )
 
 
 def _render_nb_card_compact(loc: str, nb):
@@ -1477,25 +1477,29 @@ def _render_normbeeld_detail(df_raw, nb, location: str, dataset_id: int,
         unsafe_allow_html=True,
     )
 
-    # Categorie + methode-selectie naast elkaar
+    # Categorie (meerdere) + methode-selectie naast elkaar
+    selected_cats: list[str] = []
     c1, c2 = st.columns([1, 2])
     with c1:
         if "category" in df_raw.columns and df_raw["category"].notna().any():
-            cats = [t("nb_all_categories")] + sorted(
+            avail_cats = sorted(
                 df_raw[df_raw["location_name"] == location]["category"]
                 .dropna().unique().tolist()
             )
-            cat_choice = st.selectbox(
-                t("nb_category"), cats,
-                index=cats.index(st.session_state.nb_selected_category)
-                if st.session_state.nb_selected_category in cats else 0,
-                key="nb_cat_select",
+            default_cats = [
+                c for c in st.session_state.nb_selected_categories
+                if c in avail_cats
+            ]
+            picked_cats = st.multiselect(
+                t("nb_categories"), avail_cats, default=default_cats,
+                help="Leeg = alle categorieën samen. Kies er één of meer om "
+                     "het normbeeld tot die categorieën te beperken.",
+                key="nb_cats_select",
             )
-            if cat_choice != st.session_state.nb_selected_category:
-                st.session_state.nb_selected_category = cat_choice
+            if picked_cats != st.session_state.nb_selected_categories:
+                st.session_state.nb_selected_categories = picked_cats
                 st.rerun()
-        else:
-            cat_choice = t("nb_all_categories")
+            selected_cats = picked_cats
     with c2:
         method_keys = list(PREDICTION_METHODS.keys())
         method_labels = [PREDICTION_METHODS[k] for k in method_keys]
@@ -1523,12 +1527,43 @@ def _render_normbeeld_detail(df_raw, nb, location: str, dataset_id: int,
             st.cache_data.clear()
             st.rerun()
 
-    # Methode-uitleg uitklapbaar
-    with st.expander("Wat doet elke voorspelmethode? (kies de beste voor jouw data)"):
+    # Volledige uitleg van de voorspelling + het normbeeld
+    with st.expander("Hoe werkt de voorspelling en het normbeeld? (volledige uitleg)"):
         st.markdown(
-            "De tool kiest automatisch een set methodes op basis van "
-            "de data-eigenschappen. Wil je zelf kiezen of vergelijken, "
-            "lees per methode wat ze doen:"
+            """
+**In het kort**: de tool leert wat normaal is per regio, voorspelt het
+verwachte niveau vooruit, en markeert wat daarbuiten valt. In vijf stappen:
+
+**1. Aggregeren.** De ruwe waarnemingen worden opgeteld per dag, week of
+maand (de tool kiest de schaal op basis van hoe lang je reeks loopt; je
+kunt dit bovenaan overrulen). Een onvolledige laatste periode wordt
+weggelaten, anders lijkt die kunstmatig laag.
+
+**2. Methodes vergelijken via backtest.** Vijf voorspelmethodes worden
+*eerlijk getest*: we houden recente periodes achter, laten elke methode die
+voorspellen, en vergelijken met wat er écht gebeurde (rolling-origin
+backtest). De fout per methode zie je in de tabel hieronder onder de
+grafiek. Lager = beter.
+
+**3. Beste combinatie kiezen.** De twee methodes met de laagste fout worden
+gecombineerd tot het normbeeld (gemiddelde van hun voorspellingen). Je ziet
+de losse methode-lijnen als stippellijnen in de grafiek — zo zie je waar ze
+het eens of oneens zijn. Wil je zelf kiezen? Gebruik de methode-selector.
+
+**4. Tolerantieband bepalen.** Rond de verwachte lijn ligt een band: het
+*normale bereik*. Die is gebaseerd op hoe ver de werkelijkheid in het
+verleden van de voorspelling afweek (quantiles van de residuen), waarbij
+**recente** periodes zwaarder wegen. De band is asymmetrisch en hangt niet
+zinloos op nul — hij volgt het huidige regime.
+
+**5. Afwijkingen markeren.** Elke waarneming buiten de band wordt
+gemarkeerd: rood = boven, blauw-driehoek = onder. Dát zijn de punten die
+aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
+
+---
+
+**De vijf voorspelmethodes:**
+"""
         )
         for m_key, m_label in PREDICTION_METHODS.items():
             details = PREDICTION_METHOD_DETAILS.get(m_key, {})
@@ -1542,18 +1577,10 @@ def _render_normbeeld_detail(df_raw, nb, location: str, dataset_id: int,
                 unsafe_allow_html=True,
             )
             st.markdown("")
-        st.info(
-            "**Auto-keuze**: voor lange seizoensgebonden data kiest de tool "
-            "STL + ETS + Seasonal naive. Voor kortere of stationaire data "
-            "ETS + Rolling. Voor zeer korte reeksen Median + Rolling. "
-            "Wil je dat de tool **echt de beste methode** kiest via "
-            "backtesting (hold-out test), zeg het — dat kost extra "
-            "rekentijd maar is rigoureuzer."
-        )
 
     # Herbereken normbeeld met categorie-filter / nieuwe methodes.
     # Zonder handmatige keuze: backtest kiest de empirisch beste methodes.
-    cat_filter = None if cat_choice == t("nb_all_categories") else cat_choice
+    cat_filter = tuple(selected_cats) if selected_cats else None
     methods_for_view = st.session_state.nb_methods_override
     methods_key = (
         "auto" if methods_for_view is None else ",".join(methods_for_view)

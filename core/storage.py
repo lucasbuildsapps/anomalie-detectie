@@ -19,6 +19,19 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def is_persistent() -> bool:
+    """True wanneer een externe (persistente) database is geconfigureerd.
+    Volledig geïmplementeerd in de Postgres-laag; hier de SQLite-default."""
+    import os
+    if os.environ.get("DATABASE_URL"):
+        return True
+    try:
+        import streamlit as st
+        return bool(st.secrets.get("database_url"))
+    except Exception:
+        return False
+
+
 @contextmanager
 def _conn():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)

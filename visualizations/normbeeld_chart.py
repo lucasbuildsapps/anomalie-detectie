@@ -9,13 +9,17 @@ from core.normbeeld import PREDICTION_METHODS, Normbeeld
 
 
 LIGHT = {
-    "band":          "rgba(46, 139, 87, 0.16)",
-    "expected":      "#2e8b57",
+    # Band = neutrale groene envelop; rand-lijntjes maken de grenzen scherp.
+    "band":          "rgba(46, 139, 87, 0.10)",
+    "band_edge":     "rgba(46, 139, 87, 0.45)",
+    # Verwacht-lijn in een sterk contrasterende kleur (niet hetzelfde groen
+    # als de band), zodat het normbeeld als duidelijke LIJN leest.
+    "expected":      "#1a4d8c",
     "actual":        "#0a1929",
     "above":         "#c53030",
     "below":         "#1a4d8c",
     "now":           "#6c7886",
-    "forecast_band": "rgba(120, 160, 200, 0.16)",
+    "forecast_band": "rgba(120, 160, 200, 0.14)",
     "forecast_line": "#1a4d8c",
     "plot_bg":       "#ffffff",
     "grid":          "#eef0f3",
@@ -29,13 +33,14 @@ LIGHT = {
     },
 }
 DARK = {
-    "band":          "rgba(76, 218, 134, 0.22)",
-    "expected":      "#4cda86",
+    "band":          "rgba(76, 218, 134, 0.14)",
+    "band_edge":     "rgba(76, 218, 134, 0.50)",
+    "expected":      "#79b8ff",
     "actual":        "#e6edf3",
     "above":         "#f87171",
     "below":         "#58a6ff",
     "now":           "#8b949e",
-    "forecast_band": "rgba(94, 158, 255, 0.20)",
+    "forecast_band": "rgba(94, 158, 255, 0.18)",
     "forecast_line": "#79b8ff",
     "plot_bg":       "#161b22",
     "grid":          "#2a3038",
@@ -66,21 +71,24 @@ def render_normbeeld_chart(
 
     fig = go.Figure()
 
-    # --- Historische band ---
+    # --- Historische band (met scherpe rand-lijnen) ---
     fig.add_trace(go.Scatter(
         x=hist["date"], y=hist["upper"],
-        mode="lines", line=dict(color="rgba(0,0,0,0)", width=0),
-        name="_band_upper", showlegend=False, hoverinfo="skip",
+        mode="lines",
+        line=dict(color=p["band_edge"], width=1, dash="dot"),
+        name="Bovengrens normbeeld", showlegend=False,
+        hovertemplate="bovengrens %{y:.1f}<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
         x=hist["date"], y=hist["lower"],
-        mode="lines", line=dict(color="rgba(0,0,0,0)", width=0),
+        mode="lines",
+        line=dict(color=p["band_edge"], width=1, dash="dot"),
         fill="tonexty", fillcolor=p["band"],
-        name="Normbeeld",
-        hoverinfo="skip",
+        name="Normbeeld (band)",
+        hovertemplate="ondergrens %{y:.1f}<extra></extra>",
     ))
 
-    # --- Werkelijke waarden (gekleurde punten) ---
+    # --- Werkelijke waarden (gekleurde punten, dunne lijn) ---
     marker_colors = [
         p["above"] if s == "boven"
         else (p["below"] if s == "onder" else p["actual"])
@@ -92,19 +100,20 @@ def render_normbeeld_chart(
     fig.add_trace(go.Scatter(
         x=hist["date"], y=hist["actual"],
         mode="lines+markers",
-        line=dict(color=p["actual"], width=1.4),
+        line=dict(color=p["actual"], width=1.0),
+        opacity=0.85,
         marker=dict(color=marker_colors, size=marker_sizes,
                     line=dict(width=0)),
         name="Werkelijk",
         hovertemplate="%{x|%d %b}: %{y}<extra></extra>",
     ))
 
-    # --- Ensemble-verwacht (historische lijn, prominent) ---
+    # --- Normbeeld-lijn: het verwachte niveau, prominent en bovenop ---
     fig.add_trace(go.Scatter(
         x=hist["date"], y=hist["expected"],
         mode="lines",
-        line=dict(color=p["expected"], width=2.4),
-        name="Verwacht (ensemble)",
+        line=dict(color=p["expected"], width=3),
+        name="Normbeeld (verwacht)",
         hovertemplate="%{x|%d %b}: verwacht %{y:.1f}<extra></extra>",
     ))
 
