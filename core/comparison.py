@@ -171,11 +171,16 @@ def detect_change_points(
 
 
 def seasonality_profile(series: pd.Series, aggregation: str) -> dict | None:
-    """Gemiddelde per weekdag (daily) of per maand (weekly/monthly).
+    """Gemiddelde per uur (hourly), weekdag (daily) of maand (weekly/monthly).
     Returnt {labels, values, peak, trough} of None als niet zinvol."""
     if len(series) < 14:
         return None
-    if aggregation == "daily":
+    if aggregation == "hourly":
+        grp = pd.Series(series.values, index=series.index).groupby(
+            series.index.hour
+        ).mean()
+        labels = [f"{int(h):02d}u" for h in grp.index]
+    elif aggregation == "daily":
         grp = pd.Series(series.values, index=series.index).groupby(
             series.index.dayofweek
         ).mean()

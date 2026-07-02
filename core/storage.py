@@ -163,6 +163,17 @@ def create_dataset(name: str, description: str, column_mapping: dict) -> int:
         return int(result.inserted_primary_key[0])
 
 
+def update_dataset_mapping(dataset_id: int, column_mapping: dict) -> None:
+    """Werk de mapping/metadata van een dataset bij (bv. gap-policy of
+    bron-betrouwbaarheid). Metadata leeft in dezelfde JSON als de mapping."""
+    with _engine().begin() as con:
+        con.execute(
+            datasets.update().where(datasets.c.id == dataset_id).values(
+                column_mapping=json.dumps(column_mapping)
+            )
+        )
+
+
 def delete_dataset(dataset_id: int) -> None:
     with _engine().begin() as con:
         # Expliciet kinderen verwijderen (SQLite handhaaft FK-cascade niet altijd)

@@ -529,10 +529,19 @@ def _resolve_aggregation(df: pd.DataFrame, choice: str) -> str:
     return choice
 
 
+def _dataset_meta(dataset_id: int) -> dict:
+    """Mapping + metadata (gap-policy, betrouwbaarheid) van één dataset."""
+    for d in storage.list_datasets():
+        if d["id"] == dataset_id:
+            return d["column_mapping"] or {}
+    return {}
+
+
 @st.cache_data(show_spinner="Backtest draait... (eenmalig per locatie)")
 def cached_detail_normbeeld(
     dataset_id: int, data_hash: str, location: str,
     category, horizon: int, methods_key: str, aggregation: str,
+    gap_policy: str = "zero",
 ):
     """Detail-normbeeld voor één locatie, met backtest-gestuurde
     methode-selectie als de gebruiker niets heeft gekozen. `category` mag
@@ -545,14 +554,14 @@ def cached_detail_normbeeld(
     return compute_normbeeld(
         df, location=location, category=cat,
         horizon_days=horizon, methods=methods,
-        aggregation=aggregation, select="backtest",
+        aggregation=aggregation, select="backtest", gap_policy=gap_policy,
     )
 
 
 @st.cache_data(show_spinner="Analyseren... (eerste keer ~10-30 sec voor grote datasets)")
 def cached_analysis(
     dataset_id: int, data_hash: str, horizon: int,
-    aggregation: str, methods_key: str,
+    aggregation: str, methods_key: str, gap_policy: str = "zero",
 ):
     df_raw = storage.load_observations(dataset_id)
     if df_raw.empty:
@@ -571,7 +580,7 @@ def cached_analysis(
     methods = None if methods_key == "auto" else methods_key.split(",")
     normbeelds = compute_all_normbeelds(
         df_raw, horizon_days=horizon, methods=methods,
-        aggregation=effective_agg,
+        aggregation=effective_agg, gap_policy=gap_policy,
     )
     alerts = detect_recent_alerts(normbeelds, aggregation=effective_agg)
     return df_raw, df, result, normbeelds, alerts, effective_agg
@@ -732,6 +741,66 @@ def _settings_datasets():
                     st.cache_data.clear()
                     st.success(t("msg_deleted"))
                     st.rerun()
+
+            # --- Metadata: gap-policy + bron-betrouwbaarheid ---
+            st.markdown("---")
+            st.markdown("**Data-interpretatie & bron**")
+            meta = dict(ds["column_mapping"] or {})
+            from core.normbeeld import GAP_POLICIES
+            gp_keys = list(GAP_POLICIES.keys())
+            cur_gp = meta.get("gap_policy", "zero")
+            gp = st.selectbox(
+                "Wat betekent een periode zonder waarnemingen?",
+                gp_keys,
+                format_func=lambda k: GAP_POLICIES[k],
+                index=gp_keys.index(cur_gp) if cur_gp in gp_keys else 0,
+                key=f"gp_{ds['id']}",
+                help="Bepaalt hoe gaten in de data de baseline beïnvloeden. "
+                     "'0' past bij event-meldingen (geen melding = niets "
+                     "gebeurd); 'masker' past bij collectie-uitval (we weten "
+                     "het simpelweg niet).",
+            )
+            c1, c2 = st.columns(2)
+            with c1:
+                rel_opts = ["", "A", "B", "C", "D", "E", "F"]
+                rel_labels = {
+                    "": "(niet gezet)", "A": "A — betrouwbaar",
+                    "B": "B — meestal betrouwbaar",
+                    "C": "C — redelijk betrouwbaar",
+                    "D": "D — meestal niet betrouwbaar",
+                    "E": "E — onbetrouwbaar", "F": "F — niet te beoordelen",
+                }
+                cur_rel = meta.get("source_reliability", "")
+                rel = st.selectbox(
+                    "Bron-betrouwbaarheid", rel_opts,
+                    format_func=lambda k: rel_labels[k],
+                    index=rel_opts.index(cur_rel) if cur_rel in rel_opts else 0,
+                    key=f"rel_{ds['id']}",
+                )
+            with c2:
+                cred_opts = ["", "1", "2", "3", "4", "5", "6"]
+                cred_labels = {
+                    "": "(niet gezet)", "1": "1 — bevestigd",
+                    "2": "2 — waarschijnlijk juist", "3": "3 — mogelijk juist",
+                    "4": "4 — twijfelachtig", "5": "5 — onwaarschijnlijk",
+                    "6": "6 — niet te beoordelen",
+                }
+                cur_cred = meta.get("info_credibility", "")
+                cred = st.selectbox(
+                    "Informatie-geloofwaardigheid", cred_opts,
+                    format_func=lambda k: cred_labels[k],
+                    index=cred_opts.index(cur_cred) if cur_cred in cred_opts else 0,
+                    key=f"cred_{ds['id']}",
+                )
+            if st.button("Metadata opslaan", key=f"meta_sv_{ds['id']}",
+                         type="secondary"):
+                meta["gap_policy"] = gp
+                meta["source_reliability"] = rel
+                meta["info_credibility"] = cred
+                storage.update_dataset_mapping(ds["id"], meta)
+                st.cache_data.clear()
+                st.success("Metadata opgeslagen.")
+                st.rerun()
 
             st.markdown("---")
             st.markdown("**Ruwe data bekijken / bewerken**")
@@ -1095,6 +1164,8 @@ def page_normbeeld():
             st.rerun()
 
     ds = by_id[chosen]
+    ds_meta = ds["column_mapping"] or {}
+    gap_policy = ds_meta.get("gap_policy", "zero")
     methods_key = (
         "auto" if st.session_state.nb_methods_override is None
         else ",".join(st.session_state.nb_methods_override)
@@ -1102,17 +1173,39 @@ def page_normbeeld():
     data_hash = storage.dataset_data_hash(ds["id"])
     cached = cached_analysis(
         ds["id"], data_hash, st.session_state.horizon_days,
-        st.session_state.aggregation, methods_key,
+        st.session_state.aggregation, methods_key, gap_policy,
     )
     if cached is None:
         st.warning("Dataset is leeg.")
         return
     df_raw, df, result, normbeelds, alerts, effective_agg = cached
 
+    # Bron-metadata + datakwaliteit (compacte regel onder de selector)
+    from core.normbeeld import data_quality
+    q = data_quality(df_raw, effective_agg)
+    meta_bits = []
+    rel = ds_meta.get("source_reliability") or ""
+    cred = ds_meta.get("info_credibility") or ""
+    if rel or cred:
+        meta_bits.append(f"Bron: {rel}{cred} (Admiraliteitsschaal)")
+    if q["coverage"] is not None:
+        cov_txt = f"dekking {q['coverage'] * 100:.0f}%"
+        if q["coverage"] < 0.7:
+            cov_txt += " ⚠"
+        meta_bits.append(cov_txt)
+    if q["staleness_days"] is not None:
+        stale_txt = f"laatste waarneming {q['staleness_days']}d geleden"
+        if q["staleness_days"] > 30:
+            stale_txt += " ⚠"
+        meta_bits.append(stale_txt)
+    meta_bits.append(f"gap-policy: {gap_policy}")
+    st.caption(" · ".join(meta_bits))
+
     # Aggregatie-toggle ook op normbeeld-pagina (zodat hij ook hier werkt)
-    agg_options = ["auto", "daily", "weekly", "monthly"]
+    agg_options = ["auto", "hourly", "daily", "weekly", "monthly"]
     agg_labels = {
         "auto":    f"Auto (aanbevolen: {AGGREGATIONS[effective_agg][1]})",
+        "hourly":  t("agg_hourly"),
         "daily":   t("agg_daily"),
         "weekly":  t("agg_weekly"),
         "monthly": t("agg_monthly"),
@@ -1120,7 +1213,8 @@ def page_normbeeld():
     new_agg = st.selectbox(
         t("agg_label"), agg_options,
         format_func=lambda k: agg_labels[k],
-        index=agg_options.index(st.session_state.aggregation),
+        index=agg_options.index(st.session_state.aggregation)
+        if st.session_state.aggregation in agg_options else 0,
         key="nb_agg_pick",
     )
     if new_agg != st.session_state.aggregation:
@@ -1289,6 +1383,7 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
         dataset_id, storage.dataset_data_hash(dataset_id),
         location, cat_filter,
         st.session_state.horizon_days, methods_key, aggregation,
+        _dataset_meta(dataset_id).get("gap_policy", "zero"),
     )
     if nb_view is None:
         st.warning(t("nb_no_data"))
@@ -1608,10 +1703,11 @@ def page_compare():
         )
 
     # Aggregatie
-    agg_options = ["daily", "weekly", "monthly"]
+    agg_options = ["hourly", "daily", "weekly", "monthly"]
     agg = st.selectbox(
         t("agg_label"), agg_options,
-        format_func=lambda k: {"daily": t("agg_daily"), "weekly": t("agg_weekly"),
+        format_func=lambda k: {"hourly": t("agg_hourly"),
+                               "daily": t("agg_daily"), "weekly": t("agg_weekly"),
                                "monthly": t("agg_monthly")}[k],
         index=agg_options.index(
             _resolve_aggregation(_cmp_load(ids[0], storage.dataset_data_hash(ids[0])),

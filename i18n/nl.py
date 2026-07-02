@@ -57,6 +57,7 @@ STRINGS = {
     # Aggregatie
     "agg_label": "Tijdschaal",
     "agg_daily": "Dagelijks",
+    "agg_hourly": "Per uur",
     "agg_weekly": "Wekelijks",
     "agg_monthly": "Maandelijks",
     "agg_auto_hint": "Aanbevolen voor deze data: {label}",

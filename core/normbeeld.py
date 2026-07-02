@@ -113,9 +113,17 @@ PREDICTION_METHOD_DETAILS = {
 }
 
 AGGREGATIONS = {
+    "hourly":  ("h",  "uur",   "uren"),
     "daily":   ("D",  "dag",   "dagen"),
     "weekly":  ("W",  "week",  "weken"),
     "monthly": ("MS", "maand", "maanden"),
+}
+
+# Gap-policy: wat betekent een periode zonder waarnemingen?
+GAP_POLICIES = {
+    "zero":        "Geen rapport = geen activiteit (waarde 0)",
+    "interpolate": "Gat = ontbrekende collectie, schat tussenliggende waarde",
+    "mask":        "Gat = onbekend; niet meenemen in baseline of afwijkingen",
 }
 
 
@@ -155,10 +163,28 @@ class Normbeeld:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def _aggregate(df: pd.DataFrame, freq: str) -> pd.Series:
+def _aggregate(
+    df: pd.DataFrame, freq: str, gap_policy: str = "zero",
+) -> tuple[pd.Series, pd.Series]:
+    """Aggregeer naar (waarde-reeks, observed-mask).
+
+    `observed` geeft per bucket aan of er daadwerkelijk waarnemingen waren.
+    Gap-policy bepaalt hoe lege buckets in de reeks terechtkomen:
+    - zero: 0 (geen rapport = geen activiteit) — default voor event-data
+    - interpolate: lineair geschat (gat = collectie-uitval, activiteit liep door)
+    - mask: geschat vóór het modelfitten, maar uitgesloten van band-berekening
+      en nooit als afwijking geflagd (waarheid onbekend)
+    """
     s = df.copy()
     s["timestamp"] = pd.to_datetime(s["timestamp"])
-    out = s.set_index("timestamp")["value"].resample(freq).sum().fillna(0)
+    grouped = s.set_index("timestamp")["value"].resample(freq)
+    sums = grouped.sum()
+    observed = grouped.count() > 0
+
+    if gap_policy in ("interpolate", "mask") and observed.any():
+        out = sums.where(observed).interpolate(limit_direction="both").fillna(0)
+    else:
+        out = sums.fillna(0)
 
     # Drop incomplete trailing bucket bij week/maand-aggregatie: als de data
     # halverwege de periode stopt, lijkt de laatste bucket kunstmatig laag en
@@ -173,7 +199,9 @@ def _aggregate(df: pd.DataFrame, freq: str) -> pd.Series:
             # 'W'-labels liggen op het einde van de week
             if data_max < out.index[-1] - pd.Timedelta(days=1):
                 out = out.iloc[:-1]
-    return out
+
+    observed = observed.reindex(out.index).fillna(False)
+    return out, observed
 
 
 def _autocorr_at(series: pd.Series, lag: int) -> float:
@@ -201,6 +229,11 @@ def _detect_period(series: pd.Series, agg: str) -> int | None:
     if agg == "weekly":
         if n >= 110 and _autocorr_at(series, 52) > 0.3:
             return 52
+        return None
+    if agg == "hourly":
+        # Dag-ritme (24u) is verreweg het gangbaarst op uur-niveau
+        if n >= 50 and _autocorr_at(series, 24) > 0.3:
+            return 24
         return None
 
     if n < 28:
@@ -537,6 +570,7 @@ def _combine_predictions(predictions: list[tuple], smooth_window: int = 3,
 
 def _quantile_band(
     series: pd.Series, expected_hist: np.ndarray,
+    observed_mask: pd.Series | None = None,
 ) -> tuple[float, float, float]:
     """Asymmetrische band-offsets uit residual-quantiles met recency-weging.
 
@@ -554,6 +588,13 @@ def _quantile_band(
     half_life = max(10.0, n / 3.0)
     ages = np.arange(n, dtype=float)[::-1]  # 0 = nieuwste punt
     weights = np.power(0.5, ages / half_life)
+
+    # Mask-policy: niet-geobserveerde buckets tellen niet mee in de band
+    # (hun 'residu' is een artefact van interpolatie, geen werkelijkheid).
+    if observed_mask is not None:
+        mask_arr = np.asarray(observed_mask, dtype=float)
+        if mask_arr.sum() >= 5:  # genoeg echte punten over
+            weights = weights * mask_arr
 
     q_lo = _weighted_quantile(resid, alpha, weights)
     q_hi = _weighted_quantile(resid, 1.0 - alpha, weights)
@@ -600,6 +641,7 @@ def compute_normbeeld(
     methods: list[str] | None = None,
     aggregation: str = "daily",
     select: str = "heuristic",  # 'heuristic' (snel) of 'backtest' (rigoureus)
+    gap_policy: str = "zero",
 ) -> Normbeeld | None:
     work = df.copy()
     if location is not None and "location_name" in work.columns:
@@ -616,12 +658,13 @@ def compute_normbeeld(
         return None
 
     freq = AGGREGATIONS.get(aggregation, AGGREGATIONS["daily"])[0]
-    series = _aggregate(work, freq)
+    series, observed = _aggregate(work, freq, gap_policy)
     if len(series) < 5:
         return None
 
     period = _detect_period(series, aggregation)
-    fallback_period = {"daily": 7, "weekly": 4, "monthly": 12}.get(aggregation, 7)
+    fallback_period = {"hourly": 24, "daily": 7, "weekly": 4,
+                       "monthly": 12}.get(aggregation, 7)
     use_period = period if period else fallback_period
 
     # --- Methode-selectie ---
@@ -681,7 +724,10 @@ def compute_normbeeld(
         return np.clip(arr, 0, None) if nonneg else np.asarray(arr, dtype=float)
 
     # --- Quantile-band (asymmetrisch, recency-gewogen) ---
-    q_lo, q_hi, band_alpha = _quantile_band(series, expected_hist)
+    q_lo, q_hi, band_alpha = _quantile_band(
+        series, expected_hist,
+        observed_mask=observed if gap_policy == "mask" else None,
+    )
 
     # Invariant: upper >= lower, óók na flooring van alleen de ondergrens
     # (anders kan een pathologische fit de band ondersteboven zetten).
@@ -732,6 +778,15 @@ def compute_normbeeld(
     ranks = np.argsort(np.argsort(resid_all))
     hist["resid_pctl"] = ranks / max(len(resid_all) - 1, 1)
 
+    # Mask-policy: niet-geobserveerde buckets zijn geen afwijking maar
+    # 'geen data' — de werkelijkheid daar is onbekend. In de grafiek tonen
+    # we ze als gat (NaN) in plaats van een verzonnen waarde.
+    if gap_policy == "mask" and (~observed).any():
+        mask_idx = ~observed.values
+        hist.loc[mask_idx, "status"] = "geen data"
+        hist.loc[mask_idx, "actual"] = np.nan
+        hist.loc[mask_idx, "resid_pctl"] = np.nan
+
     # `expected_value` = HUIDIG normbeeld (laatste 25% van historie)
     tail_n = max(3, len(hist) // 4)
     expected_value = float(hist["expected"].tail(tail_n).mean())
@@ -739,9 +794,12 @@ def compute_normbeeld(
     upper_band = float(hist["upper"].tail(tail_n).mean())
 
     # "Recent" schaalt met de aggregatie (consistent met detect_recent_alerts:
-    # 14 dagen / 8 weken / 6 maanden), niet blind 14 periodes.
-    recent_periods = {"daily": 14, "weekly": 8, "monthly": 6}.get(aggregation, 14)
-    n_recent_dev = int((hist.tail(recent_periods)["status"] != "normaal").sum())
+    # 48 uur / 14 dagen / 8 weken / 6 maanden), niet blind 14 periodes.
+    recent_periods = {"hourly": 48, "daily": 14, "weekly": 8,
+                      "monthly": 6}.get(aggregation, 14)
+    n_recent_dev = int(
+        hist.tail(recent_periods)["status"].isin(["boven", "onder"]).sum()
+    )
 
     # Per-methode reeksen voor visualisatie (clip komt al uit _forecast_with)
     per_method_forecast: dict = {}
@@ -792,6 +850,7 @@ def compute_all_normbeelds(
     aggregation: str = "daily",
     min_rows_per_location: int = 5,
     max_locations: int = 50,
+    gap_policy: str = "zero",
 ) -> dict[str, Normbeeld]:
     """Normbeelden voor elke locatie met genoeg data (heuristische selectie,
     snel). Voor de rigoureuze backtest-variant: compute_normbeeld(select=
@@ -799,7 +858,7 @@ def compute_all_normbeelds(
     if "location_name" not in df.columns or df["location_name"].isna().all():
         nb = compute_normbeeld(
             df, horizon_days=horizon_days,
-            methods=methods, aggregation=aggregation,
+            methods=methods, aggregation=aggregation, gap_policy=gap_policy,
         )
         return {"Alle locaties": nb} if nb else {}
 
@@ -811,16 +870,41 @@ def compute_all_normbeelds(
     for loc in locations:
         nb = compute_normbeeld(
             df, location=loc, horizon_days=horizon_days,
-            methods=methods, aggregation=aggregation,
+            methods=methods, aggregation=aggregation, gap_policy=gap_policy,
         )
         if nb is not None:
             out[loc] = nb
     return out
 
 
-_RECENT_WINDOW_DAYS = {"daily": 14, "weekly": 56, "monthly": 180}
+def data_quality(df: pd.DataFrame, aggregation: str = "daily") -> dict:
+    """Datakwaliteits-indicatoren voor een dataset (of subset).
+
+    - coverage: fractie van de periodes in de spanne mét waarnemingen
+    - staleness_days: dagen tussen laatste waarneming en vandaag
+    - n_rows, span_days
+    """
+    out = {"n_rows": len(df), "coverage": None,
+           "staleness_days": None, "span_days": None}
+    if df.empty or "timestamp" not in df.columns:
+        return out
+    ts = pd.to_datetime(df["timestamp"]).dropna()
+    if ts.empty:
+        return out
+    freq = AGGREGATIONS.get(aggregation, AGGREGATIONS["daily"])[0]
+    buckets = pd.Series(1, index=ts).resample(freq).count()
+    out["coverage"] = float((buckets > 0).mean())
+    out["span_days"] = int((ts.max() - ts.min()).days)
+    out["staleness_days"] = int(
+        (pd.Timestamp.now().normalize() - ts.max().normalize()).days
+    )
+    return out
+
+
+_RECENT_WINDOW_DAYS = {"hourly": 2, "daily": 14, "weekly": 56, "monthly": 180}
 _RECENT_WINDOW_LABEL = {
-    "daily": "14 dagen", "weekly": "8 weken", "monthly": "6 maanden",
+    "hourly": "48 uur", "daily": "14 dagen",
+    "weekly": "8 weken", "monthly": "6 maanden",
 }
 
 
@@ -843,7 +927,7 @@ def detect_recent_alerts(
         cutoff = last_date - pd.Timedelta(days=days_back)
         recent = nb.historical[nb.historical["date"] >= cutoff]
         for _, row in recent.iterrows():
-            if row["status"] != "normaal":
+            if row["status"] in ("boven", "onder"):
                 pctl = float(row.get("resid_pctl", 0.5))
                 extremer_dan = pctl if row["status"] == "boven" else 1.0 - pctl
                 alerts.append({
