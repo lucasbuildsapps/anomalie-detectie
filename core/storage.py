@@ -295,7 +295,20 @@ def load_observations(dataset_id: int) -> pd.DataFrame:
         df = pd.read_sql_query(stmt, con)
     if df.empty:
         return df
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    # Defensief normaliseren: data uit oudere imports of andere DB-backends
+    # kan afwijkende types bevatten (strings, Decimals, gemengde formaten).
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce",
+                                     format="mixed")
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    for col in ("lat", "lon"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    for col in ("category", "location_name"):
+        if col in df.columns:
+            df[col] = df[col].apply(
+                lambda v: str(v) if v is not None and not pd.isna(v) else None
+            )
+    df = df.dropna(subset=["timestamp"]).reset_index(drop=True)
     extras_series = df["extras"].apply(lambda s: json.loads(s) if s else {})
     extras_df = pd.json_normalize(extras_series)
     df = pd.concat([df.drop(columns=["extras"]), extras_df], axis=1)

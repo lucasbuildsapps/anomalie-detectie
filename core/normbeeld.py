@@ -868,10 +868,21 @@ def compute_all_normbeelds(
 
     out: dict[str, Normbeeld] = {}
     for loc in locations:
-        nb = compute_normbeeld(
-            df, location=loc, horizon_days=horizon_days,
-            methods=methods, aggregation=aggregation, gap_policy=gap_policy,
-        )
+        # Eén pathologische locatie (rare data, edge-case in een model) mag
+        # nooit de hele analyse laten crashen: skip met traceback in de logs.
+        try:
+            nb = compute_normbeeld(
+                df, location=loc, horizon_days=horizon_days,
+                methods=methods, aggregation=aggregation,
+                gap_policy=gap_policy,
+            )
+        except Exception:
+            import sys as _sys
+            import traceback as _tb
+            print(f">>> normbeeld faalde voor locatie {loc!r}:",
+                  file=_sys.stderr, flush=True)
+            _tb.print_exc(file=_sys.stderr)
+            continue
         if nb is not None:
             out[loc] = nb
     return out

@@ -2038,14 +2038,27 @@ APP_VERSION = "0.9.0-alpha"
 # ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
-if st.session_state.show_settings:
-    page_settings()
-elif st.session_state.active_page == t("nav_overview"):
-    page_overview()
-elif st.session_state.active_page == t("nav_compare"):
-    page_compare()
-else:
-    page_normbeeld()
+# Globale vangrail: een fout in één pagina mag de app niet in Streamlit's
+# geredigeerde 'Oh no'-scherm laten belanden. Toon de echte traceback in een
+# expander (interne tool) en log naar stderr voor de Cloud-logs.
+try:
+    if st.session_state.show_settings:
+        page_settings()
+    elif st.session_state.active_page == t("nav_overview"):
+        page_overview()
+    elif st.session_state.active_page == t("nav_compare"):
+        page_compare()
+    else:
+        page_normbeeld()
+except Exception:
+    _tb_text = traceback.format_exc()
+    print(_tb_text, file=sys.stderr, flush=True)
+    st.error(
+        "Er ging iets mis bij het renderen van deze pagina. De analyse-"
+        "onderdelen die wél lukten blijven bruikbaar via de andere pagina's."
+    )
+    with st.expander("Technische details (voor foutmelding/beheerder)"):
+        st.code(_tb_text)
 
 
 # Versie-footer
