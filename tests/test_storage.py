@@ -80,6 +80,19 @@ def test_events_sorted_by_date():
     assert dates == sorted(dates)
 
 
+def test_saved_views_roundtrip():
+    vid = storage.save_view("Kyiv wekelijks", {
+        "dataset_id": 1, "location": "Kyiv", "categories": ["X"],
+        "preset": "season", "horizon": 30, "aggregation": "weekly",
+    })
+    views = storage.list_views()
+    assert len(views) == 1
+    assert views[0]["payload"]["location"] == "Kyiv"
+    assert views[0]["payload"]["horizon"] == 30
+    storage.delete_view(vid)
+    assert storage.list_views() == []
+
+
 def test_annotations_roundtrip():
     ds = storage.create_dataset("test", "", {})
     storage.upsert_annotation(ds, "key1", "notitie", "bevestigd")

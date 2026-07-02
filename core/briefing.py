@@ -330,3 +330,117 @@ def briefing_filename(dataset_name: str) -> str:
     safe = "".join(c if c.isalnum() else "_" for c in dataset_name)[:40]
     stamp = datetime.now().strftime("%Y%m%d_%H%M")
     return f"briefing_{safe}_{stamp}.pdf"
+
+
+def build_sitrep_pdf(
+    result: AutoPilotResult,
+    normbeelds: dict,
+    alerts: list[dict],
+    dataset_name: str,
+    meta: dict | None = None,
+    quality: dict | None = None,
+) -> bytes:
+    """Compact situatierapport (1-2 pagina's): situatie, afwijkingen,
+    verwachting, betrouwbaarheid. Puntiger dan de volledige briefing."""
+    meta = meta or {}
+    quality = quality or {}
+    res = result.results
+
+    pdf = BriefingPDF(header_left="SENTINEL  //  SITREP")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 9, "SITREP", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(*MUTED_RGB)
+    pdf.cell(0, 5, _safe(f"{dataset_name} - "
+                         f"{datetime.now().strftime('%Y-%m-%d %H:%M')}"),
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0)
+
+    # --- 1. Situatie ---
+    _section_title(pdf, "1. Situatie")
+    ts = pd.to_datetime(res["timestamp"]) if "timestamp" in res.columns else None
+    period = (f"{ts.min().date()} t/m {ts.max().date()}"
+              if ts is not None and not ts.empty else "-")
+    pairs = [("Periode", period), ("Observaties", len(res)),
+             ("Regio's met normbeeld", len(normbeelds))]
+    rel = meta.get("source_reliability") or ""
+    cred = meta.get("info_credibility") or ""
+    if rel or cred:
+        pairs.append(("Bron (Admiraliteit)", f"{rel}{cred}"))
+    if quality.get("coverage") is not None:
+        pairs.append(("Data-dekking", f"{quality['coverage'] * 100:.0f}%"))
+    if quality.get("staleness_days") is not None:
+        pairs.append(("Laatste waarneming",
+                      f"{quality['staleness_days']} dagen geleden"))
+    _key_value_table(pdf, pairs)
+
+    # --- 2. Afwijkingen ---
+    _section_title(pdf, "2. Recente afwijkingen van het normbeeld")
+    if not alerts:
+        pdf.set_font("Helvetica", "I", 10)
+        pdf.multi_cell(0, 5, _safe("Geen recente afwijkingen."))
+    else:
+        pdf.set_font("Helvetica", "", 9)
+        for a in alerts[:12]:
+            arrow = "boven" if a["richting"] == "boven" else "onder"
+            extr = a.get("extremer_dan")
+            extr_txt = (f", extremer dan {min(extr, 0.999) * 100:.0f}% "
+                        f"v.d. historie" if extr is not None else "")
+            pdf.multi_cell(0, 4.6, _safe(
+                f"- {a['datum']}  {a['locatie']}: {a['waarde']} "
+                f"({arrow} band {a['lower']:.0f}-{a['upper']:.0f}{extr_txt})"
+            ))
+
+    # --- 3. Verwachting ---
+    _section_title(pdf, "3. Verwachting (komende periode)")
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(70, 6, "Regio")
+    pdf.cell(35, 6, "Verwacht", align="R")
+    pdf.cell(45, 6, "Normale band", align="R")
+    pdf.cell(0, 6, "Vertrouwen", align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    # Top-regio's op recente afwijkingen, dan volume
+    ranked = sorted(
+        normbeelds.items(),
+        key=lambda kv: (-kv[1].n_recent_deviations, -kv[1].expected_value),
+    )
+    for loc, nb in ranked[:8]:
+        if pdf.get_y() > 260:
+            break
+        nxt = nb.forecast.iloc[0] if not nb.forecast.empty else None
+        exp_txt = f"{nxt['expected']:.0f}" if nxt is not None else "-"
+        band_txt = (f"{nxt['lower']:.0f}-{nxt['upper']:.0f}"
+                    if nxt is not None else "-")
+        pdf.cell(70, 5, _safe(str(loc))[:38])
+        pdf.cell(35, 5, exp_txt, align="R")
+        pdf.cell(45, 5, band_txt, align="R")
+        pdf.cell(0, 5, _safe(nb.confidence), align="R",
+                 new_x="LMARGIN", new_y="NEXT")
+
+    # --- 4. Duiding ---
+    _section_title(pdf, "4. Duiding en beperkingen")
+    gap = meta.get("gap_policy", "zero")
+    gap_txt = {
+        "zero": "periodes zonder meldingen tellen als 0 activiteit",
+        "interpolate": "gaten in de data zijn geschat (collectie-uitval)",
+        "mask": "gaten in de data zijn uitgesloten van de analyse",
+    }.get(gap, gap)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.multi_cell(0, 4.8, _safe(
+        f"Normbeeld en banden zijn geleerd uit de historische data zelf "
+        f"(geen vaste drempels); recente periodes wegen zwaarder. "
+        f"Gap-interpretatie: {gap_txt}. Afwijkingen zijn statistische "
+        f"signalen, geen operationele conclusies - duiding door de analist "
+        f"blijft vereist."
+    ))
+
+    return bytes(pdf.output())
+
+
+def sitrep_filename(dataset_name: str) -> str:
+    safe = "".join(c if c.isalnum() else "_" for c in dataset_name)[:40]
+    stamp = datetime.now().strftime("%Y%m%d_%H%M")
+    return f"sitrep_{safe}_{stamp}.pdf"

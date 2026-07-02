@@ -3,6 +3,7 @@ STRINGS = {
     "app_subtitle": "Normbeeld & afwijkingsanalyse",
 
     # Sidebar (Normbeeld bovenaan)
+    "nav_overview": "Overzicht",
     "nav_normbeeld": "Normbeeld",
     "nav_data": "Data & afwijkingen",
     "nav_compare": "Vergelijken",

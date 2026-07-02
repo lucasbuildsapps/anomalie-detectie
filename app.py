@@ -128,6 +128,79 @@ def _recommend_preset(nb) -> str:
     return "trend"
 
 
+def _render_saved_views():
+    """Analytische workflows opslaan/herladen: dataset + regio + categorieën
+    + methode-preset + horizon + tijdschaal in één klik terug."""
+    try:
+        views = storage.list_views()
+    except Exception:
+        views = []
+    title = f"Opgeslagen weergaves ({len(views)})" if views \
+        else "Weergave opslaan"
+    with st.expander(title):
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            name = st.text_input(
+                "Naam voor huidige weergave", key="sv_name",
+                placeholder="bv. Kyiv wekelijks — seizoensmodel",
+            )
+        with c2:
+            st.write("")
+            st.write("")
+            if st.button("Opslaan", key="sv_save", use_container_width=True,
+                         type="secondary"):
+                if name.strip():
+                    storage.save_view(name.strip(), {
+                        "dataset_id": st.session_state.active_dataset_id,
+                        "location": st.session_state.nb_selected_location,
+                        "categories": st.session_state.nb_selected_categories,
+                        "preset": st.session_state.nb_preset,
+                        "methods": st.session_state.nb_methods_override,
+                        "horizon": st.session_state.horizon_days,
+                        "aggregation": st.session_state.aggregation,
+                    })
+                    st.success("Weergave opgeslagen.")
+                    st.rerun()
+                else:
+                    st.warning("Geef een naam op.")
+        for v in views:
+            p = v["payload"]
+            cc1, cc2, cc3 = st.columns([3, 1, 1])
+            with cc1:
+                st.markdown(_html.escape(v["name"]))
+            with cc2:
+                if st.button("Laden", key=f"sv_ld_{v['id']}",
+                             use_container_width=True, type="secondary"):
+                    st.session_state.active_dataset_id = p.get("dataset_id")
+                    st.session_state.nb_selected_location = p.get("location")
+                    st.session_state.nb_selected_categories = p.get(
+                        "categories") or []
+                    st.session_state.nb_preset = p.get("preset", "auto")
+                    st.session_state.nb_methods_override = p.get("methods")
+                    st.session_state.horizon_days = int(p.get("horizon", 14))
+                    st.session_state.aggregation = p.get("aggregation", "auto")
+                    # Widget-keys ook zetten: een al-geïnstantieerde widget
+                    # negeert anders zijn index/default bij de rerun.
+                    for wk, val in (
+                        ("nb_ds_select", p.get("dataset_id")),
+                        ("nb_detail_pick", p.get("location")),
+                        ("nb_cats_select", p.get("categories") or []),
+                        ("nb_preset_pick", p.get("preset", "auto")),
+                        ("nb_horizon_input", int(p.get("horizon", 14))),
+                        ("nb_agg_pick", p.get("aggregation", "auto")),
+                    ):
+                        try:
+                            st.session_state[wk] = val
+                        except Exception:
+                            pass
+                    st.rerun()
+            with cc3:
+                if st.button("Verwijder", key=f"sv_del_{v['id']}",
+                             use_container_width=True):
+                    storage.delete_view(v["id"])
+                    st.rerun()
+
+
 def _event_markers() -> list[dict]:
     """Door de analist toegevoegde markeringen, klaar om te plotten."""
     out = []
@@ -626,7 +699,7 @@ with st.sidebar:
         )
     st.divider()
 
-    nav_items = [t("nav_normbeeld"), t("nav_compare")]
+    nav_items = [t("nav_overview"), t("nav_normbeeld"), t("nav_compare")]
     for label in nav_items:
         is_active = st.session_state.active_page == label
         wrapper_cls = "sidebar-nav sidebar-nav-active" if is_active else "sidebar-nav"
@@ -1096,9 +1169,11 @@ def _render_data_editor(ds: dict):
             st.error(f"Opslaan mislukt: {e}")
 
 
-def _render_exports(result, normbeelds, ds: dict):
-    """PDF-briefing + Excel-export (gebruikt op de normbeeld-pagina)."""
-    c1, c2 = st.columns(2)
+def _render_exports(result, normbeelds, ds: dict, alerts=None):
+    """Briefing + SITREP + Excel (gebruikt op de normbeeld-pagina)."""
+    from core.briefing import build_sitrep_pdf, sitrep_filename
+    from core.normbeeld import data_quality as _dq
+    c1, c_sitrep, c2 = st.columns(3)
     with c1:
         try:
             pdf_bytes = build_briefing_pdf(
@@ -1112,6 +1187,22 @@ def _render_exports(result, normbeelds, ds: dict):
             )
         except Exception as e:
             st.error(f"PDF: {e}")
+    with c_sitrep:
+        try:
+            df_q = storage.load_observations(ds["id"])
+            sitrep_bytes = build_sitrep_pdf(
+                result, normbeelds, alerts or [], ds["name"],
+                meta=ds.get("column_mapping") or {},
+                quality=_dq(df_q),
+            )
+            st.download_button(
+                "SITREP (PDF)", data=sitrep_bytes,
+                file_name=sitrep_filename(ds["name"]),
+                mime="application/pdf",
+                use_container_width=True, type="secondary",
+            )
+        except Exception as e:
+            st.error(f"SITREP: {e}")
     with c2:
         try:
             xlsx_bytes = build_excel_export(
@@ -1130,6 +1221,7 @@ def _render_exports(result, normbeelds, ds: dict):
 def page_normbeeld():
     render_topbar(t("nb_title"))
     st.caption(t("nb_subtitle"))
+    _render_saved_views()
 
     datasets = storage.list_datasets()
     if not datasets:
@@ -1255,11 +1347,11 @@ def page_normbeeld():
         _render_afwijkingen_section(nb_view, result, alerts, ds,
                                     selected, unit)
 
-    # ----- Export (briefing + Excel) -----
+    # ----- Export (briefing + SITREP + Excel) -----
     st.divider()
     st.markdown(f"<div class='section-label'>Export</div>",
                 unsafe_allow_html=True)
-    _render_exports(result, normbeelds, ds)
+    _render_exports(result, normbeelds, ds, alerts=alerts)
 
 
 def _render_normbeeld_detail(df_raw, nb, location: str, dataset_id: int,
@@ -1687,6 +1779,95 @@ def _render_afwijkingen_section(nb_view, result, alerts, ds: dict,
 
 
 # ---------------------------------------------------------------------------
+# Overzicht: executive dashboard over alle datasets (status-stoplicht)
+# ---------------------------------------------------------------------------
+def _dataset_status(n_alerts: int, quality: dict) -> tuple[str, str]:
+    """(kleur, label) op basis van recente afwijkingen en datakwaliteit."""
+    stale = quality.get("staleness_days")
+    cov = quality.get("coverage")
+    if n_alerts >= 3 or (stale is not None and stale > 60):
+        return ("#c53030", "aandacht vereist")
+    if n_alerts >= 1 or (cov is not None and cov < 0.7) \
+            or (stale is not None and stale > 30):
+        return ("#c05621", "let op")
+    return ("#2e8b57", "normaal beeld")
+
+
+def page_overview():
+    render_topbar(t("nav_overview"))
+    st.caption(
+        "Statusbeeld over alle datasets: recente afwijkingen, datakwaliteit "
+        "en verwachting in één oogopslag."
+    )
+    datasets = storage.list_datasets()
+    if not datasets:
+        _render_empty_state()
+        return
+
+    from core.normbeeld import data_quality
+    for ds in datasets:
+        meta = ds["column_mapping"] or {}
+        gap_policy = meta.get("gap_policy", "zero")
+        try:
+            data_hash = storage.dataset_data_hash(ds["id"])
+            cached = cached_analysis(
+                ds["id"], data_hash, st.session_state.horizon_days,
+                "auto", "auto", gap_policy,
+            )
+        except Exception as e:
+            st.warning(f"{ds['name']}: analyse mislukt ({e})")
+            continue
+        if cached is None:
+            st.caption(f"{ds['name']} — leeg")
+            continue
+        df_raw, _, _, normbeelds, alerts, effective_agg = cached
+        q = data_quality(df_raw, effective_agg)
+        color, label = _dataset_status(len(alerts), q)
+
+        rel = meta.get("source_reliability") or ""
+        cred = meta.get("info_credibility") or ""
+        bron = f" · bron {rel}{cred}" if (rel or cred) else ""
+        stale = (f" · laatste data {q['staleness_days']}d geleden"
+                 if q.get("staleness_days") is not None else "")
+        cov = (f" · dekking {q['coverage'] * 100:.0f}%"
+               if q.get("coverage") is not None else "")
+
+        st.markdown(
+            f"""
+            <div class="finding-card" style="--card-color: {color};">
+                <div class="finding-header">
+                    <span class="severity-pill"
+                          style="background: {color};">{label.upper()}</span>
+                    <span class="finding-loc">{_html.escape(ds['name'])}</span>
+                </div>
+                <div class="finding-meta">
+                    {len(alerts)} recente afwijking(en) ·
+                    {len(normbeelds)} regio's · {q['n_rows']} rijen
+                    {bron}{stale}{cov}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if alerts:
+            top = alerts[:3]
+            rows = "".join(
+                f"<div class='alert-row'>"
+                f"{pd.Timestamp(a['datum']).strftime('%d-%m-%Y')} · "
+                f"{_html.escape(str(a['locatie']))} · {a['waarde']} "
+                f"({'boven' if a['richting'] == 'boven' else 'onder'} band)"
+                f"</div>"
+                for a in top
+            )
+            st.markdown(rows, unsafe_allow_html=True)
+        if st.button(f"Open in Normbeeld →", key=f"ov_open_{ds['id']}",
+                     type="secondary"):
+            st.session_state.active_dataset_id = ds["id"]
+            st.session_state.active_page = t("nav_normbeeld")
+            st.rerun()
+
+
+# ---------------------------------------------------------------------------
 # Vergelijken: twee reeksen overlay + lag-detectie
 # ---------------------------------------------------------------------------
 @st.cache_data(show_spinner=False)
@@ -1851,7 +2032,7 @@ def page_compare():
         st.info("Te weinig overlappende data voor een betrouwbare lag-analyse.")
 
 
-APP_VERSION = "0.8.0-alpha"
+APP_VERSION = "0.9.0-alpha"
 
 
 # ---------------------------------------------------------------------------
@@ -1859,6 +2040,8 @@ APP_VERSION = "0.8.0-alpha"
 # ---------------------------------------------------------------------------
 if st.session_state.show_settings:
     page_settings()
+elif st.session_state.active_page == t("nav_overview"):
+    page_overview()
 elif st.session_state.active_page == t("nav_compare"):
     page_compare()
 else:

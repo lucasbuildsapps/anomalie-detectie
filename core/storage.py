@@ -78,6 +78,16 @@ events_t = Table(
     Column("created_at", String(64), nullable=False),
 )
 
+# Opgeslagen weergaves: de complete selectie van een analist (dataset, regio,
+# categorieën, methode-preset, horizon, tijdschaal) als herlaadbare workflow.
+saved_views_t = Table(
+    "saved_views", _metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("name", String(255), nullable=False),
+    Column("payload", Text, nullable=False),
+    Column("created_at", String(64), nullable=False),
+)
+
 
 # ---------------------------------------------------------------------------
 # Engine (per URL gecachet zodat tests die DB_PATH monkeypatchen werken)
@@ -388,3 +398,37 @@ def delete_event(event_id: int) -> None:
     _ensure_table(events_t)
     with _engine().begin() as con:
         con.execute(delete(events_t).where(events_t.c.id == event_id))
+
+
+# ---------------------------------------------------------------------------
+# Opgeslagen weergaves (analytische workflows)
+# ---------------------------------------------------------------------------
+def save_view(name: str, payload: dict) -> int:
+    _ensure_table(saved_views_t)
+    with _engine().begin() as con:
+        result = con.execute(insert(saved_views_t).values(
+            name=name, payload=json.dumps(payload), created_at=_now_iso(),
+        ))
+        return int(result.inserted_primary_key[0])
+
+
+def list_views() -> list[dict]:
+    try:
+        with _engine().connect() as con:
+            rows = con.execute(
+                select(saved_views_t).order_by(saved_views_t.c.name)
+            ).mappings().all()
+    except Exception:
+        _ensure_table(saved_views_t)
+        return []
+    return [
+        {"id": r["id"], "name": r["name"],
+         "payload": json.loads(r["payload"])}
+        for r in rows
+    ]
+
+
+def delete_view(view_id: int) -> None:
+    _ensure_table(saved_views_t)
+    with _engine().begin() as con:
+        con.execute(delete(saved_views_t).where(saved_views_t.c.id == view_id))
