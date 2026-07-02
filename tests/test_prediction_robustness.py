@@ -218,6 +218,34 @@ def test_tiny_dataset_returns_none_not_crash():
                              horizon_days=7) is None
 
 
+def test_resid_percentile_present_and_extreme_for_spike():
+    """De anomalie-percentiel moet bestaan en ~1.0 zijn voor een grote spike."""
+    rng = np.random.default_rng(2)
+    vals = np.maximum(0, 5 + rng.normal(0, 1, 90))
+    vals[70] = 60.0
+    s = _daily_series(vals)
+    nb = compute_normbeeld(_df_from_series(s), location="X",
+                           horizon_days=7, aggregation="daily")
+    assert "resid_pctl" in nb.historical.columns
+    pctl = nb.historical.iloc[70]["resid_pctl"]
+    assert pctl > 0.95, f"spike-percentiel te laag: {pctl}"
+    assert nb.historical["resid_pctl"].between(0, 1).all()
+
+
+def test_alerts_carry_extremer_dan():
+    from core.normbeeld import detect_recent_alerts
+    rng = np.random.default_rng(2)
+    vals = np.maximum(0, 5 + rng.normal(0, 1, 90))
+    vals[-2] = 60.0  # recente spike
+    s = _daily_series(vals)
+    nb = compute_normbeeld(_df_from_series(s), location="X",
+                           horizon_days=7, aggregation="daily")
+    alerts = detect_recent_alerts({"X": nb}, aggregation="daily")
+    assert alerts, "recente spike moet een alert geven"
+    assert "extremer_dan" in alerts[0]
+    assert alerts[0]["extremer_dan"] > 0.9
+
+
 def test_spike_flags_itself_with_default_methods():
     """Een 10x-spike moet als 'boven' geflagd worden, ook nu rolling geen
     leakage meer heeft."""

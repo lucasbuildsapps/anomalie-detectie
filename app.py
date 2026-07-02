@@ -1151,9 +1151,14 @@ def page_normbeeld():
         st.session_state.nb_selected_location = selected
         st.rerun()
 
-    _render_normbeeld_detail(
+    nb_view = _render_normbeeld_detail(
         df_raw, normbeelds[selected], selected, ds["id"], unit, effective_agg,
     )
+
+    # ----- Afwijkingen (kern-capability) -----
+    if nb_view is not None:
+        _render_afwijkingen_section(nb_view, result, alerts, ds,
+                                    selected, unit)
 
     # ----- Export (briefing + Excel) -----
     st.divider()
@@ -1360,6 +1365,175 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
         f"Actieve methodes: {nb_view.method_used} · "
         f"{nb_view.n_history_periods} {AGGREGATIONS[nb_view.aggregation][2]} historie"
     )
+    return nb_view
+
+
+# ---------------------------------------------------------------------------
+# Afwijkingen-sectie (kern-capability: alerts + ensemble + annotaties + kaart)
+# ---------------------------------------------------------------------------
+def _pctl_label(row) -> str:
+    """'extremer dan X% van de historie' voor een afwijkings-rij."""
+    pctl = float(row.get("resid_pctl", 0.5))
+    extremer = pctl if row["status"] == "boven" else 1.0 - pctl
+    return f"extremer dan {min(extremer, 0.999) * 100:.0f}% van de historie"
+
+
+def _render_annotation_widget(dataset_id: int, date_iso: str, location: str,
+                              key_suffix: str):
+    """Compacte notitie + status per afwijking (analist-oordeel)."""
+    key = anno.finding_key(date_iso, location, None)
+    existing = anno.get_annotation(dataset_id, key) or {}
+    status_txt = anno.STATUS_LABELS.get(existing.get("status", ""), "")
+    label = f"Notitie ({status_txt})" if existing else "Notitie toevoegen"
+    with st.expander(label):
+        status_opts = list(anno.STATUS_LABELS.keys())
+        cur = existing.get("status", "open")
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            new_status = st.selectbox(
+                t("anno_status"), status_opts,
+                format_func=lambda s: anno.STATUS_LABELS[s],
+                index=status_opts.index(cur) if cur in status_opts else 0,
+                key=f"an_st_{key_suffix}",
+            )
+        with c2:
+            new_note = st.text_area(
+                t("anno_note"), value=existing.get("note", ""),
+                key=f"an_nt_{key_suffix}", height=70,
+            )
+        if st.button(t("anno_save"), key=f"an_sv_{key_suffix}",
+                     type="secondary"):
+            anno.save_annotation(dataset_id, key, new_note, new_status)
+            st.success(t("anno_saved"))
+
+
+def _render_afwijkingen_section(nb_view, result, alerts, ds: dict,
+                                location: str, unit: str):
+    """Eén samenhangende afwijkingen-sectie: (1) deze regio, (2) alle
+    regio's incl. ensemble-bevindingen, (3) kaart bij geo-data."""
+    st.divider()
+    st.markdown("<div class='section-label'>Afwijkingen</div>",
+                unsafe_allow_html=True)
+
+    res = result.results
+    has_geo = (
+        "lat" in res.columns and "lon" in res.columns
+        and res["lat"].notna().any() and res["lon"].notna().any()
+    )
+    labels = ["Deze regio", "Alle regio's"]
+    if has_geo:
+        labels.append("Kaart")
+    tabs = st.tabs(labels)
+
+    # --- Tab 1: afwijkingen van de geselecteerde regio (band-gebaseerd) ---
+    with tabs[0]:
+        dev = nb_view.historical[
+            nb_view.historical["status"] != "normaal"
+        ].sort_values("date", ascending=False)
+        if dev.empty:
+            st.caption("Geen afwijkingen van het normbeeld in deze regio.")
+        else:
+            st.caption(
+                f"{len(dev)} waarnemingen buiten het normbeeld "
+                f"(hele historie, meest recent eerst)."
+            )
+            for i, (_, row) in enumerate(dev.head(10).iterrows()):
+                d_str = pd.Timestamp(row["date"]).strftime("%d-%m-%Y")
+                richting = "boven band" if row["status"] == "boven" else "onder band"
+                st.markdown(
+                    f"<div class='alert-row'>{d_str} · "
+                    f"<strong>{row['actual']:.0f}</strong> per {unit} "
+                    f"({richting}, verwacht {row['lower']:.0f}–{row['upper']:.0f}) "
+                    f"· {_pctl_label(row)}</div>",
+                    unsafe_allow_html=True,
+                )
+                _render_annotation_widget(
+                    ds["id"], pd.Timestamp(row["date"]).date().isoformat(),
+                    location, key_suffix=f"reg_{i}",
+                )
+
+    # --- Tab 2: dataset-breed — recente alerts + ensemble-bevindingen ---
+    with tabs[1]:
+        if alerts:
+            st.markdown("**Recente afwijkingen (alle regio's)**")
+            rows = ""
+            for a in alerts[:10]:
+                arrow = "boven band" if a["richting"] == "boven" else "onder band"
+                extr = a.get("extremer_dan")
+                extr_txt = (f" · extremer dan {min(extr, 0.999)*100:.0f}% v.d. historie"
+                            if extr is not None else "")
+                rows += (
+                    f"<div class='alert-row'>"
+                    f"{pd.Timestamp(a['datum']).strftime('%d-%m-%Y')} · "
+                    f"{_html.escape(str(a['locatie']))} · "
+                    f"{a['waarde']} ({arrow}, verwacht "
+                    f"{a['lower']:.0f}–{a['upper']:.0f}){extr_txt}</div>"
+                )
+            st.markdown(rows, unsafe_allow_html=True)
+        else:
+            st.caption("Geen recente afwijkingen in de dataset.")
+
+        # Ensemble-bevindingen: 5 onafhankelijke detectie-algoritmes stemmen
+        findings = build_findings(result, top_n=40)
+        strong = [f for f in findings if f["severity"] in ("hoog", "midden")]
+        weak = [f for f in findings if f["severity"] == "laag"]
+        if strong:
+            st.markdown("**Bevestigd door meerdere detectie-algoritmes**")
+            st.caption(
+                "Naast het normbeeld draaien 5 onafhankelijke detectie-"
+                "algoritmes. Punten waar een meerderheid het over eens is:"
+            )
+            sev_color = {"hoog": P["high"], "midden": P["mid"]}
+            for i, f in enumerate(strong[:6]):
+                exp = f["explanation"]
+                st.markdown(
+                    f"""
+                    <div class="finding-card"
+                         style="--card-color: {sev_color[f['severity']]};">
+                        <div class="finding-header">
+                            <span class="severity-pill severity-{f['severity']}">
+                                {f['severity'].upper()}</span>
+                            <span class="finding-loc">{_html.escape(str(f['locatie']))}</span>
+                            <span class="finding-date">
+                                {pd.Timestamp(f['datum']).strftime('%d-%m-%Y')}</span>
+                        </div>
+                        <div class="finding-stat">{_html.escape(exp['observation'])}</div>
+                        <div class="finding-meta">
+                            {f['stemmen']}/{f['totaal_methodes']} algoritmes:
+                            {_html.escape(', '.join(f['methodes_aan']))}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                _render_annotation_widget(ds["id"], f["datum"],
+                                          str(f["locatie"]),
+                                          key_suffix=f"ens_{i}")
+        if weak:
+            with st.expander(
+                f"Laag-vertrouwen signalen ({len(weak)}) — 2 algoritmes, "
+                f"mogelijk vals alarm"
+            ):
+                rows = "".join(
+                    f"<div class='alert-row'>"
+                    f"{pd.Timestamp(f['datum']).strftime('%d-%m-%Y')} · "
+                    f"{_html.escape(str(f['locatie']))} · {f['waarde']}</div>"
+                    for f in weak[:30]
+                )
+                st.markdown(rows, unsafe_allow_html=True)
+
+    # --- Tab 3: kaart (geomap + heatmap) ---
+    if has_geo:
+        with tabs[2]:
+            from core.registry import get_visualizations
+            vizs = get_visualizations()
+            for name, v in vizs.items():
+                if "kaart" in name.lower():
+                    v.render(res, time_col="timestamp", value_col="value")
+            for name, v in vizs.items():
+                if "heatmap" in name.lower():
+                    st.markdown(f"**{v.name}**")
+                    v.render(res, time_col="timestamp", value_col="value")
 
 
 # ---------------------------------------------------------------------------

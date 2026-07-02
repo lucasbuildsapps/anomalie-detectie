@@ -725,6 +725,13 @@ def compute_normbeeld(
     hist.loc[hist["actual"] > hist["upper"], "status"] = "boven"
     hist.loc[hist["actual"] < hist["lower"], "status"] = "onder"
 
+    # Anomalie-percentiel: hoe extreem is dit punt t.o.v. de hele historie?
+    # Empirische rang van het residu (0 = extreem laag, 1 = extreem hoog).
+    # Voor 'boven'-punten lees je pctl, voor 'onder'-punten (1 - pctl).
+    resid_all = series.values.astype(float) - np.asarray(expected_hist)
+    ranks = np.argsort(np.argsort(resid_all))
+    hist["resid_pctl"] = ranks / max(len(resid_all) - 1, 1)
+
     # `expected_value` = HUIDIG normbeeld (laatste 25% van historie)
     tail_n = max(3, len(hist) // 4)
     expected_value = float(hist["expected"].tail(tail_n).mean())
@@ -837,6 +844,8 @@ def detect_recent_alerts(
         recent = nb.historical[nb.historical["date"] >= cutoff]
         for _, row in recent.iterrows():
             if row["status"] != "normaal":
+                pctl = float(row.get("resid_pctl", 0.5))
+                extremer_dan = pctl if row["status"] == "boven" else 1.0 - pctl
                 alerts.append({
                     "datum": pd.Timestamp(row["date"]).date().isoformat(),
                     "locatie": loc,
@@ -845,6 +854,7 @@ def detect_recent_alerts(
                     "lower": float(row["lower"]),
                     "upper": float(row["upper"]),
                     "richting": row["status"],
+                    "extremer_dan": extremer_dan,  # 0-1: aandeel historie dat minder extreem is
                 })
     alerts.sort(key=lambda a: a["datum"], reverse=True)
     return alerts
