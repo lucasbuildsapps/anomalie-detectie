@@ -176,11 +176,33 @@ def _aggregate(df: pd.DataFrame, freq: str) -> pd.Series:
     return out
 
 
+def _autocorr_at(series: pd.Series, lag: int) -> float:
+    """Autocorrelatie op één specifieke lag (0 bij te weinig data)."""
+    x = series.values.astype(float) - series.values.mean()
+    if len(x) <= lag or x.std() == 0:
+        return 0.0
+    a, b = x[:-lag], x[lag:]
+    denom = np.sqrt((a * a).sum() * (b * b).sum())
+    return float((a * b).sum() / denom) if denom > 0 else 0.0
+
+
 def _detect_period(series: pd.Series, agg: str) -> int | None:
-    """Periode-detectie via autocorrelatie. Voor weekly/monthly minder zinvol."""
-    if agg != "daily":
-        return None
+    """Periode-detectie via autocorrelatie, per aggregatie-niveau.
+
+    - daily: vrije zoektocht (lags 2-60) — vindt week/maand-ritmes.
+    - monthly: check specifiek lag 12 (jaarcyclus), vereist >= 25 maanden.
+    - weekly: check lag 52 (jaarcyclus), vereist >= 110 weken.
+    """
     n = len(series)
+    if agg == "monthly":
+        if n >= 25 and _autocorr_at(series, 12) > 0.3:
+            return 12
+        return None
+    if agg == "weekly":
+        if n >= 110 and _autocorr_at(series, 52) > 0.3:
+            return 52
+        return None
+
     if n < 28:
         return None
     x = series.values.astype(float) - series.values.mean()
@@ -189,12 +211,7 @@ def _detect_period(series: pd.Series, agg: str) -> int | None:
     max_lag = min(60, n // 3)
     best_lag, best_corr = None, 0.0
     for lag in range(2, max_lag + 1):
-        a = x[:-lag]
-        b = x[lag:]
-        denom = np.sqrt((a * a).sum() * (b * b).sum())
-        if denom <= 0:
-            continue
-        corr = float((a * b).sum() / denom)
+        corr = _autocorr_at(series, lag)
         if corr > best_corr:
             best_corr = corr
             best_lag = lag
@@ -304,7 +321,7 @@ def _stl_forecast(series: pd.Series, period: int, horizon: int):
     trend = stl.trend
     seasonal = stl.seasonal
     resid = stl.resid
-    expected_hist = (trend + seasonal).clip(lower=0).values
+    expected_hist = (trend + seasonal).values
     std = float(np.std(resid))
 
     look = min(14, len(trend))
@@ -314,11 +331,14 @@ def _stl_forecast(series: pd.Series, period: int, horizon: int):
         slope, intercept = np.polyfit(x, y, 1)
     else:
         slope, intercept = 0.0, float(y[-1])
+
+    # Fase-uitlijning: seasonal_last[j] hoort bij absolute positie n-period+j,
+    # dus fase (n+j) mod period. Toekomstige stap i (positie n+i) heeft
+    # dezelfde fase als seasonal_last[i % period] — NIET (i+1) % period.
     seasonal_last = seasonal.iloc[-period:].values
-    future_expected = np.maximum(
+    future_expected = (
         intercept + slope * (np.arange(horizon) + look)
-        + np.array([seasonal_last[(i + 1) % period] for i in range(horizon)]),
-        0,
+        + np.array([seasonal_last[i % period] for i in range(horizon)])
     )
     return expected_hist, future_expected, std
 
@@ -346,8 +366,8 @@ def _ets_forecast(series: pd.Series, period: int, horizon: int):
         )
         fit = model.fit(optimized=True)
 
-    expected_hist = np.clip(fit.fittedvalues.values, 0, None)
-    future_expected = np.clip(fit.forecast(horizon).values, 0, None)
+    expected_hist = fit.fittedvalues.values
+    future_expected = fit.forecast(horizon).values
     resid = series.values - expected_hist
     std = float(np.std(resid))
     return expected_hist, future_expected, std
@@ -355,10 +375,15 @@ def _ets_forecast(series: pd.Series, period: int, horizon: int):
 
 def _rolling_forecast(series: pd.Series, horizon: int):
     w = min(7, max(2, len(series) // 3))
-    rolling_mean = series.rolling(window=w, min_periods=2).mean().bfill()
+    # Verwachting op t gebruikt alleen data VÓÓR t (shift), anders dempt een
+    # spike zijn eigen detectie (leakage).
+    shifted = series.shift(1)
+    rolling_mean = shifted.rolling(window=w, min_periods=1).mean()
+    rolling_mean.iloc[0] = float(series.iloc[0])  # geen verleden op t=0
     std = float(series.std() or 0.0)
     expected_hist = rolling_mean.values
-    future_expected = np.full(horizon, float(rolling_mean.iloc[-1]))
+    # Forecast mag wél alle bekende data gebruiken (laatste w punten).
+    future_expected = np.full(horizon, float(series.tail(w).mean()))
     return expected_hist, future_expected, std
 
 
@@ -383,28 +408,42 @@ def _median_forecast(series: pd.Series, horizon: int):
 def _forecast_with(
     method: str, series: pd.Series, period: int, horizon: int
 ) -> tuple[tuple | None, str | None]:
-    """Dispatcher. Returnt (prediction, None) of (None, reden-van-skip)."""
+    """Dispatcher. Returnt (prediction, None) of (None, reden-van-skip).
+
+    Clipt voorspellingen op 0 alléén als de invoerdata niet-negatief is
+    (tellingen). Bij data die negatief kan zijn (temperaturen, delta's)
+    blijven negatieve voorspellingen geldig.
+    """
     n = len(series)
     try:
         if method == "stl":
             if n < 2 * period + 1 or n < 14:
                 return None, "te weinig data voor STL"
-            return _stl_forecast(series, period, horizon), None
-        if method == "ets":
+            pred = _stl_forecast(series, period, horizon)
+        elif method == "ets":
             if n < 10:
                 return None, "te weinig data voor Holt-Winters (<10 punten)"
-            return _ets_forecast(series, period, horizon), None
-        if method == "rolling":
-            return _rolling_forecast(series, horizon), None
-        if method == "seasonal_naive":
+            pred = _ets_forecast(series, period, horizon)
+        elif method == "rolling":
+            pred = _rolling_forecast(series, horizon)
+        elif method == "seasonal_naive":
             if n < 2 * period:
                 return None, "te weinig data voor seasonal naive (<2 perioden)"
-            return _seasonal_naive_forecast(series, period, horizon), None
-        if method == "median":
-            return _median_forecast(series, horizon), None
-        return None, f"onbekende methode '{method}'"
+            pred = _seasonal_naive_forecast(series, period, horizon)
+        elif method == "median":
+            pred = _median_forecast(series, horizon)
+        else:
+            return None, f"onbekende methode '{method}'"
     except Exception as e:
         return None, f"berekening faalde ({type(e).__name__})"
+
+    if bool(series.min() >= 0):  # count-achtige data: geen negatieve forecast
+        pred = (
+            np.clip(np.asarray(pred[0], dtype=float), 0, None),
+            np.clip(np.asarray(pred[1], dtype=float), 0, None),
+            pred[2],
+        )
+    return pred, None
 
 
 # ---------------------------------------------------------------------------
@@ -458,14 +497,27 @@ def backtest_all_methods(
 # ---------------------------------------------------------------------------
 # Combine + smooth
 # ---------------------------------------------------------------------------
-def _combine_predictions(predictions: list[tuple], smooth_window: int = 3):
+def _combine_predictions(predictions: list[tuple], smooth_window: int = 3,
+                         weights: list[float] | None = None):
+    """Combineer methode-voorspellingen tot één ensemble.
+
+    Met `weights` (bv. 1/backtest-fout) telt een aantoonbaar betere methode
+    zwaarder mee; zonder gewichten geldt het gewone gemiddelde.
+    """
     if not predictions:
         return None
     expected_hists = np.array([p[0] for p in predictions])
     future_expecteds = np.array([p[1] for p in predictions])
 
-    expected_hist = expected_hists.mean(axis=0)
-    future_expected = future_expecteds.mean(axis=0)
+    if weights is not None and len(weights) == len(predictions) \
+            and np.sum(weights) > 0:
+        w = np.asarray(weights, dtype=float)
+        w = w / w.sum()
+        expected_hist = (expected_hists * w[:, None]).sum(axis=0)
+        future_expected = (future_expecteds * w[:, None]).sum(axis=0)
+    else:
+        expected_hist = expected_hists.mean(axis=0)
+        future_expected = future_expecteds.mean(axis=0)
 
     if smooth_window > 1 and len(expected_hist) > smooth_window:
         kernel = np.ones(smooth_window) / smooth_window
@@ -610,20 +662,38 @@ def compute_normbeeld(
         used_methods.append("median")
         per_method_predictions["median"] = pred
 
-    combined = _combine_predictions(predictions, smooth_window=3)
+    # Gewogen ensemble: bij backtest-scores telt een aantoonbaar betere
+    # methode zwaarder mee (gewicht ~ 1/fout, +5pp demping tegen extremen).
+    ens_weights = None
+    if backtest_scores and all(m in backtest_scores for m in used_methods):
+        ens_weights = [1.0 / (backtest_scores[m] + 5.0) for m in used_methods]
+
+    combined = _combine_predictions(predictions, smooth_window=3,
+                                    weights=ens_weights)
     if combined is None:
         return None
     expected_hist, future_expected = combined
 
+    # Clip op 0 alleen voor niet-negatieve (count-achtige) data.
+    nonneg = bool(series.min() >= 0)
+
+    def _floor(arr):
+        return np.clip(arr, 0, None) if nonneg else np.asarray(arr, dtype=float)
+
     # --- Quantile-band (asymmetrisch, recency-gewogen) ---
     q_lo, q_hi, band_alpha = _quantile_band(series, expected_hist)
+
+    # Invariant: upper >= lower, óók na flooring van alleen de ondergrens
+    # (anders kan een pathologische fit de band ondersteboven zetten).
+    hist_lower = _floor(expected_hist + q_lo)
+    hist_upper = np.maximum(expected_hist + q_hi, hist_lower)
 
     hist = pd.DataFrame({
         "date":     series.index,
         "actual":   series.values,
         "expected": expected_hist,
-        "lower":    np.clip(expected_hist + q_lo, 0, None),
-        "upper":    expected_hist + q_hi,
+        "lower":    hist_lower,
+        "upper":    hist_upper,
     })
 
     if aggregation == "monthly":
@@ -642,11 +712,13 @@ def compute_normbeeld(
             periods=horizon_days, freq="D",
         )
 
+    fc_lower = _floor(future_expected + q_lo)
+    fc_upper = np.maximum(future_expected + q_hi, fc_lower)
     forecast = pd.DataFrame({
         "date":     future_idx,
         "expected": future_expected,
-        "lower":    np.clip(future_expected + q_lo, 0, None),
-        "upper":    future_expected + q_hi,
+        "lower":    fc_lower,
+        "upper":    fc_upper,
     })
 
     hist["status"] = "normaal"
@@ -659,19 +731,22 @@ def compute_normbeeld(
     lower_band = float(hist["lower"].tail(tail_n).mean())
     upper_band = float(hist["upper"].tail(tail_n).mean())
 
-    n_recent_dev = int((hist.tail(14)["status"] != "normaal").sum())
+    # "Recent" schaalt met de aggregatie (consistent met detect_recent_alerts:
+    # 14 dagen / 8 weken / 6 maanden), niet blind 14 periodes.
+    recent_periods = {"daily": 14, "weekly": 8, "monthly": 6}.get(aggregation, 14)
+    n_recent_dev = int((hist.tail(recent_periods)["status"] != "normaal").sum())
 
-    # Per-methode reeksen voor visualisatie
+    # Per-methode reeksen voor visualisatie (clip komt al uit _forecast_with)
     per_method_forecast: dict = {}
     per_method_historical: dict = {}
     for m, p in per_method_predictions.items():
         m_hist, m_future, _ = p
         per_method_forecast[m] = pd.DataFrame({
             "date":     future_idx,
-            "expected": np.clip(m_future, 0, None),
+            "expected": np.asarray(m_future, dtype=float),
         })
         per_method_historical[m] = pd.Series(
-            np.clip(m_hist, 0, None), index=series.index,
+            np.asarray(m_hist, dtype=float), index=series.index,
         )
 
     return Normbeeld(

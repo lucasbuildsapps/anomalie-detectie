@@ -102,10 +102,14 @@ def render_overlay(
         xaxis=dict(gridcolor=p["grid"], zeroline=False, title=None),
         yaxis=dict(gridcolor=p["grid"], zeroline=False,
                    title=dict(text=label_a, font=dict(color=p["a"])),
-                   tickfont=dict(color=p["a"]), rangemode="nonnegative"),
+                   tickfont=dict(color=p["a"]),
+                   rangemode=("normal" if bool((series_a < 0).any())
+                              else "nonnegative")),
         yaxis2=dict(overlaying="y", side="right", showgrid=False,
                     title=dict(text=label_b, font=dict(color=p["b"])),
-                    tickfont=dict(color=p["b"]), rangemode="nonnegative"),
+                    tickfont=dict(color=p["b"]),
+                    rangemode=("normal" if bool((series_b < 0).any())
+                               else "nonnegative")),
     )
     st.plotly_chart(fig, use_container_width=True,
                     config={"displayModeBar": False})

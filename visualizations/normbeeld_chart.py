@@ -231,7 +231,13 @@ def render_normbeeld_chart(
         yaxis=dict(
             gridcolor=p["grid"], zeroline=True,
             zerolinecolor=p["grid"], title=None,
-            rangemode="nonnegative",
+            # Bij data die negatief kan zijn (temperaturen e.d.) mag de as
+            # niet op 0 vastklikken — dat zou punten verbergen.
+            rangemode=(
+                "normal"
+                if bool((hist["actual"] < 0).any() or (hist["lower"] < 0).any())
+                else "nonnegative"
+            ),
         ),
     )
 

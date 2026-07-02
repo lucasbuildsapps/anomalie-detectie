@@ -59,8 +59,11 @@ def cross_correlation_lag(
     """Cross-correlatie tussen twee reeksen over een gemeenschappelijke
     tijd-as. Positieve lag = B volgt A met die vertraging.
 
-    We z-scoren beide reeksen en berekenen Pearson-correlatie voor elke lag.
-    De lag met de hoogste correlatie is de meest waarschijnlijke vertraging.
+    Belangrijk: we correleren de EERSTE VERSCHILLEN (dag-op-dag verandering),
+    niet de niveaus. Twee reeksen die allebei groeien over de tijd zouden in
+    niveaus altijd "sterk gecorreleerd" lijken — ook zonder enig echt verband
+    (spurious correlation). Verschillen meten of de *bewegingen* samenhangen,
+    wat de vraag is die de analist stelt ("volgt B op A?").
     """
     if series_a.empty or series_b.empty:
         return None
@@ -81,8 +84,17 @@ def cross_correlation_lag(
         s = x.std()
         return (x - x.mean()) / s if s > 1e-9 else x - x.mean()
 
-    az = _z(a.values)
-    bz = _z(b.values)
+    # Eerste verschillen; val terug op niveaus als een reeks (vrijwel)
+    # lineair is en de verschillen dus geen variantie hebben.
+    da = np.diff(a.values)
+    db = np.diff(b.values)
+    if da.std() > 1e-9 and db.std() > 1e-9:
+        az = _z(da)
+        bz = _z(db)
+        n = len(az)
+    else:
+        az = _z(a.values)
+        bz = _z(b.values)
 
     lags = list(range(-max_lag, max_lag + 1))
     corrs: list[float] = []
