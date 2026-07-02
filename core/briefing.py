@@ -61,7 +61,7 @@ def _key_value_table(pdf: FPDF, pairs: list[tuple[str, str]], col_widths=(55, 13
         pdf.set_font("Helvetica", "B", 10)
         pdf.cell(col_widths[0], 6, _safe(label))
         pdf.set_font("Helvetica", "", 10)
-        pdf.multi_cell(col_widths[1], 6, _safe(value))
+        pdf.multi_cell(col_widths[1], 6, _safe(value), new_x="LMARGIN", new_y="NEXT")
 
 
 def _severity_color(severity: str) -> tuple:
@@ -179,7 +179,7 @@ def build_briefing_pdf(
 
     pdf.set_font("Helvetica", "", 10)
     for p in summary_parts:
-        pdf.multi_cell(0, 5, _safe(p))
+        pdf.multi_cell(0, 5, _safe(p), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(1)
 
     # === 2. Key metrics ===
@@ -208,7 +208,7 @@ def build_briefing_pdf(
     pdf.set_font("Helvetica", "", 10)
     pdf.multi_cell(0, 5, _safe(
         "Het volgende werd in de data gedetecteerd vóór de analyse:"
-    ))
+    ), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(1)
     _key_value_table(pdf, [
         ("Aantal observaties", profile.n_observations),
@@ -230,7 +230,7 @@ def build_briefing_pdf(
         pdf.multi_cell(0, 5, _safe(
             "Per locatie het verwachte niveau, de tolerantieband en het aantal "
             "recente afwijkingen."
-        ))
+        ), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(1)
         pdf.set_font("Helvetica", "B", 9)
         pdf.cell(60, 6, "Locatie")
@@ -257,7 +257,7 @@ def build_briefing_pdf(
     pdf.multi_cell(0, 5, _safe(
         f"De auto-pilot heeft {len(result.methods_used)} methodes gekozen op "
         f"basis van het dataprofiel, met gevoeligheid '{result.sensitivity_used}'."
-    ))
+    ), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(1)
     pdf.set_font("Helvetica", "B", 9)
     pdf.cell(85, 6, "Methode")
@@ -277,7 +277,7 @@ def build_briefing_pdf(
     if not findings:
         pdf.set_font("Helvetica", "I", 10)
         pdf.set_text_color(*MUTED_RGB)
-        pdf.multi_cell(0, 5, _safe("Geen afwijkingen om te rapporteren."))
+        pdf.multi_cell(0, 5, _safe("Geen afwijkingen om te rapporteren."), new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(0)
     else:
         for i, f in enumerate(findings, start=1):
@@ -293,7 +293,7 @@ def build_briefing_pdf(
 
             pdf.set_font("Helvetica", "", 9)
             text = explanation_to_markdown(f["explanation"])
-            pdf.multi_cell(0, 4.5, _safe(text))
+            pdf.multi_cell(0, 4.5, _safe(text), new_x="LMARGIN", new_y="NEXT")
             pdf.ln(2)
 
     # === 7. Appendix ===
@@ -381,7 +381,7 @@ def build_sitrep_pdf(
     _section_title(pdf, "2. Recente afwijkingen van het normbeeld")
     if not alerts:
         pdf.set_font("Helvetica", "I", 10)
-        pdf.multi_cell(0, 5, _safe("Geen recente afwijkingen."))
+        pdf.multi_cell(0, 5, _safe("Geen recente afwijkingen."), new_x="LMARGIN", new_y="NEXT")
     else:
         pdf.set_font("Helvetica", "", 9)
         for a in alerts[:12]:
@@ -392,7 +392,7 @@ def build_sitrep_pdf(
             pdf.multi_cell(0, 4.6, _safe(
                 f"- {a['datum']}  {a['locatie']}: {a['waarde']} "
                 f"({arrow} band {a['lower']:.0f}-{a['upper']:.0f}{extr_txt})"
-            ))
+            ), new_x="LMARGIN", new_y="NEXT")
 
     # --- 3. Verwachting ---
     _section_title(pdf, "3. Verwachting (komende periode)")
@@ -435,7 +435,7 @@ def build_sitrep_pdf(
         f"Gap-interpretatie: {gap_txt}. Afwijkingen zijn statistische "
         f"signalen, geen operationele conclusies - duiding door de analist "
         f"blijft vereist."
-    ))
+    ), new_x="LMARGIN", new_y="NEXT")
 
     return bytes(pdf.output())
 
