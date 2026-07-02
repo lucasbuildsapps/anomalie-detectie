@@ -66,6 +66,7 @@ def render_normbeeld_chart(
     show_title: bool = False,
     change_points: list[dict] | None = None,
     markers: list[dict] | None = None,
+    scenario_pct: float = 0.0,
 ):
     p = _palette(theme)
     hist = nb.historical.copy()
@@ -154,6 +155,19 @@ def render_normbeeld_chart(
         name="Voorspelling (ensemble)",
         hovertemplate="<b>Ensemble</b><br>%{x|%d %b}: %{y:.1f}<extra></extra>",
     ))
+
+    # --- Scenario-lijn (what-if: activiteit +/- X%) ---
+    if scenario_pct:
+        factor = 1.0 + scenario_pct / 100.0
+        fig.add_trace(go.Scatter(
+            x=fc["date"], y=fc["expected"] * factor,
+            mode="lines",
+            line=dict(color=p["above"] if scenario_pct > 0 else p["below"],
+                      width=2, dash="dashdot"),
+            name=f"Scenario {scenario_pct:+.0f}%",
+            hovertemplate=(f"<b>Scenario {scenario_pct:+.0f}%%</b><br>"
+                           "%{x|%d %b}: %{y:.1f}<extra></extra>"),
+        ))
 
     # --- Significante momenten (change-points): waar het niveau verschoof ---
     if change_points:

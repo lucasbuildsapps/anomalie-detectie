@@ -41,6 +41,7 @@ from core.normbeeld import (
 from core.comparison import (
     build_series, cross_correlation_lag, seasonality_profile,
 )
+from core.signals import collect_signals
 from core.registry import get_detectors
 from i18n.nl import t
 from visualizations.comparison_chart import render_lag_curve, render_overlay
@@ -1403,7 +1404,61 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
     render_normbeeld_chart(
         nb_view, theme=st.session_state.ui_theme, height=520,
         markers=markers,
+        scenario_pct=float(st.session_state.get("nb_scenario", 0) or 0),
     )
+
+    # Scenario-verkenning (what-if op de voorspelling)
+    with st.expander("Scenario-verkenning (wat als de activiteit verandert?)"):
+        st.slider(
+            "Verwachte activiteit aanpassen (%)",
+            min_value=-50, max_value=100, value=0, step=10,
+            key="nb_scenario",
+            help="Tekent een extra lijn in de grafiek: de voorspelling als "
+                 "de activiteit met dit percentage verschuift. Puur "
+                 "verkennend — geen modeluitspraak.",
+        )
+
+    # Signalen: patronen die je niet aan losse punten ziet
+    signals = collect_signals(nb_view.historical, nb_view.aggregation)
+    if signals:
+        st.markdown("<div class='section-label'>Signalen</div>",
+                    unsafe_allow_html=True)
+        for sig in signals:
+            if sig["type"] == "variability":
+                icon_txt = "◆"
+                if sig["richting"] == "grilliger":
+                    txt = (f"**Activiteit is grilliger dan normaal** — de "
+                           f"recente spreiding ({sig['recent_std']:.1f}) ligt "
+                           f"boven {sig['pctl'] * 100:.0f}% van de historie "
+                           f"(typisch {sig['typical_std']:.1f}).")
+                else:
+                    txt = (f"**Activiteit is opvallend vlak** — recente "
+                           f"spreiding {sig['recent_std']:.1f} vs. typisch "
+                           f"{sig['typical_std']:.1f}. Kan duiden op "
+                           f"veranderde melding of rapportage.")
+            elif sig["type"] == "persistence":
+                icon_txt = "▶"
+                txt = (f"**Al {sig['run']} periodes op rij "
+                       f"{sig['richting']} de verwachting** (sinds "
+                       f"{sig['sinds'].strftime('%d-%m-%Y')}; kans op toeval "
+                       f"~{sig['p'] * 100:.1f}%). Mogelijk een blijvende "
+                       f"verschuiving in plaats van losse uitschieters.")
+            elif sig["type"] == "change":
+                icon_txt = "▲" if sig["direction"] == "stijging" else "▼"
+                txt = (f"**Structurele {sig['direction']} rond "
+                       f"{pd.Timestamp(sig['date']).strftime('%d-%m-%Y')}** — "
+                       f"niveau ging van ~{sig['before']:.0f} naar "
+                       f"~{sig['after']:.0f} per periode.")
+            elif sig["type"] == "similar":
+                icon_txt = "≈"
+                txt = (f"**De huidige situatie lijkt het meest op "
+                       f"{sig['start'].strftime('%d-%m-%Y')} t/m "
+                       f"{sig['end'].strftime('%d-%m-%Y')}** "
+                       f"(vorm-correlatie {sig['corr']:.2f} over "
+                       f"{sig['window']} periodes). Wat gebeurde er toen?")
+            else:
+                continue
+            st.markdown(f"{icon_txt} {txt}")
 
     # Eigen markeringen beheren (bv. staakt-het-vuren, beleidswijziging)
     _render_markers_manager(key_prefix="nb")
