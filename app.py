@@ -61,8 +61,8 @@ st.markdown(build_css(), unsafe_allow_html=True)
 
 from ui.pages.compare import page_compare
 from ui.pages.normbeeld import page_normbeeld
-from ui.pages.overview import page_overview
 from ui.pages.settings import page_settings
+from ui.pages.triage import page_triage
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -116,7 +116,7 @@ with st.sidebar:
         )
     st.divider()
 
-    nav_items = [t("nav_overview"), t("nav_normbeeld"), t("nav_compare")]
+    nav_items = [t("nav_normbeeld"), t("nav_triage"), t("nav_compare")]
     for label in nav_items:
         is_active = st.session_state.active_page == label
         wrapper_cls = "sidebar-nav sidebar-nav-active" if is_active else "sidebar-nav"
@@ -148,20 +148,12 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 # Globale vangrail: een fout in één pagina mag de app niet in Streamlit's
 # geredigeerde 'Oh no'-scherm laten belanden. Toon de echte traceback in een
-# expander (interne tool) en log gestructureerd.
-
-
-# ---------------------------------------------------------------------------
-# Router
-# ---------------------------------------------------------------------------
-# Globale vangrail: een fout in één pagina mag de app niet in Streamlit's
-# geredigeerde 'Oh no'-scherm laten belanden. Toon de echte traceback in een
 # expander (interne tool) en log naar stderr voor de Cloud-logs.
 try:
     if st.session_state.show_settings:
         page_settings()
-    elif st.session_state.active_page == t("nav_overview"):
-        page_overview()
+    elif st.session_state.active_page == t("nav_triage"):
+        page_triage()
     elif st.session_state.active_page == t("nav_compare"):
         page_compare()
     else:

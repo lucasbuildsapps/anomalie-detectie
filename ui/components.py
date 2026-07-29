@@ -149,7 +149,52 @@ def _render_markers_manager(key_prefix: str = "mk"):
                     st.rerun()
 
 
+def render_classification_bar():
+    """Statusstrip bovenaan: waar kijk je naar, hoe vers is het, is het
+    afgeschermd. In operationele tools staat dit altijd in beeld, zodat
+    niemand per ongeluk oude of open data voor actueel aanziet.
+    """
+    from core.auth import is_protected
+
+    left = "Interne tool · software in ontwikkeling"
+
+    bits = []
+    try:
+        datasets = storage.list_datasets()
+    except Exception:
+        datasets = []
+    if datasets:
+        active_id = st.session_state.get("active_dataset_id")
+        active = next((d for d in datasets if d["id"] == active_id),
+                      datasets[0])
+        stale_txt, stale_cls = "", "status"
+        try:
+            df = storage.load_observations(active["id"])
+            if not df.empty and "timestamp" in df.columns:
+                last = pd.Timestamp(df["timestamp"].max())
+                days = (pd.Timestamp.utcnow().tz_localize(None) - last).days
+                stale_txt = f"data {days}d oud"
+                if days > 30:
+                    stale_cls = "warn"
+        except Exception:
+            pass
+        bits.append(f"<span class='{stale_cls}'>{_html.escape(stale_txt)}</span>"
+                    if stale_txt else "")
+        bits.append(f"{len(datasets)} dataset(s)")
+
+    bits.append("<span class='status'>afgeschermd</span>" if is_protected()
+                else "<span class='warn'>open toegang</span>")
+
+    right = " · ".join(b for b in bits if b)
+    st.markdown(
+        f"<div class='classification-bar'><span>{left}</span>"
+        f"<span>{right}</span></div>",
+        unsafe_allow_html=True,
+    )
+
+
 def render_topbar(title: str = ""):
+    render_classification_bar()
     c1, c2 = st.columns([6, 1])
     with c1:
         if title:

@@ -1,4 +1,5 @@
-"""Normbeeld-pagina: detail-normbeeld, afwijkingen, signalen, export."""
+"""Normbeeld-pagina: reeks + band, tijdschaal-advies, geografisch
+beeld, signalen en export. Bevindingen-triage staat op ui/pages/triage.py."""
 from __future__ import annotations
 
 import html as _html
@@ -8,7 +9,6 @@ import pandas as pd
 import streamlit as st
 
 from core import gazetteer, storage
-from core.auto_pilot import build_findings, detector_agreement
 from core.briefing import briefing_filename, build_briefing_pdf
 from core.comparison import seasonality_profile
 from core.excel_export import build_excel_export, excel_filename
@@ -28,9 +28,6 @@ from ui.cache import (
 )
 from ui.components import (
     _event_markers,
-    _fmt_num,
-    _pctl_label,
-    _render_annotation_widget,
     _render_empty_state,
     _render_markers_manager,
     _render_saved_views,
@@ -245,14 +242,12 @@ def page_normbeeld():
         st.session_state.nb_selected_location = selected
         st.rerun()
 
-    nb_view = _render_normbeeld_detail(
+    _render_normbeeld_detail(
         df_raw, normbeelds[selected], selected, ds["id"], unit, effective_agg,
     )
 
-    # ----- Afwijkingen (kern-capability) -----
-    if nb_view is not None:
-        _render_afwijkingen_section(nb_view, result, alerts, ds,
-                                    selected, unit)
+    # ----- Geografisch beeld (prominente plek, direct onder de reeks) -----
+    _render_situation_map(result, ds, selected)
 
     # ----- Export (briefing + SITREP + Excel) -----
     st.divider()
@@ -553,6 +548,52 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
     return nb_view
 
 
+def _render_situation_map(result, ds: dict, selected_location: str | None):
+    """Geografisch situatiebeeld — bewust prominent, direct onder de reeks.
+
+    Regionamen zonder coördinaten worden via de gazetteer aangevuld, zodat
+    de kaart ook werkt op bronnen die alleen namen leveren.
+    """
+    res = result.results
+    if "location_name" in res.columns:
+        res = gazetteer.annotate(res)
+    has_geo = (
+        "lat" in res.columns and "lon" in res.columns
+        and res["lat"].notna().any() and res["lon"].notna().any()
+    )
+    st.markdown("<div class='section-label'>Geografisch beeld</div>",
+                unsafe_allow_html=True)
+    if not has_geo:
+        st.caption(
+            "Geen coördinaten beschikbaar voor deze dataset. Voeg lat/lon-"
+            "kolommen toe bij het importeren, of vul core/gazetteer.py aan "
+            "met de regionamen die hier voorkomen."
+        )
+        return
+
+    hits, total = gazetteer.coverage(
+        res["location_name"].dropna().unique()
+        if "location_name" in res.columns else []
+    )
+    bits = ["Grotere en rodere punten = meer afwijkingen."]
+    if total and hits < total:
+        bits.append(
+            f"{hits} van {total} regio's staan op de kaart; regio's zonder "
+            f"bekende coördinaten worden weggelaten."
+        )
+    st.caption(" ".join(bits))
+
+    from core.registry import get_visualizations
+    vizs = get_visualizations()
+    for name, v in vizs.items():
+        if "kaart" in name.lower():
+            v.render(res, time_col="timestamp", value_col="value")
+    with st.expander("Activiteit per periode (heatmap)"):
+        for name, v in vizs.items():
+            if "heatmap" in name.lower():
+                v.render(res, time_col="timestamp", value_col="value")
+
+
 def _render_timescale_advice(dataset_id: int, df_raw, current_agg: str):
     """Onderbouwd tijdschaal-advies: welke schaal is écht het best
     voorspelbaar, en waarom — inclusief de mogelijkheid het over te nemen."""
@@ -593,193 +634,3 @@ def _render_timescale_advice(dataset_id: int, df_raw, current_agg: str):
             st.session_state.aggregation = advice.recommended
             st.rerun()
 
-
-def _render_detector_agreement(result):
-    """Hoe zelfstandig zijn de stemmen? Toont de gemeten overlap tussen
-    detectoren, zodat '4 van de 5 eens' op waarde geschat kan worden."""
-    agree = detector_agreement(getattr(result, "method_outputs", None))
-    if agree is None:
-        return
-    n = agree["n_detectors"]
-    n_eff = agree["n_effective"]
-    ratio = n_eff / n
-    if ratio >= 0.8:
-        verdict = ("De algoritmes kijken grotendeels naar verschillende "
-                   "dingen — stemmen tellen bijna vol mee.")
-    elif ratio >= 0.5:
-        verdict = ("De algoritmes overlappen deels — tel een meerderheid "
-                   "als sterke aanwijzing, niet als onafhankelijke bevestiging.")
-    else:
-        verdict = ("De algoritmes zeggen grotendeels hetzelfde — behandel "
-                   "een meerderheid als één waarneming, niet als meerdere.")
-
-    with st.expander(
-        f"Hoe zelfstandig zijn deze stemmen? "
-        f"({n_eff:.1f} van {n} algoritmes tellen echt afzonderlijk)"
-    ):
-        st.caption(
-            "De stemming behandelt elk algoritme als aparte getuige, maar "
-            "sommige kijken naar hetzelfde signaal (bv. Z-score en Rolling "
-            "meten allebei afstand tot het lokale gemiddelde). Hieronder de "
-            "gemeten overlap op déze dataset. Zie METHODS.md §8."
-        )
-        st.markdown(f"**{verdict}**")
-        rows = sorted(agree["pairs"], key=lambda p: -p["jaccard"])[:10]
-        st.dataframe(
-            pd.DataFrame([{
-                "Algoritme A": r["a"],
-                "Algoritme B": r["b"],
-                "Overlap (Jaccard)": f"{r['jaccard'] * 100:.0f}%",
-                "Correlatie (φ)": ("—" if not np.isfinite(r["phi"])
-                                   else f"{r['phi']:.2f}"),
-                "Samen gemarkeerd": r["n_both"],
-            } for r in rows]),
-            use_container_width=True, hide_index=True,
-        )
-
-
-def _render_afwijkingen_section(nb_view, result, alerts, ds: dict,
-                                location: str, unit: str):
-    """Eén samenhangende afwijkingen-sectie: (1) deze regio, (2) alle
-    regio's incl. ensemble-bevindingen, (3) kaart bij geo-data."""
-    st.divider()
-    st.markdown("<div class='section-label'>Afwijkingen</div>",
-                unsafe_allow_html=True)
-
-    res = result.results
-    # Regionamen zonder coördinaten alsnog op de kaart krijgen: de gazetteer
-    # vult lat/lon aan voor bekende gebieden (echte metingen winnen altijd).
-    if "location_name" in res.columns:
-        res = gazetteer.annotate(res)
-    has_geo = (
-        "lat" in res.columns and "lon" in res.columns
-        and res["lat"].notna().any() and res["lon"].notna().any()
-    )
-    labels = ["Deze regio", "Alle regio's"]
-    if has_geo:
-        labels.append("Kaart")
-    tabs = st.tabs(labels)
-
-    # --- Tab 1: afwijkingen van de geselecteerde regio (band-gebaseerd) ---
-    with tabs[0]:
-        dev = nb_view.historical[
-            nb_view.historical["status"] != "normaal"
-        ].sort_values("date", ascending=False)
-        if dev.empty:
-            st.caption("Geen afwijkingen van het normbeeld in deze regio.")
-        else:
-            st.caption(
-                f"{len(dev)} waarnemingen buiten het normbeeld "
-                f"(hele historie, meest recent eerst)."
-            )
-            for i, (_, row) in enumerate(dev.head(10).iterrows()):
-                d_str = pd.Timestamp(row["date"]).strftime("%d-%m-%Y")
-                richting = "boven band" if row["status"] == "boven" else "onder band"
-                st.markdown(
-                    f"<div class='alert-row'>{d_str} · "
-                    f"<strong>{row['actual']:.0f}</strong> per {unit} "
-                    f"({richting}, verwacht {_fmt_num(row['lower'])}–{_fmt_num(row['upper'])}) "
-                    f"· {_pctl_label(row)}</div>",
-                    unsafe_allow_html=True,
-                )
-                _render_annotation_widget(
-                    ds["id"], pd.Timestamp(row["date"]).date().isoformat(),
-                    location, key_suffix=f"reg_{i}",
-                )
-
-    # --- Tab 2: dataset-breed — recente alerts + ensemble-bevindingen ---
-    with tabs[1]:
-        if alerts:
-            st.markdown("**Recente afwijkingen (alle regio's)**")
-            rows = ""
-            for a in alerts[:10]:
-                arrow = "boven band" if a["richting"] == "boven" else "onder band"
-                extr = a.get("extremer_dan")
-                extr_txt = (f" · extremer dan {min(extr, 0.99)*100:.0f}% v.d. historie"
-                            if extr is not None else "")
-                rows += (
-                    f"<div class='alert-row'>"
-                    f"{pd.Timestamp(a['datum']).strftime('%d-%m-%Y')} · "
-                    f"{_html.escape(str(a['locatie']))} · "
-                    f"{a['waarde']} ({arrow}, verwacht "
-                    f"{a['lower']:.0f}–{a['upper']:.0f}){extr_txt}</div>"
-                )
-            st.markdown(rows, unsafe_allow_html=True)
-        else:
-            st.caption("Geen recente afwijkingen in de dataset.")
-
-        # Ensemble-bevindingen: 5 detectie-algoritmes stemmen
-        findings = build_findings(result, top_n=40)
-        strong = [f for f in findings if f["severity"] in ("hoog", "midden")]
-        weak = [f for f in findings if f["severity"] == "laag"]
-        if strong:
-            st.markdown("**Bevestigd door meerdere detectie-algoritmes**")
-            st.caption(
-                "Naast het normbeeld draaien 5 detectie-"
-                "algoritmes. Punten waar een meerderheid het over eens is. "
-                f"Gevoeligheid automatisch afgesteld op '{result.sensitivity_used}' "
-                f"({result.iterations} iteratie(s)) — de lijst toont de meest "
-                "opvallende punten van déze dataset, geen absolute significantie."
-            )
-            sev_color = {"hoog": P["high"], "midden": P["mid"]}
-            for i, f in enumerate(strong[:6]):
-                exp = f["explanation"]
-                st.markdown(
-                    f"""
-                    <div class="finding-card"
-                         style="--card-color: {sev_color[f['severity']]};">
-                        <div class="finding-header">
-                            <span class="severity-pill severity-{f['severity']}">
-                                {f['severity'].upper()}</span>
-                            <span class="finding-loc">{_html.escape(str(f['locatie']))}</span>
-                            <span class="finding-date">
-                                {pd.Timestamp(f['datum']).strftime('%d-%m-%Y')}</span>
-                        </div>
-                        <div class="finding-stat">{_html.escape(exp['observation'])}</div>
-                        <div class="finding-meta">
-                            {f['stemmen']}/{f['totaal_methodes']} algoritmes:
-                            {_html.escape(', '.join(f['methodes_aan']))}
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                _render_annotation_widget(ds["id"], f["datum"],
-                                          str(f["locatie"]),
-                                          key_suffix=f"ens_{i}")
-            _render_detector_agreement(result)
-        if weak:
-            with st.expander(
-                f"Laag-vertrouwen signalen ({len(weak)}) — 2 algoritmes, "
-                f"mogelijk vals alarm"
-            ):
-                rows = "".join(
-                    f"<div class='alert-row'>"
-                    f"{pd.Timestamp(f['datum']).strftime('%d-%m-%Y')} · "
-                    f"{_html.escape(str(f['locatie']))} · {f['waarde']}</div>"
-                    for f in weak[:30]
-                )
-                st.markdown(rows, unsafe_allow_html=True)
-
-    # --- Tab 3: kaart (geomap + heatmap) ---
-    if has_geo:
-        with tabs[2]:
-            hits, total = gazetteer.coverage(
-                res["location_name"].dropna().unique()
-                if "location_name" in res.columns else []
-            )
-            if total and hits < total:
-                st.caption(
-                    f"{hits} van {total} regio's staan op de kaart. Regio's "
-                    f"zonder bekende coördinaten worden weggelaten — voeg "
-                    f"lat/lon-kolommen toe of vul core/gazetteer.py aan."
-                )
-            from core.registry import get_visualizations
-            vizs = get_visualizations()
-            for name, v in vizs.items():
-                if "kaart" in name.lower():
-                    v.render(res, time_col="timestamp", value_col="value")
-            for name, v in vizs.items():
-                if "heatmap" in name.lower():
-                    st.markdown(f"**{v.name}**")
-                    v.render(res, time_col="timestamp", value_col="value")

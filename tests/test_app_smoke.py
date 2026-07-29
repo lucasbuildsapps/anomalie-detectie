@@ -41,7 +41,7 @@ def test_empty_state_shows_welcome():
 
 def test_all_pages_render():
     from i18n.nl import t
-    for page_key in ("nav_overview", "nav_normbeeld", "nav_compare"):
+    for page_key in ("nav_normbeeld", "nav_triage", "nav_compare"):
         at = AppTest.from_file(APP, default_timeout=60)
         at.session_state["active_page"] = t(page_key)
         at.run()

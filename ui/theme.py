@@ -26,21 +26,24 @@ PALETTES = {
         "low":           "#975a16",
         "ok":            "#2e8b57",
     },
+    # Operations-console: donkerblauw-zwart, cyaan accent, hoge dichtheid.
+    # Bewust koeler en contrastrijker dan een gewoon 'dark mode' — dit is de
+    # weergave voor langdurig meekijken op een groot scherm.
     "dark": {
-        "bg":            "#0d1117",
-        "surface":       "#161b22",
-        "surface_alt":   "#1f2630",
-        "border":        "#2a3038",
-        "border_soft":   "#1c2129",
-        "text":          "#e6edf3",
-        "text_muted":    "#8b949e",
-        "accent":        "#58a6ff",
-        "accent_text":   "#0d1117",
-        "accent_dim":    "#79b8ff",
-        "high":          "#f87171",
-        "mid":           "#fb923c",
-        "low":           "#fbbf24",
-        "ok":            "#4cda86",
+        "bg":            "#080c14",
+        "surface":       "#0f1620",
+        "surface_alt":   "#16202c",
+        "border":        "#22303f",
+        "border_soft":   "#161f2a",
+        "text":          "#dce6f0",
+        "text_muted":    "#7d8fa3",
+        "accent":        "#3dd6d0",
+        "accent_text":   "#04121a",
+        "accent_dim":    "#7fe6e2",
+        "high":          "#ff5c5c",
+        "mid":           "#ffa23e",
+        "low":           "#ffd23e",
+        "ok":            "#39d98a",
     },
 }
 
@@ -79,9 +82,29 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"],
 [data-baseweb="popover"] li:hover {{ background: {p['surface_alt']} !important; }}
 [data-baseweb="tag"] {{ background: {p['surface_alt']} !important; color: {p['text']} !important; }}
 
+/* Dichtere, bredere werkruimte: meer beeld per scherm, minder scrollen.
+   Bewust ruimer dan Streamlit's standaard 730px-kolom. */
 .main .block-container {{
-    padding-top: 1rem; padding-bottom: 2rem; max-width: 1400px;
+    padding-top: 0.6rem; padding-bottom: 2rem; max-width: 1600px;
 }}
+[data-testid="stVerticalBlock"] {{ gap: 0.55rem; }}
+[data-testid="stHorizontalBlock"] {{ gap: 0.7rem; }}
+
+/* Classificatiebalk: in operationele tools staat altijd bovenaan waar je
+   naar kijkt. Hier: de herkomst-status van wat je ziet. */
+.classification-bar {{
+    position: sticky; top: 0; z-index: 999;
+    background: {p['surface_alt']};
+    border-bottom: 1px solid {p['border']};
+    border-top: 2px solid {p['accent']};
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.66rem; letter-spacing: 0.16em; text-transform: uppercase;
+    color: {p['text_muted']};
+    padding: 5px 14px; margin: -0.6rem -1rem 0.9rem -1rem;
+    display: flex; justify-content: space-between; align-items: center;
+}}
+.classification-bar .status {{ color: {p['accent']}; font-weight: 600; }}
+.classification-bar .warn {{ color: {p['mid']}; font-weight: 600; }}
 
 h1, h2, h3, h4, h5 {{
     font-family: 'Inter', sans-serif; font-weight: 600;
@@ -100,14 +123,34 @@ h1, h2, h3, h4, h5 {{
     border-bottom: 1px solid {p['border_soft']};
 }}
 
-/* Metrics */
+/* Metrics — strak, monospace, met een subtiele accentgloed in het donkere
+   thema zodat kerncijfers direct opvallen op een groot scherm. */
 [data-testid="stMetric"] {{
     background: {p['surface']} !important;
     border: 1px solid {p['border']} !important;
     border-left: 3px solid {p['accent']} !important;
-    padding: 12px 16px;
-    border-radius: 2px;
+    padding: 10px 14px;
+    border-radius: 0;
 }}
+[data-testid="stMetric"]:hover {{ border-color: {p['accent_dim']} !important; }}
+
+/* Tabellen strakker en compacter */
+[data-testid="stDataFrame"] {{ border: 1px solid {p['border']}; }}
+[data-testid="stDataFrame"] * {{ font-size: 0.84rem; }}
+
+/* Expanders als panelen, niet als losse knoppen */
+[data-testid="stExpander"] {{
+    border: 1px solid {p['border']} !important;
+    border-radius: 0 !important;
+    background: {p['surface']} !important;
+}}
+[data-testid="stExpander"] summary {{
+    font-size: 0.86rem; font-weight: 500;
+}}
+
+/* Tabs: onderstreept in accentkleur i.p.v. Streamlit-rood */
+[data-baseweb="tab-highlight"] {{ background: {p['accent']} !important; }}
+[data-baseweb="tab"] {{ font-size: 0.88rem; }}
 [data-testid="stMetricLabel"] p {{
     text-transform: uppercase; letter-spacing: 0.08em;
     font-size: 0.7rem; font-weight: 500;

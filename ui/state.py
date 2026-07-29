@@ -8,7 +8,7 @@ from i18n.nl import t
 
 def init_session_state() -> None:
     _DEFAULTS = {
-        "ui_theme": "light",
+        "ui_theme": "dark",
         "active_page": t("nav_normbeeld"),
         "active_dataset_id": None,
         "horizon_days": 14,
