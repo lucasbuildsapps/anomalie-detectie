@@ -20,7 +20,12 @@ from core.normbeeld import (
 )
 from core.signals import collect_signals
 from i18n.nl import t
-from ui.cache import _dataset_meta, cached_analysis, cached_detail_normbeeld
+from ui.cache import (
+    _dataset_meta,
+    cached_analysis,
+    cached_detail_normbeeld,
+    cached_timescale_advice,
+)
 from ui.components import (
     _event_markers,
     _fmt_num,
@@ -213,6 +218,8 @@ def page_normbeeld():
     if new_agg != st.session_state.aggregation:
         st.session_state.aggregation = new_agg
         st.rerun()
+
+    _render_timescale_advice(ds["id"], df_raw, effective_agg)
 
     if not normbeelds:
         st.warning(t("nb_no_data"))
@@ -487,15 +494,25 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
         bt_rows = [
             {
                 "Methode": PREDICTION_METHODS.get(k, k),
-                "Gem. voorspelfout": f"{v:.0f}%",
+                "vs. naïef (MASE)": f"{v.mase:.2f}",
+                "Gem. fout": ("—" if not np.isfinite(v.wmape)
+                              else f"{v.wmape:.0f}%"),
                 "Gebruikt": "✓" if k in nb_view.methods_used else "",
             }
             for k, v in sorted(
-                nb_view.backtest_scores.items(), key=lambda x: x[1]
+                nb_view.backtest_scores.items(), key=lambda x: x[1].mase
             )
         ]
         st.dataframe(pd.DataFrame(bt_rows), use_container_width=True,
                      hide_index=True)
+        st.caption(
+            "**MASE** is de maat waarop gekozen wordt: de fout gedeeld door "
+            "die van een naïeve voorspelling. Onder 1 = beter dan naïef. "
+            "Anders dan een percentage is MASE vergelijkbaar tussen regio's "
+            "én tijdschalen — een percentage ontploft op perioden met "
+            "waarde 0. **Gem. fout** staat erbij omdat het leesbaar is, maar "
+            "gebruik het niet om tijdschalen te vergelijken."
+        )
 
     st.markdown(
         f"<div style='margin-top: 0.5rem; font-size: 0.92rem;'>"
@@ -534,6 +551,47 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
     if trust_bits:
         st.caption(" · ".join(trust_bits))
     return nb_view
+
+
+def _render_timescale_advice(dataset_id: int, df_raw, current_agg: str):
+    """Onderbouwd tijdschaal-advies: welke schaal is écht het best
+    voorspelbaar, en waarom — inclusief de mogelijkheid het over te nemen."""
+    advice = cached_timescale_advice(
+        dataset_id, storage.dataset_data_hash(dataset_id)
+    )
+    if advice is None:
+        return
+
+    with st.expander(
+        f"Welke tijdschaal past bij deze data? "
+        f"(gemeten advies: {AGGREGATIONS[advice.recommended][1]})",
+        expanded=advice.recommended != current_agg,
+    ):
+        st.markdown(advice.reason)
+        rows = []
+        for agg, sc in sorted(advice.scores.items(),
+                              key=lambda kv: kv[1]["mase"]):
+            rows.append({
+                "Tijdschaal": AGGREGATIONS[agg][2].capitalize(),
+                "vs. naïef (MASE)": f"{sc['mase']:.2f}",
+                "Beste methode": PREDICTION_METHODS.get(sc["method"],
+                                                        sc["method"]),
+                "Perioden": sc["n_periods"],
+                "Lege perioden": f"{sc['zero_share'] * 100:.0f}%",
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True,
+                     hide_index=True)
+        st.caption(
+            "Vergeleken op MASE, want die is als enige vergelijkbaar tussen "
+            "tijdschalen. Veel lege perioden maken een reeks slecht "
+            "voorspelbaar: op dagbasis is een schaarse reeks vooral nul."
+        )
+        if advice.recommended != current_agg and st.button(
+            f"Overschakelen naar {AGGREGATIONS[advice.recommended][2]}",
+            key="ts_apply", type="primary",
+        ):
+            st.session_state.aggregation = advice.recommended
+            st.rerun()
 
 
 def _render_detector_agreement(result):

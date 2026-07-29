@@ -81,7 +81,8 @@ def test_backtest_returns_scores(synthetic_daily):
     scores = backtest_all_methods(series, period=7, horizon=14)
     assert len(scores) >= 3
     for v in scores.values():
-        assert np.isfinite(v) and v >= 0
+        assert np.isfinite(v.mase) and v.mase >= 0
+        assert v.n_obs > 0
 
 
 def test_backtest_selection_picks_best_two(synthetic_daily):
@@ -90,7 +91,7 @@ def test_backtest_selection_picks_best_two(synthetic_daily):
                            select="backtest")
     assert nb.backtest_scores is not None
     assert len(nb.methods_used) <= 2
-    best = min(nb.backtest_scores, key=nb.backtest_scores.get)
+    best = min(nb.backtest_scores, key=lambda m: nb.backtest_scores[m].mase)
     assert best in nb.methods_used
 
 

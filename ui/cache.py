@@ -12,7 +12,17 @@ from core.normbeeld import (
     compute_all_normbeelds,
     compute_normbeeld,
     detect_recent_alerts,
+    recommend_timescale,
 )
+
+
+@st.cache_data(show_spinner="Tijdschalen vergelijken...")
+def cached_timescale_advice(dataset_id: int, data_hash: str):
+    """Backtest per tijdschaal is duur; cachen op de data-hash."""
+    df = storage.load_observations(dataset_id)
+    if df.empty:
+        return None
+    return recommend_timescale(df)
 
 
 def _aggregate_df(df: pd.DataFrame, aggregation: str) -> pd.DataFrame:

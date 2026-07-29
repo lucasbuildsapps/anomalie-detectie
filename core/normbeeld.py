@@ -325,6 +325,7 @@ def _confidence(n_periods: int, period_detected: bool) -> str:
 
 
 def _suggest_best_aggregation(df: pd.DataFrame) -> str:
+    """Snelle heuristiek op reekslengte (gebruikt waar geen backtest past)."""
     if df.empty or "timestamp" not in df.columns:
         return "daily"
     ts = pd.to_datetime(df["timestamp"])
@@ -336,6 +337,132 @@ def _suggest_best_aggregation(df: pd.DataFrame) -> str:
     if days > 120:
         return "weekly"
     return "daily"
+
+
+@dataclass
+class TimescaleAdvice:
+    """Onderbouwd advies over de tijdschaal, met het bewijs erbij."""
+
+    recommended: str                    # 'hourly' / 'daily' / 'weekly' / 'monthly'
+    scores: dict                        # tijdschaal -> {mase, wmape, n, zero_share, method}
+    reason: str                         # uitleg in gewone taal
+    heuristic: str                      # wat de lengte-heuristiek zou kiezen
+
+
+#: Minimum aantal perioden om een tijdschaal überhaupt serieus te nemen.
+_MIN_PERIODS_FOR_TIMESCALE = 30
+
+
+def recommend_timescale(
+    df: pd.DataFrame, location: str | None = None,
+    candidates: tuple[str, ...] = ("daily", "weekly", "monthly"),
+) -> TimescaleAdvice | None:
+    """Kies de tijdschaal waarop deze reeks het best voorspelbaar is.
+
+    Waarom dit nodig is: dezelfde gebeurtenissen op dagbasis of weekbasis
+    geven totaal verschillende voorspelbaarheid. Dagdata van een schaarse
+    reeks bestaat grotendeels uit nullen — daar valt weinig zinnigs over te
+    zeggen — terwijl dezelfde data per week een stabiel patroon toont.
+
+    De vergelijking gebeurt op **MASE**: de enige van onze maten die
+    schaalvrij is en dus tussen tijdschalen vergelijkbaar. Per kandidaat
+    draaien we een echte backtest en nemen we de beste methode.
+
+    Returnt None als geen enkele tijdschaal genoeg data heeft.
+    """
+    if df is None or df.empty or "timestamp" not in df.columns:
+        return None
+    work = df
+    if location is not None and "location_name" in df.columns:
+        work = df[df["location_name"] == location]
+    if work.empty:
+        return None
+
+    scores: dict[str, dict] = {}
+    for agg in candidates:
+        if agg not in AGGREGATIONS:
+            continue
+        try:
+            series = _aggregate(work, AGGREGATIONS[agg][0])
+        except Exception:
+            continue
+        if isinstance(series, tuple):
+            series = series[0]
+        if series is None or len(series) < _MIN_PERIODS_FOR_TIMESCALE:
+            continue
+        period = _detect_period(series, agg) or {
+            "hourly": 24, "daily": 7, "weekly": 4, "monthly": 12}.get(agg, 7)
+        horizon = {"hourly": 24, "daily": 14, "weekly": 8,
+                   "monthly": 6}.get(agg, 14)
+        horizon = int(max(3, min(horizon, len(series) // 6)))
+        results = backtest_all_methods(series, period, horizon)
+        if not results:
+            continue
+        best_method = min(results, key=lambda m: results[m].mase)
+        best = results[best_method]
+        vals = np.asarray(series.values, dtype=float)
+        scores[agg] = {
+            "mase": best.mase,
+            "wmape": best.wmape,
+            "n_periods": int(len(series)),
+            "zero_share": float(np.mean(vals == 0)),
+            "method": best_method,
+        }
+
+    if not scores:
+        return None
+
+    # Weeg twee dingen die allebei tellen voor een analist:
+    #  1. voorspelbaarheid (MASE, lager is beter);
+    #  2. bruikbaarheid: een reeks die grotendeels uit lege perioden bestaat
+    #     levert nauwelijks signaal, hoe 'voorspelbaar' die nullen ook zijn.
+    #     Een detector die vooral 'vandaag ook niets' bevestigt, helpt niet.
+    for sc in scores.values():
+        sparsity_penalty = 1.0 + 2.0 * max(0.0, sc["zero_share"] - 0.3)
+        sc["rank_score"] = sc["mase"] * sparsity_penalty
+
+    recommended = min(scores, key=lambda a: scores[a]["rank_score"])
+    best = scores[recommended]
+    label = AGGREGATIONS[recommended][1]
+
+    bits = [
+        f"**{AGGREGATIONS[recommended][2].capitalize()}** komt hier als beste "
+        f"tijdschaal uit de test: MASE {best['mase']:.2f} "
+        f"({'beter' if best['mase'] < 1 else 'niet beter'} dan simpelweg de "
+        f"vorige periode herhalen) bij "
+        f"{best['zero_share'] * 100:.0f}% lege perioden."
+    ]
+    if best["zero_share"] > 0.3:
+        bits.append(
+            f"Let op: ook per {label} is meer dan een derde van de perioden "
+            f"leeg — afwijkingen blijven hier lastig te onderbouwen."
+        )
+    others = [a for a in scores if a != recommended]
+    if others:
+        worst = max(others, key=lambda a: scores[a]["rank_score"])
+        w = scores[worst]
+        if w["rank_score"] > best["rank_score"] * 1.2:
+            if w["zero_share"] > best["zero_share"] + 0.15:
+                why = (f"daar is {w['zero_share'] * 100:.0f}% van de perioden "
+                       f"leeg (hier {best['zero_share'] * 100:.0f}%)")
+            else:
+                why = f"MASE {w['mase']:.2f}"
+            bits.append(
+                f"Per {AGGREGATIONS[worst][1]} valt de reeks duidelijk "
+                f"slechter uit: {why}."
+            )
+    bits.append(
+        "Percentages (wMAPE) zijn bewust níét de maatstaf: die ontploffen "
+        "op perioden met waarde 0 en maken juist de leegste tijdschaal "
+        "kunstmatig goed."
+    )
+
+    return TimescaleAdvice(
+        recommended=recommended,
+        scores=scores,
+        reason=" ".join(bits),
+        heuristic=_suggest_best_aggregation(work),
+    )
 
 
 def _weighted_quantile(values: np.ndarray, q: float, weights: np.ndarray) -> float:
@@ -489,31 +616,85 @@ def _forecast_with(
 # ---------------------------------------------------------------------------
 # Backtest (rolling origin)
 # ---------------------------------------------------------------------------
+@dataclass
+class MethodScore:
+    """Backtest-uitkomst van één voorspelmethode.
+
+    - `mase`  : Mean Absolute Scaled Error (Hyndman & Koehler 2006). De
+                fout gedeeld door de fout van een naïeve voorspelling op
+                dezelfde trainingsdata. Schaalvrij en daardoor als enige
+                **vergelijkbaar tussen locaties én tijdschalen**.
+                < 1 = beter dan naïef, > 1 = slechter.
+    - `wmape` : gewogen MAPE = Σ|fout| / Σ|werkelijk|, als percentage.
+                Leesbaar voor de analist ("gemiddeld 20% ernaast"), maar
+                niet vergelijkbaar tussen tijdschalen.
+    - `n_obs` : aantal out-of-sample punten waarop dit rust.
+    """
+
+    mase: float
+    wmape: float
+    n_obs: int
+
+
+def _naive_scale(train: np.ndarray, period: int = 1) -> float:
+    """Noemer voor MASE: gemiddelde absolute fout van de naïeve
+    voorspelling ('volgende = vorige') op de trainingsdata.
+
+    Dit is precies wat de oude percentage-metriek miste: één vaste schaal
+    per fold, in plaats van delen door elke afzonderlijke werkelijke
+    waarde. Daardoor blaast een periode met waarde 0 de fout niet meer op
+    tot duizenden procenten.
+
+    Bewust **m=1** en niet de seizoensperiode: de seizoensperiode
+    verschilt per tijdschaal (7 bij dagen, 52 bij weken), waardoor
+    seizoens-MASE tussen tijdschalen appels met peren vergelijkt. Met een
+    vaste m=1 stelt elke tijdschaal dezelfde vraag: hoeveel beter zijn we
+    dan 'de volgende periode lijkt op de vorige'. Hyndman & Koehler (2006)
+    bevelen consistentie aan bij vergelijking tussen reeksen.
+    """
+    m = 1 if len(train) > 1 else 0
+    if m == 0:
+        return 1.0
+    diffs = np.abs(train[m:] - train[:-m])
+    scale = float(np.mean(diffs)) if len(diffs) else 0.0
+    if scale > 0:
+        return scale
+    # Constante reeks: val terug op de spreiding, anders op 1 (dan is MASE
+    # gewoon de gemiddelde absolute fout in eenheden).
+    mad = float(np.mean(np.abs(train - np.mean(train)))) if len(train) else 0.0
+    return mad if mad > 0 else 1.0
+
+
 def _backtest_method(
     series: pd.Series, method: str, period: int, horizon: int,
     n_folds: int = 4, max_points: int = 400,
     return_step_errors: bool = False,
 ):
-    """Gemiddelde voorspelfout (%) van één methode via rolling-origin backtest.
+    """Voorspelfout van één methode via rolling-origin backtest.
 
     Houdt per fold `horizon` punten achter, traint op de rest, vergelijkt.
-    Fout-metriek: |voorspeld - werkelijk| / max(|werkelijk|, 1) — robuust
-    voor nullen, vergelijkbaar over locaties. Test op max. de laatste
-    `max_points` punten zodat het recente regime telt én ETS snel blijft.
+    Test op max. de laatste `max_points` punten zodat het recente regime
+    telt én ETS snel blijft.
 
     4 folds (was 2): methode-selectie op 2 folds bleek instabiel — één
     afwijkende fold kon de 'beste' methode laten omslaan. Folds waarvoor
     te weinig historie overblijft (cutoff < 10) worden overgeslagen.
 
-    Met `return_step_errors=True` returnt (score, per_stap_gem_abs_fout,
-    per_stap_n) — de basis voor horizon-afhankelijke bandverbreding.
+    Returnt een MethodScore, of met `return_step_errors=True` het tupel
+    (MethodScore, per_stap_gem_abs_fout, per_stap_n) — de basis voor
+    horizon-afhankelijke bandverbreding.
     """
     s = series.tail(max_points) if len(series) > max_points else series
     if len(s) < max(20, 2 * horizon + 10):
         return None
-    errors: list[float] = []
+
+    scaled: list[float] = []
+    sum_abs_err = 0.0
+    sum_actual = 0.0
+    n_obs = 0
     step_abs = np.zeros(horizon)
     step_n = np.zeros(horizon)
+
     for i in range(n_folds, 0, -1):
         cutoff = len(s) - i * horizon
         if cutoff < 10:
@@ -525,16 +706,25 @@ def _backtest_method(
             return None
         future = np.asarray(pred[1], dtype=float)[:len(actual)]
         abs_err = np.abs(future - actual)
-        denom = np.maximum(np.abs(actual), 1.0)
-        errors.extend(abs_err / denom)
+
+        scale = _naive_scale(train.values.astype(float))
+        scaled.extend(abs_err / scale)
+        sum_abs_err += float(abs_err.sum())
+        sum_actual += float(np.abs(actual).sum())
+        n_obs += len(actual)
+
         k = len(actual)
         step_abs[:k] += abs_err
         step_n[:k] += 1
-    if not errors:
+
+    if not scaled:
         return None
-    score = float(np.mean(errors) * 100)
-    if not np.isfinite(score):
+    mase = float(np.mean(scaled))
+    if not np.isfinite(mase):
         return None
+    wmape = (100.0 * sum_abs_err / sum_actual) if sum_actual > 0 else float("nan")
+    score = MethodScore(mase=mase, wmape=wmape, n_obs=n_obs)
+
     if return_step_errors:
         steps = step_abs / np.maximum(step_n, 1)
         return score, steps, step_n
@@ -543,13 +733,13 @@ def _backtest_method(
 
 def backtest_all_methods(
     series: pd.Series, period: int, horizon: int,
-) -> dict[str, float]:
-    """Backtest alle voorspelmethoden; returnt {method_key: fout%}."""
-    out: dict[str, float] = {}
+) -> dict[str, MethodScore]:
+    """Backtest alle voorspelmethoden; returnt {method_key: MethodScore}."""
+    out: dict[str, MethodScore] = {}
     for m in PREDICTION_METHODS:
-        err = _backtest_method(series, m, period, horizon)
-        if err is not None:
-            out[m] = err
+        score = _backtest_method(series, m, period, horizon)
+        if score is not None:
+            out[m] = score
     return out
 
 
@@ -797,13 +987,16 @@ def compute_normbeeld(
     use_period = period if period else fallback_period
 
     # --- Methode-selectie ---
-    backtest_scores: dict[str, float] | None = None
+    # Selectie op MASE, niet op een percentage: percentages ontploffen op
+    # perioden met waarde 0 (delen door ~0) en maakten juist de schaarste
+    # reeksen kunstmatig 'goed'. Zie METHODS.md §5.
+    backtest_scores: dict[str, MethodScore] | None = None
     if methods is None and select == "backtest" and len(series) >= 20:
         bt_horizon = int(max(3, min(horizon_days, len(series) // 6)))
         scores = backtest_all_methods(series, use_period, bt_horizon)
         if scores:
             backtest_scores = scores
-            methods = sorted(scores, key=scores.get)[:2]
+            methods = sorted(scores, key=lambda m: scores[m].mase)[:2]
     if methods is None:
         methods = _auto_select_methods(series, period)
     methods = [m for m in methods if m in PREDICTION_METHODS]
@@ -838,7 +1031,10 @@ def compute_normbeeld(
     # methode zwaarder mee (gewicht ~ 1/fout, +5pp demping tegen extremen).
     ens_weights = None
     if backtest_scores and all(m in backtest_scores for m in used_methods):
-        ens_weights = [1.0 / (backtest_scores[m] + 5.0) for m in used_methods]
+        # Gewicht ~ 1/MASE, met demping zodat één zeer lage score de
+        # ensemble niet degradeert tot één methode.
+        ens_weights = [1.0 / (backtest_scores[m].mase + 0.5)
+                       for m in used_methods]
 
     combined = _combine_predictions(predictions, smooth_window=3,
                                     weights=ens_weights)
@@ -1014,8 +1210,11 @@ def compute_normbeeld(
         per_method_historical=per_method_historical,
         skip_reasons=skip_reasons,
         backtest_scores=backtest_scores,
+        # Indicatie-fout van de beste methode, in leesbare procenten (wMAPE);
+        # de selectie zelf loopt op MASE.
         backtest_error=(
-            min(backtest_scores.values()) if backtest_scores else None
+            min(s.wmape for s in backtest_scores.values())
+            if backtest_scores else None
         ),
         band_alpha=band_alpha,
         band_coverage=band_coverage,
