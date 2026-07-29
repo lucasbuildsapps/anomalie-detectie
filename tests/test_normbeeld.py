@@ -4,8 +4,11 @@ import pandas as pd
 import pytest
 
 from core.normbeeld import (
-    PREDICTION_METHODS, backtest_all_methods, compute_normbeeld,
-    _forecast_with, _weighted_quantile,
+    PREDICTION_METHODS,
+    _forecast_with,
+    _weighted_quantile,
+    backtest_all_methods,
+    compute_normbeeld,
 )
 
 

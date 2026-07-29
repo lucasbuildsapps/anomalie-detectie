@@ -1,0 +1,47 @@
+[project]
+name = "sentinel-anomalie-detectie"
+version = "0.9.0"
+description = "SENTINEL — normbeeld- en afwijkingsanalyse voor analisten"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["data", "scripts/generate_test_data.py"]
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: isort, B: bugbear, UP: pyupgrade,
+# SIM: simplify. Bewust geen agressieve regelsets: de bestaande stijl
+# (NL-docstrings, compacte wiskunde) blijft leidend.
+select = ["E", "W", "F", "I", "B", "UP", "SIM"]
+ignore = [
+    "E501",   # regel-lengte: handhaven we los; wiskunde-regels mogen breed
+    "SIM108", # ternary-dwang maakt statistiek-code minder leesbaar
+    "SIM117", # geneste with-statements zijn hier bewust
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Streamlit-pagina's: veel herhaalde UI-blokken; bugbear-strictheid daar niet zinvol.
+# E402: st.set_page_config moet vóór verdere imports draaien (Streamlit-eis).
+"app.py" = ["B008", "E402"]
+"ui/**" = ["B008", "E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    # statsmodels geeft bekende, onschadelijke warnings op korte reeksen
+    "ignore::RuntimeWarning:statsmodels.*",
+    "ignore::UserWarning:statsmodels.*",
+]
+
+[tool.coverage.run]
+source = ["core", "detectors", "connectors"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+# Vloer voor de kern-wiskunde; UI-code telt bewust niet mee.
+fail_under = 70
+show_missing = true

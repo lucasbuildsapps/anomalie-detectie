@@ -16,7 +16,10 @@ import pytest
 
 from core.comparison import cross_correlation_lag
 from core.normbeeld import (
-    PREDICTION_METHODS, _combine_predictions, _detect_period, _forecast_with,
+    PREDICTION_METHODS,
+    _combine_predictions,
+    _detect_period,
+    _forecast_with,
     compute_normbeeld,
 )
 

@@ -121,7 +121,7 @@ def render_lag_curve(lag: LagResult, label_a: str, label_b: str,
     lag tussen de twee reeksen."""
     p = _pal(theme)
     colors = [
-        p["bar_best"] if l == lag.best_lag else p["bar"] for l in lag.lags
+        p["bar_best"] if lg == lag.best_lag else p["bar"] for lg in lag.lags
     ]
     fig = go.Figure(go.Bar(
         x=lag.lags, y=lag.corrs, marker_color=colors,

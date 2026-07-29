@@ -2,10 +2,10 @@
 gevuld als door de UI live weergegeven."""
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable
-
 
 # Vaste tag-codes (6 chars max voor uitlijning).
 TAG_DATA = "DATA"
@@ -38,10 +38,8 @@ class ActivityLog:
         )
         self.entries.append(entry)
         for cb in self.callbacks:
-            try:
+            with contextlib.suppress(Exception):
                 cb(entry)
-            except Exception:
-                pass
 
     def render_text(self, indent_tag: int = 6) -> str:
         return "\n".join(

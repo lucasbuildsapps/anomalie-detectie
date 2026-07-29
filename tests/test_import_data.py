@@ -1,5 +1,6 @@
 """Tests voor robuust importeren — de plek waar echte data het vaakst breekt."""
 import pandas as pd
+import pytest
 
 from core.import_data import apply_mapping, parse_datetime_robust
 
@@ -28,11 +29,8 @@ def test_apply_mapping_returns_stats():
 
 def test_apply_mapping_requires_time_and_value():
     df = pd.DataFrame({"a": [1]})
-    try:
+    with pytest.raises(ValueError):
         apply_mapping(df, {"time": None, "value": "a"})
-        assert False, "had ValueError moeten geven"
-    except ValueError:
-        pass
 
 
 def test_apply_mapping_coerces_nonnumeric_values():

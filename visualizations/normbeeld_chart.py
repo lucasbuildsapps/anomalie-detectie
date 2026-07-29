@@ -7,7 +7,6 @@ import streamlit as st
 
 from core.normbeeld import PREDICTION_METHODS, Normbeeld
 
-
 LIGHT = {
     # Band = neutrale groene envelop; rand-lijntjes maken de grenzen scherp.
     "band":          "rgba(46, 139, 87, 0.10)",

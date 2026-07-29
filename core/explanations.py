@@ -5,7 +5,6 @@ import pandas as pd
 
 from core.profiler import DataProfile
 
-
 DAY_NAMES = [
     "maandag", "dinsdag", "woensdag", "donderdag",
     "vrijdag", "zaterdag", "zondag",

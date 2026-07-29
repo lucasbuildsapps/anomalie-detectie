@@ -6,7 +6,6 @@ import streamlit as st
 
 from .base import Visualization
 
-
 LIGHT = {
     "band":     "rgba(46, 139, 87, 0.14)",
     "expected": "#2e8b57",

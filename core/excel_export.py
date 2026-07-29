@@ -48,7 +48,7 @@ def build_excel_export(
 
         # ----- Normbeeld per locatie -----
         nb_rows = []
-        for loc, nb in normbeelds.items():
+        for nb in normbeelds.values():
             nb_rows.append({
                 "Locatie": nb.location,
                 "Categorie": nb.category or "",
@@ -90,7 +90,7 @@ def build_excel_export(
 
         # ----- Forecast per locatie -----
         fc_rows = []
-        for loc, nb in normbeelds.items():
+        for nb in normbeelds.values():
             for _, r in nb.forecast.iterrows():
                 fc_rows.append({
                     "Locatie": nb.location,

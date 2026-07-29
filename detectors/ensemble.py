@@ -6,7 +6,7 @@ from .base import Detector, ParameterSpec
 def _other_detector_names() -> list[str]:
     # Lazy import to avoid registry circularity at module load.
     from core.registry import get_detectors
-    return [n for n in get_detectors().keys() if n != "Ensemble (stemming)"]
+    return [n for n in get_detectors() if n != "Ensemble (stemming)"]
 
 
 class EnsembleDetector(Detector):
@@ -33,7 +33,7 @@ parallel op dezelfde data en combineert hun uitkomsten via een stemmechanisme.
 
 **Wanneer geschikt**
 - Wanneer geen enkele methode op zichzelf overtuigt.
-- Voor robuustheid: bv. eis dat 2-van-3 onafhankelijke methoden het eens zijn.
+- Voor robuustheid: bv. eis dat 2-van-3 afzonderlijke methoden het eens zijn.
 
 **Tip**: kies methoden die *verschillende* dingen detecteren (bv. Z-score
 voor spikes, Change-point voor niveauverschuivingen, STL voor
@@ -67,7 +67,7 @@ fijnregelen, draai ze dan eerst los en bekijk de resultaten naast elkaar.
         all_detectors = get_detectors()
 
         if not methods:
-            methods = [n for n in all_detectors.keys() if n != self.name][:3]
+            methods = [n for n in all_detectors if n != self.name][:3]
 
         out = df.copy().sort_values(time_col).reset_index(drop=True)
         votes = pd.Series(0, index=out.index, dtype=int)

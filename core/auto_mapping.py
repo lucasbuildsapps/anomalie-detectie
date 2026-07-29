@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import pandas as pd
 
-
 TIME_KEYWORDS = (
     "datum", "date", "time", "tijd", "tijdstip", "timestamp", "moment",
     "dag", "day",
@@ -104,9 +103,7 @@ def _looks_like_coordinate(s: pd.Series, lo: float, hi: float) -> bool:
     if has_decimals < 0.5:
         return False
     # Niet alles dezelfde waarde, en niet allemaal 0
-    if nums.std() < 0.001 or nums.abs().mean() < 0.01:
-        return False
-    return True
+    return not (nums.std() < 0.001 or nums.abs().mean() < 0.01)
 
 
 def _cardinality(s: pd.Series) -> int:

@@ -3,7 +3,10 @@ import numpy as np
 import pandas as pd
 
 from core.signals import (
-    change_signal, collect_signals, persistence_signal, similar_period,
+    change_signal,
+    collect_signals,
+    persistence_signal,
+    similar_period,
     variability_signal,
 )
 
@@ -67,7 +70,8 @@ def test_similar_period_finds_planted_match():
     eerdere kopie terugvinden."""
     rng = np.random.default_rng(4)
     pattern = 10 + np.array([0, 2, 5, 9, 12, 9, 5, 2, 0, -2] * 2, dtype=float)
-    noise = lambda n: rng.normal(0, 0.3, n)
+    def noise(n):
+        return rng.normal(0, 0.3, n)
     vals = np.concatenate([
         5 + noise(30), pattern + noise(20), 5 + noise(40),
         pattern + noise(20),

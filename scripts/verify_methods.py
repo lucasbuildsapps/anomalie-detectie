@@ -21,7 +21,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core.normbeeld import (  # noqa: E402
-    PREDICTION_METHODS, compute_normbeeld,
+    PREDICTION_METHODS,
+    compute_normbeeld,
 )
 
 

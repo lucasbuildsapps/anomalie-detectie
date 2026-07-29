@@ -5,7 +5,10 @@ import pytest
 
 import core.storage as storage
 from core.normbeeld import (
-    _aggregate, _detect_period, compute_normbeeld, data_quality,
+    _aggregate,
+    _detect_period,
+    compute_normbeeld,
+    data_quality,
 )
 
 

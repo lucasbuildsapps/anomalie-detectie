@@ -3,7 +3,9 @@ import numpy as np
 import pandas as pd
 
 from core.comparison import (
-    build_series, cross_correlation_lag, detect_change_points,
+    build_series,
+    cross_correlation_lag,
+    detect_change_points,
     seasonality_profile,
 )
 

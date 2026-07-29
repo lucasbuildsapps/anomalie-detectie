@@ -3,14 +3,12 @@ Pure-Python via fpdf2 — geen externe binaries nodig."""
 from __future__ import annotations
 
 from datetime import datetime
-from io import BytesIO
 
 import pandas as pd
 from fpdf import FPDF
 
 from core.auto_pilot import AutoPilotResult, build_findings
 from core.explanations import explanation_to_markdown
-
 
 PRIMARY_RGB = (26, 77, 140)        # #1a4d8c
 SEV_HIGH_RGB = (197, 48, 48)       # #c53030
