@@ -85,24 +85,66 @@ anders betrouwbaar past.
 - **Heuristische selectie** (overzichten, snel): op basis van
   reekslengte en gedetecteerd seizoen (`_auto_select_methods`).
 - **Backtest-selectie** (detailweergave, rigoureus): rolling-origin
-  backtest (zie §5); de twee methoden met de laagste out-of-sample-fout
-  worden gecombineerd, gewogen met 1/(fout+5) zodat een aantoonbaar
-  betere methode zwaarder telt en het +5-punt demping tegen extreme
-  gewichten geeft.
+  backtest (zie §5); de twee methoden met de laagste **MASE** worden
+  gecombineerd, gewogen met 1/(MASE+0,5) zodat een aantoonbaar betere
+  methode zwaarder telt en de demping voorkomt dat één lage score de
+  ensemble tot één methode reduceert.
 - Het ensemble-gemiddelde wordt licht gladgestreken (venster 3).
 
-## 5. Backtest (rolling origin)
+## 5. Backtest (rolling origin) en foutmaat
 
-`_backtest_method`: houd per fold `horizon` punten achter, train op de
-rest, vergelijk. **4 folds** (2 bleek instabiel voor methode-selectie).
-Foutmetriek per punt: |voorspeld − werkelijk| / max(|werkelijk|, 1) —
-robuust voor nullen en vergelijkbaar over locaties (variant op MAPE/sMAPE;
-zie Hyndman & Koehler 2006 over valkuilen van MAPE bij nullen).
-Methodologie: rolling-origin evaluation, **Tashman (2000), Int. J.
-Forecasting 16(4)**.
+`_backtest_method`. Per methode worden 4 folds achtergehouden (rolling
+origin, Tashman 2000): train op alles vóór de cutoff, voorspel `horizon`
+perioden vooruit, vergelijk met de werkelijkheid. Getest op maximaal de
+laatste 400 punten, zodat het recente regime telt.
 
-De getoonde "gem. voorspelfout %" per methode is deze out-of-sample-fout —
-niet de fit op de trainingsdata.
+### Foutmaat: MASE (en waarom niet een percentage)
+
+**Wat er misging.** De eerste versie gebruikte
+`|fout| / max(|werkelijk|, 1)`. Op reeksen met lege perioden deelt dat
+door ~1, waardoor één lege dag met een voorspelling van 75 een fout van
+7500% opleverde. Gevolg op de demo-dataset: dagbasis leek 650–1000%
+"fout" en weekbasis 31% — een artefact van de maat, geen
+kwaliteitsverschil. Erger nog: de sléchtste reeksen scoorden het best,
+want een regio die vrijwel altijd nul is, wordt door "voorspel nul"
+perfect bediend. Deze cijfers stuurden de **methode-selectie**, dus de
+tool koos aantoonbaar verkeerde modellen.
+
+**Wat het nu is.** MASE (Hyndman & Koehler 2006, *Another look at
+measures of forecast accuracy*):
+
+    MASE = mean(|fout|) / Q,   Q = mean(|y_t − y_(t−1)|) op de trainingsdata
+
+Q is één vaste schaal per fold in plaats van een deling per punt, dus
+lege perioden blazen niets op. Interpretatie: MASE < 1 betekent beter
+dan de naïeve voorspelling "volgende = vorige", MASE > 1 slechter.
+
+**Bewust m = 1, niet de seizoensperiode.** De seizoensperiode verschilt
+per tijdschaal (7 bij dagen, 52 bij weken). Met een seizoens-noemer
+vergelijkt MASE tussen tijdschalen appels met peren; met een vaste m = 1
+stelt elke tijdschaal dezelfde vraag. Hyndman & Koehler bevelen
+consistentie aan bij vergelijking tussen reeksen.
+
+**wMAPE blijft zichtbaar** (Σ|fout| / Σ|werkelijk|) omdat "gemiddeld 20%
+ernaast" leesbaar is, maar de UI zegt er expliciet bij dat die maat niet
+tussen tijdschalen vergeleken mag worden.
+
+### Tijdschaal-advies (`recommend_timescale`)
+
+Omdat MASE schaalvrij is, kan de tool tijdschalen eerlijk náást elkaar
+zetten: per kandidaat (dag/week/maand) draait een volledige backtest en
+telt de beste methode. De rangschikking weegt twee dingen:
+
+1. **voorspelbaarheid** — MASE;
+2. **bruikbaarheid** — het aandeel lege perioden. Een reeks die voor 92%
+   uit nullen bestaat is formeel goed voorspelbaar ("morgen weer niets")
+   maar analytisch waardeloos. De penalty is
+   `1 + 2·max(0, aandeel_leeg − 0.3)`.
+
+Het advies wordt in de UI getoond mét de onderbouwing en de losse
+cijfers per tijdschaal, zodat de analist het kan overrulen. Op de
+demo-dataset: Ukraine → dagen (MASE 0,99), het schaarse Mykolaiv oblast
+→ weken (dagbasis is daar 92% leeg).
 
 ## 6. Tolerantieband
 
@@ -274,6 +316,31 @@ Per historiepunt de empirische rang van het residu (0–1). "Extremer dan
 X% van de historie" is een **rang-uitspraak binnen de eigen reeks**,
 geen kansuitspraak.
 
+## 11b. Peer-groepen (`region_comovement`)
+
+Het normbeeld vraagt: *is deze regio ongewoon vergeleken met haar eigen
+verleden?* Deze analyse vraagt iets anders: *is deze regio ongewoon
+vergeleken met de regio's die normaal hetzelfde doen?*
+
+Dat onderscheid is operationeel relevant. Stijgen alle regio's tegelijk,
+dan is dat waarschijnlijk landelijk — of een wijziging in de rapportage.
+Stijgt er één terwijl haar peers vlak blijven, dan is dat lokaal, en
+meestal het interessantere signaal.
+
+Werkwijze:
+1. reeks per regio, genormaliseerd naar z-scores (anders domineert de
+   drukste regio de hele correlatiematrix);
+2. correlatiematrix over de gezamenlijke historie;
+3. peers = regio's met correlatie ≥ 0,4; minder dan 2 peers betekent
+   géén uitspraak (zonder groep valt er niets te vergelijken);
+4. het verschil tussen de regio en haar peer-gemiddelde wordt uitgedrukt
+   in standaarddeviaties van dat verschil over de historie; vanaf 2σ
+   volgt een melding.
+
+Beperking: dit vindt alleen wat correleert. Een regio zonder duidelijke
+peer-groep (35 van 103 in de demo-dataset hebben er wél een) blijft
+buiten beeld — daar is het normbeeld het enige signaal.
+
 ## 12. Bekende beperkingen (open)
 
 - De banddekking wordt gerapporteerd maar (nog) niet automatisch
@@ -286,7 +353,9 @@ geen kansuitspraak.
   richting miljoenen rijen is SQL-side aggregatie nodig.
 
 **Opgelost sinds de eerste versie**: lage-count-reeksen gebruiken nu een
-Poisson/negatief-binomiaal band (§6b) in plaats van residual-quantiles.
+Poisson/negatief-binomiaal band (§6b) in plaats van residual-quantiles;
+de backtest-foutmaat is vervangen door MASE (§5), waarmee ook het
+tijdschaal-advies mogelijk werd; detector-correlatie wordt gemeten (§8).
 
 ## 13. Reproduceerbaarheid
 

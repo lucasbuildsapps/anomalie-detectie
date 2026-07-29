@@ -236,3 +236,114 @@ def seasonality_profile(series: pd.Series, aggregation: str) -> dict | None:
         "trough": labels[trough_i],
         "amplitude_pct": diff * 100,
     }
+
+
+# ---------------------------------------------------------------------------
+# Peer-groepen: welke regio's bewegen samen, en wie wijkt af van zijn groep?
+# ---------------------------------------------------------------------------
+@dataclass
+class PeerDeviation:
+    """Eén regio die uit de pas loopt met zijn eigen peer-groep."""
+
+    region: str
+    peers: list[str]
+    peer_correlation: float   # gem. historische correlatie met de groep
+    recent_z: float           # afwijking t.o.v. de groep, in standaarddeviaties
+    direction: str            # 'boven' / 'onder'
+    recent_value: float
+    peer_expected: float
+
+
+def _zscore_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    """Normaliseer elke regio naar z-scores, zodat een grote en een kleine
+    regio vergelijkbaar worden. Zonder dit domineert de drukste regio elke
+    correlatie."""
+    mu = frame.mean()
+    sd = frame.std(ddof=0).replace(0, np.nan)
+    return (frame - mu) / sd
+
+
+def region_comovement(
+    df: pd.DataFrame, aggregation: str = "daily",
+    min_periods: int = 30, min_corr: float = 0.4,
+    recent_periods: int = 3, z_threshold: float = 2.0,
+) -> tuple[pd.DataFrame | None, list[PeerDeviation]]:
+    """Vind regio's die normaal samen bewegen, en wie daar nu van afwijkt.
+
+    Dit beantwoordt een andere vraag dan het normbeeld. Het normbeeld
+    vraagt: *is deze regio ongewoon vergeleken met haar eigen verleden?*
+    Hier vragen we: *is deze regio ongewoon vergeleken met de regio's die
+    normaal hetzelfde doen?*
+
+    Dat verschil is operationeel relevant. Als alle regio's tegelijk
+    stijgen, is dat waarschijnlijk een landelijke ontwikkeling (of een
+    verandering in de rapportage). Stijgt er één terwijl zijn peers vlak
+    blijven, dan is dat lokaal — en meestal het interessantere signaal.
+
+    Werkwijze:
+    1. reeks per regio, genormaliseerd naar z-scores;
+    2. correlatiematrix over de gezamenlijke historie;
+    3. per regio de peers met correlatie >= `min_corr`;
+    4. vergelijk de recente periode met het peer-gemiddelde, uitgedrukt in
+       standaarddeviaties van het historische verschil.
+
+    Returnt (correlatiematrix, afwijkingen). De matrix is None als er te
+    weinig regio's of te weinig overlappende historie is.
+    """
+    if df is None or df.empty or "location_name" not in df.columns:
+        return None, []
+
+    freq = AGGREGATIONS.get(aggregation, AGGREGATIONS["daily"])[0]
+    work = df.dropna(subset=["location_name"]).copy()
+    work["timestamp"] = pd.to_datetime(work["timestamp"])
+    wide = (
+        work.set_index("timestamp")
+        .groupby("location_name")["value"]
+        .resample(freq).sum()
+        .unstack(0)
+        .fillna(0.0)
+    )
+    wide = wide.loc[:, wide.notna().sum() >= min_periods]
+    # Constante reeksen hebben geen correlatie en vervuilen de matrix.
+    wide = wide.loc[:, wide.std(ddof=0) > 0]
+    if wide.shape[1] < 3 or len(wide) < min_periods:
+        return None, []
+
+    z = _zscore_columns(wide).dropna(axis=1, how="all")
+    corr = z.corr(min_periods=min_periods)
+    if corr.isna().all().all():
+        return None, []
+
+    deviations: list[PeerDeviation] = []
+    for region in corr.columns:
+        peers = [
+            other for other in corr.columns
+            if other != region and pd.notna(corr.loc[region, other])
+            and corr.loc[region, other] >= min_corr
+        ]
+        if len(peers) < 2:
+            continue  # zonder groep valt er niets te vergelijken
+
+        gap = z[region] - z[peers].mean(axis=1)
+        history, recent = gap.iloc[:-recent_periods], gap.iloc[-recent_periods:]
+        if len(history) < min_periods or recent.empty:
+            continue
+        sd = float(history.std(ddof=0))
+        if sd <= 0:
+            continue
+        score = float((recent.mean() - history.mean()) / sd)
+        if abs(score) < z_threshold:
+            continue
+
+        deviations.append(PeerDeviation(
+            region=str(region),
+            peers=[str(p) for p in peers],
+            peer_correlation=float(corr.loc[region, peers].mean()),
+            recent_z=score,
+            direction="boven" if score > 0 else "onder",
+            recent_value=float(wide[region].iloc[-recent_periods:].mean()),
+            peer_expected=float(wide[peers].iloc[-recent_periods:].mean().mean()),
+        ))
+
+    deviations.sort(key=lambda d: -abs(d.recent_z))
+    return corr, deviations

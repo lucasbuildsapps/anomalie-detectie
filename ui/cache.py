@@ -121,3 +121,13 @@ def cached_analysis(
 @st.cache_data(show_spinner=False)
 def _cmp_load(dataset_id: int, data_hash: str):
     return storage.load_observations(dataset_id)
+
+
+@st.cache_data(show_spinner="Regio's vergelijken...")
+def cached_comovement(dataset_id: int, data_hash: str, aggregation: str):
+    """Peer-groep-analyse over alle regio's van een dataset."""
+    from core.comparison import region_comovement
+    df = storage.load_observations(dataset_id)
+    if df.empty:
+        return None, []
+    return region_comovement(df, aggregation)

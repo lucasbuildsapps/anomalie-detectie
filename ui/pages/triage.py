@@ -18,7 +18,7 @@ from core import annotations as anno
 from core import storage
 from core.auto_pilot import build_findings, detector_agreement
 from i18n.nl import t
-from ui.cache import cached_analysis
+from ui.cache import cached_analysis, cached_comovement
 from ui.components import (
     _render_annotation_widget,
     _render_empty_state,
@@ -123,6 +123,70 @@ def _render_findings(result, ds: dict):
             st.markdown(rows, unsafe_allow_html=True)
 
 
+def _render_peer_deviations(dataset_id: int, aggregation: str):
+    """Regio's die uit de pas lopen met hun eigen peer-groep.
+
+    Ander signaal dan het normbeeld: stijgen alle regio's samen, dan is
+    dat landelijk (of een rapportage-wijziging). Stijgt er één terwijl
+    zijn peers vlak blijven, dan is dat lokaal — meestal interessanter.
+    """
+    corr, devs = cached_comovement(
+        dataset_id, storage.dataset_data_hash(dataset_id), aggregation
+    )
+    if corr is None:
+        return
+
+    st.markdown("<div class='section-label'>Uit de pas met vergelijkbare "
+                "regio's</div>", unsafe_allow_html=True)
+    if not devs:
+        st.caption(
+            "Geen regio wijkt momenteel af van zijn peer-groep. Let op: als "
+            "álle regio's tegelijk stijgen, verschijnt hier niets — dat is "
+            "dan een landelijk patroon, geen lokaal signaal."
+        )
+    else:
+        st.caption(
+            f"{len(devs)} regio('s) bewegen anders dan de regio's waarmee ze "
+            f"normaal meelopen."
+        )
+        for d in devs[:6]:
+            color = P["high"] if d.direction == "boven" else P["accent"]
+            peers = ", ".join(d.peers[:4])
+            if len(d.peers) > 4:
+                peers += f" (+{len(d.peers) - 4})"
+            st.markdown(
+                f"""
+                <div class="finding-card" style="--card-color: {color};">
+                    <div class="finding-header">
+                        <span class="severity-pill" style="background: {color};">
+                            {d.direction.upper()} PEERS</span>
+                        <span class="finding-loc">
+                            {_html.escape(d.region)}</span>
+                        <span class="finding-date">
+                            {abs(d.recent_z):.1f}σ</span>
+                    </div>
+                    <div class="finding-stat">
+                        Recent {d.recent_value:.1f} per periode, terwijl
+                        vergelijkbare regio's op {d.peer_expected:.1f} zitten.
+                    </div>
+                    <div class="finding-meta">
+                        peer-groep: {_html.escape(peers)} ·
+                        gem. samenhang {d.peer_correlation:.2f}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    with st.expander("Samenhang tussen regio's (correlatiematrix)"):
+        st.caption(
+            "Hoe sterk bewegen regio's samen, over de hele historie "
+            "(genormaliseerd, zodat een grote regio de matrix niet "
+            "domineert). 1.00 = identiek patroon, 0 = geen samenhang."
+        )
+        st.dataframe(corr.round(2), use_container_width=True)
+
+
 def _render_agreement(result):
     agree = detector_agreement(getattr(result, "method_outputs", None))
     if agree is None:
@@ -193,7 +257,7 @@ def page_triage():
     if cached is None:
         st.warning("Dataset is leeg.")
         return
-    _, _, result, _, alerts, _ = cached
+    _, _, result, _, alerts, effective_agg = cached
 
     triage = anno.triage_counts(ds["id"], alerts)
     if triage["total"]:
@@ -204,3 +268,4 @@ def page_triage():
 
     _render_findings(result, ds)
     _render_agreement(result)
+    _render_peer_deviations(ds["id"], effective_agg)
