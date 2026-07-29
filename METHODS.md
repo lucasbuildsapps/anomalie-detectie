@@ -192,10 +192,39 @@ minimaal 2 methoden moeten een punt markeren; "hoog" vereist (vrijwel)
 unanimiteit. De exacte tabel staat in de docstring en in
 `tests/test_severity.py`.
 
-**Belangrijk**: de detectoren zijn **niet statistisch onafhankelijk**
-(Z-score, rolling en STL-residu correleren sterk op de meeste reeksen).
-Stemmen zijn corroboratie-indicaties, geen onafhankelijke bewijzen. De
-UI-teksten zijn hierop aangepast.
+**Belangrijk**: de detectoren zijn **niet per definitie statistisch
+onafhankelijk** — Z-score, rolling en STL-residu meten alle drie een vorm
+van "afstand tot het lokale niveau". Stemmen zijn daarom corroboratie-
+indicaties, geen onafhankelijke bewijzen. De UI-teksten zijn hierop
+aangepast.
+
+Hoe sterk die afhankelijkheid is, blijkt **datasetafhankelijk** en wordt
+daarom gemeten in plaats van aangenomen (zie hieronder). Op de
+demo-dataset (missile attacks, per regio gegroepeerd) komt het effectieve
+aantal detectoren uit op 4,8 van 5 — daar dragen de stemmen dus vrijwel
+volledig eigen informatie. Op vlakkere reeksen valt dat getal lager uit.
+Dit is precies waarom de maat per dataset wordt getoond.
+
+### Gemeten onafhankelijkheid (`detector_agreement`)
+De kanttekening hierboven is inmiddels **gekwantificeerd** in plaats van
+alleen benoemd. Per dataset worden de binaire vlaggen van alle
+detectoren vergeleken:
+
+- **φ-coëfficiënt**: Pearson-correlatie op de binaire vlaggen (bij
+  constante vlaggen — niets of alles gemarkeerd — niet gedefinieerd).
+- **Jaccard-index**: |A∩B| / |A∪B| over de gemarkeerde punten; dit is
+  het getal dat in de UI staat omdat het direct leesbaar is
+  ("deze twee markeren 70% dezelfde punten").
+- **Effectief aantal detectoren**: participatie-ratio van de
+  eigenwaarden van de correlatiematrix, n² / Σλᵢ². Gelijk aan *n* bij
+  ongecorreleerde detectoren, richting 1 als ze allemaal hetzelfde
+  zeggen. Dezelfde maat wordt in de portefeuille-analyse gebruikt voor
+  het effectieve aantal onafhankelijke posities.
+
+De UI toont dit onder de bevindingenlijst ("hoe zelfstandig zijn deze
+stemmen?"), met een expliciete interpretatie-regel: bij een effectief
+aantal onder de helft van *n* moet een meerderheid als **één**
+waarneming gelezen worden, niet als meerdere.
 
 ### Auto-tuning — quota, geen significantie
 De gevoeligheid ('streng'/'normaal'/'soepel') wordt maximaal 3 iteraties
@@ -247,15 +276,17 @@ geen kansuitspraak.
 
 ## 12. Bekende beperkingen (open)
 
-- Lage-count-reeksen (< ~2 events/periode) zouden principieel beter
-  passen bij een Poisson/negatief-binomiaal model dan bij
-  quantile-banden; de huidige aanpak degradeert netjes maar is daar
-  niet optimaal.
 - De banddekking wordt gerapporteerd maar (nog) niet automatisch
   gekalibreerd naar een doeldekking.
-- Detector-correlatie wordt benoemd maar niet gekwantificeerd; een
-  correlatie-matrix per dataset zou de stem-interpretatie verder
-  aanscherpen.
+- De detector-correlatie wordt gemeten en getoond (§8), maar de
+  severity-drempels wegen het effectieve aantal detectoren nog niet
+  mee; twee sterk gecorreleerde stemmen tellen in de tabel nog als
+  twee.
+- Het aggregeren gebeurt in pandas, niet in de database; bij datasets
+  richting miljoenen rijen is SQL-side aggregatie nodig.
+
+**Opgelost sinds de eerste versie**: lage-count-reeksen gebruiken nu een
+Poisson/negatief-binomiaal band (§6b) in plaats van residual-quantiles.
 
 ## 13. Reproduceerbaarheid
 

@@ -36,6 +36,80 @@ TARGET_SIGNAL_MIN = 0.003
 TARGET_SIGNAL_MAX = 0.05
 
 
+def detector_agreement(method_outputs: dict) -> dict | None:
+    """Kwantificeer hoe onafhankelijk de detectoren feitelijk zijn.
+
+    De stemming behandelt elke detector als een aparte getuige, maar
+    Z-score, Rolling en STL kijken alle drie naar 'ver van het lokale
+    gemiddelde'. Als die drie altijd samen vuren, is '3 van de 5 eens'
+    in werkelijkheid één waarneming, geen drie. Deze functie maakt dat
+    meetbaar in plaats van alleen een tekstuele kanttekening.
+
+    Berekend per paar detectoren over de gemarkeerde punten:
+    - **phi**: Pearson-correlatie op de binaire vlaggen (φ-coëfficiënt).
+    - **jaccard**: overlap van de gemarkeerde verzamelingen
+      |A∩B| / |A∪B| — leesbaarder voor de analist dan phi.
+
+    `n_effective` is de participatie-ratio van de eigenwaarden van de
+    correlatiematrix: n² / Σλᵢ². Gelijk aan n bij volledig
+    ongecorreleerde detectoren, richting 1 als ze allemaal hetzelfde
+    zeggen. Zie METHODS.md §8.
+
+    Returnt None bij < 2 bruikbare detectoren.
+    """
+    usable = {
+        name: np.asarray(flags, dtype=bool)
+        for name, flags in (method_outputs or {}).items()
+        if flags is not None and len(np.asarray(flags)) > 0
+    }
+    if len(usable) < 2:
+        return None
+    lengths = {len(v) for v in usable.values()}
+    if len(lengths) != 1:
+        return None
+
+    names = sorted(usable)
+    mat = np.vstack([usable[n].astype(float) for n in names])
+
+    pairs = []
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            a, b = mat[i], mat[j]
+            both = float(np.sum((a > 0) & (b > 0)))
+            either = float(np.sum((a > 0) | (b > 0)))
+            jaccard = both / either if either > 0 else 0.0
+            # Constante vlaggen (niets of alles gemarkeerd) hebben geen
+            # variantie; phi is daar niet gedefinieerd.
+            if a.std() == 0 or b.std() == 0:
+                phi = float("nan")
+            else:
+                phi = float(np.corrcoef(a, b)[0, 1])
+            pairs.append({
+                "a": names[i], "b": names[j],
+                "phi": phi, "jaccard": jaccard,
+                "n_both": int(both),
+            })
+
+    with np.errstate(invalid="ignore"):
+        corr = np.corrcoef(mat)
+    corr = np.nan_to_num(corr, nan=0.0)
+    np.fill_diagonal(corr, 1.0)
+    eigvals = np.clip(np.linalg.eigvalsh(corr), 0, None)
+    denom = float(np.sum(eigvals ** 2))
+    n = len(names)
+    n_effective = (n ** 2) / denom if denom > 0 else float(n)
+
+    finite = [p["phi"] for p in pairs if np.isfinite(p["phi"])]
+    return {
+        "detectors": names,
+        "pairs": pairs,
+        "n_detectors": n,
+        "n_effective": float(np.clip(n_effective, 1.0, n)),
+        "max_phi": float(max(finite)) if finite else None,
+        "mean_phi": float(np.mean(finite)) if finite else None,
+    }
+
+
 def classify_severity(votes: np.ndarray, n_methods: int) -> np.ndarray:
     """Severity op basis van absolute stem-aantallen, niet fracties.
 

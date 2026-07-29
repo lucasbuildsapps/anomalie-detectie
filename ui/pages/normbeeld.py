@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import html as _html
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
 from core import storage
-from core.auto_pilot import build_findings
+from core.auto_pilot import build_findings, detector_agreement
 from core.briefing import briefing_filename, build_briefing_pdf
 from core.comparison import seasonality_profile
 from core.excel_export import build_excel_export, excel_filename
@@ -535,6 +536,50 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
     return nb_view
 
 
+def _render_detector_agreement(result):
+    """Hoe zelfstandig zijn de stemmen? Toont de gemeten overlap tussen
+    detectoren, zodat '4 van de 5 eens' op waarde geschat kan worden."""
+    agree = detector_agreement(getattr(result, "method_outputs", None))
+    if agree is None:
+        return
+    n = agree["n_detectors"]
+    n_eff = agree["n_effective"]
+    ratio = n_eff / n
+    if ratio >= 0.8:
+        verdict = ("De algoritmes kijken grotendeels naar verschillende "
+                   "dingen — stemmen tellen bijna vol mee.")
+    elif ratio >= 0.5:
+        verdict = ("De algoritmes overlappen deels — tel een meerderheid "
+                   "als sterke aanwijzing, niet als onafhankelijke bevestiging.")
+    else:
+        verdict = ("De algoritmes zeggen grotendeels hetzelfde — behandel "
+                   "een meerderheid als één waarneming, niet als meerdere.")
+
+    with st.expander(
+        f"Hoe zelfstandig zijn deze stemmen? "
+        f"({n_eff:.1f} van {n} algoritmes tellen echt afzonderlijk)"
+    ):
+        st.caption(
+            "De stemming behandelt elk algoritme als aparte getuige, maar "
+            "sommige kijken naar hetzelfde signaal (bv. Z-score en Rolling "
+            "meten allebei afstand tot het lokale gemiddelde). Hieronder de "
+            "gemeten overlap op déze dataset. Zie METHODS.md §8."
+        )
+        st.markdown(f"**{verdict}**")
+        rows = sorted(agree["pairs"], key=lambda p: -p["jaccard"])[:10]
+        st.dataframe(
+            pd.DataFrame([{
+                "Algoritme A": r["a"],
+                "Algoritme B": r["b"],
+                "Overlap (Jaccard)": f"{r['jaccard'] * 100:.0f}%",
+                "Correlatie (φ)": ("—" if not np.isfinite(r["phi"])
+                                   else f"{r['phi']:.2f}"),
+                "Samen gemarkeerd": r["n_both"],
+            } for r in rows]),
+            use_container_width=True, hide_index=True,
+        )
+
+
 def _render_afwijkingen_section(nb_view, result, alerts, ds: dict,
                                 location: str, unit: str):
     """Eén samenhangende afwijkingen-sectie: (1) deze regio, (2) alle
@@ -640,6 +685,7 @@ def _render_afwijkingen_section(nb_view, result, alerts, ds: dict,
                 _render_annotation_widget(ds["id"], f["datum"],
                                           str(f["locatie"]),
                                           key_suffix=f"ens_{i}")
+            _render_detector_agreement(result)
         if weak:
             with st.expander(
                 f"Laag-vertrouwen signalen ({len(weak)}) — 2 algoritmes, "
