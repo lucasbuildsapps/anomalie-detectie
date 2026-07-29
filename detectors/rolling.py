@@ -67,8 +67,13 @@ teruggekoppeld aan de oorspronkelijke rijen op basis van datum.
             .resample("D")
             .sum()
         )
-        roll_mean = daily.rolling(window=window, min_periods=2).mean()
-        roll_std = daily.rolling(window=window, min_periods=2).std().replace(0, np.nan)
+        # Baseline op t gebruikt alleen data VÓÓR t (shift): een spike die
+        # in zijn eigen venster meetelt blaast mean én std op en maskeert
+        # daarmee zijn eigen detectie (zelfde leakage-fix als in
+        # core/normbeeld.py::_rolling_forecast).
+        prev = daily.shift(1)
+        roll_mean = prev.rolling(window=window, min_periods=2).mean()
+        roll_std = prev.rolling(window=window, min_periods=2).std().replace(0, np.nan)
         score = ((daily - roll_mean) / roll_std).fillna(0)
 
         day_idx = out[time_col].dt.floor("D")
