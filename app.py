@@ -59,10 +59,20 @@ from ui.theme import APP_VERSION, P, build_css
 
 st.markdown(build_css(), unsafe_allow_html=True)
 
-from ui.pages.compare import page_compare
-from ui.pages.normbeeld import page_normbeeld
-from ui.pages.settings import page_settings
-from ui.pages.triage import page_triage
+
+def _load_page(module_name: str, func_name: str):
+    """Importeer een pagina pas wanneer hij nodig is.
+
+    Bewust lazy: bij import-op-moduleniveau sloopt één kapotte pagina de
+    hele app, nog vóór de router-vangrail. Dat gebeurde in productie toen
+    Streamlit Cloud na een push een half-herladen module-boom serveerde
+    (nieuwe pagina, oude ui.cache) — één ImportError en niets werkte meer.
+    Zo blijft de schade beperkt tot de betreffende pagina.
+    """
+    import importlib
+
+    module = importlib.import_module(module_name)
+    return getattr(module, func_name)
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -149,23 +159,32 @@ with st.sidebar:
 # Globale vangrail: een fout in één pagina mag de app niet in Streamlit's
 # geredigeerde 'Oh no'-scherm laten belanden. Toon de echte traceback in een
 # expander (interne tool) en log naar stderr voor de Cloud-logs.
+if st.session_state.show_settings:
+    _target = ("ui.pages.settings", "page_settings")
+elif st.session_state.active_page == t("nav_triage"):
+    _target = ("ui.pages.triage", "page_triage")
+elif st.session_state.active_page == t("nav_compare"):
+    _target = ("ui.pages.compare", "page_compare")
+else:
+    _target = ("ui.pages.normbeeld", "page_normbeeld")
+
 try:
-    if st.session_state.show_settings:
-        page_settings()
-    elif st.session_state.active_page == t("nav_triage"):
-        page_triage()
-    elif st.session_state.active_page == t("nav_compare"):
-        page_compare()
-    else:
-        page_normbeeld()
+    _load_page(*_target)()
 except Exception:
     _tb_text = traceback.format_exc()
     logger.exception("page render failed",
-                     extra={"ctx": {"page": st.session_state.get("active_page")}})
+                     extra={"ctx": {"page": st.session_state.get("active_page"),
+                                    "module": _target[0]}})
     st.error(
-        "Er ging iets mis bij het renderen van deze pagina. De analyse-"
-        "onderdelen die wél lukten blijven bruikbaar via de andere pagina's."
+        "Er ging iets mis bij het renderen van deze pagina. De andere "
+        "pagina's blijven bruikbaar — kies er een in de zijbalk."
     )
+    if "ImportError" in _tb_text or "cannot import name" in _tb_text:
+        st.info(
+            "Dit lijkt op een half-herladen module na een update. "
+            "Op Streamlit Cloud: **Manage app → Reboot app**; lokaal: "
+            "de app opnieuw starten."
+        )
     with st.expander("Technische details (voor foutmelding/beheerder)"):
         st.code(_tb_text)
 

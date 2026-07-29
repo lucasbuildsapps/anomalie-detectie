@@ -53,3 +53,37 @@ def test_settings_overlay_renders():
     at.session_state["show_settings"] = True
     at.run()
     assert not at.exception, f"instellingen crasht: {at.exception}"
+
+
+def test_broken_page_does_not_kill_the_app(monkeypatch):
+    """Regressie: één kapotte pagina mag de hele app niet slopen.
+
+    In productie gebeurde dit toen Streamlit Cloud na een push een
+    half-herladen module-boom serveerde: de triage-pagina kon een nieuw
+    symbool uit ui.cache niet importeren en de héle app viel om, omdat
+    pagina's op moduleniveau werden geïmporteerd. Nu gaat het via de
+    router-vangrail.
+    """
+    import importlib
+
+    import ui.pages.triage as triage_mod
+
+    real_import = importlib.import_module
+
+    def exploding_import(name, *args, **kwargs):
+        if name == "ui.pages.triage":
+            raise ImportError("cannot import name 'iets_nieuws' from 'ui.cache'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib, "import_module", exploding_import)
+    assert triage_mod is not None  # module bestaat; de import wordt gesaboteerd
+
+    from i18n.nl import t
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.session_state["active_page"] = t("nav_triage")
+    at.run()
+
+    # De app leeft: geen harde crash, wél een nette melding.
+    assert not at.exception
+    assert any("Er ging iets mis" in e.value for e in at.error)
+    assert any("Reboot app" in i.value for i in at.info)
