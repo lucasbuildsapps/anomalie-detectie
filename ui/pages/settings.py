@@ -28,6 +28,7 @@ def page_settings():
         t("settings_tab_upload"),
         t("settings_tab_expert"),
         t("settings_tab_theme"),
+        t("settings_tab_admin"),
     ])
     with tabs[0]:
         _settings_datasets()
@@ -37,6 +38,8 @@ def page_settings():
         _settings_expert()
     with tabs[3]:
         _settings_theme()
+    with tabs[4]:
+        _settings_admin()
 
 
 def _render_source_health():
@@ -61,6 +64,61 @@ def _render_source_health():
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     st.divider()
 
+
+
+def _settings_admin():
+    """Beheer: audit-trail en inwinning-runs (wie deed wat, draait alles?)."""
+    st.markdown("**Audit-trail**")
+    st.caption(
+        "Elke muterende actie en login-poging. Identiteit komt van de "
+        "SSO-proxy (X-Forwarded-User); zonder proxy staat er 'onbekend'."
+    )
+    try:
+        audit = storage.list_audit(limit=500)
+    except Exception as e:
+        st.error(f"Audit-log lezen mislukt: {e}")
+        audit = []
+    if not audit:
+        st.info("Nog geen audit-regels.")
+    else:
+        adf = pd.DataFrame(audit)
+        actions = sorted(adf["action"].unique())
+        pick = st.multiselect(
+            "Filter op actie", actions, default=[], key="adm_act",
+            help="Leeg = alles tonen.",
+        )
+        if pick:
+            adf = adf[adf["action"].isin(pick)]
+        show = adf[["ts", "username", "action", "object_type",
+                    "object_id", "detail", "client"]].rename(columns={
+            "ts": "Tijd (UTC)", "username": "Gebruiker", "action": "Actie",
+            "object_type": "Type", "object_id": "Object",
+            "detail": "Detail", "client": "Client",
+        })
+        st.dataframe(show, use_container_width=True, hide_index=True,
+                     height=380)
+
+    st.divider()
+    st.markdown("**Inwinning-runs (automatische bronnen)**")
+    try:
+        runs = storage.list_ingest_runs(limit=100)
+    except Exception:
+        runs = []
+    if not runs:
+        st.caption(
+            "Nog geen runs. Connectors leven in connectors/ ; de worker "
+            "(ingest_worker.py) draait ze op schema."
+        )
+    else:
+        rdf = pd.DataFrame(runs)[
+            ["started_at", "source", "status", "rows_offered",
+             "rows_added", "error"]
+        ].rename(columns={
+            "started_at": "Gestart (UTC)", "source": "Bron",
+            "status": "Status", "rows_offered": "Aangeboden",
+            "rows_added": "Nieuw", "error": "Fout",
+        })
+        st.dataframe(rdf, use_container_width=True, hide_index=True)
 
 def _settings_datasets():
     _render_source_health()
