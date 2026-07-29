@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from core import storage
+from core import gazetteer, storage
 from core.auto_pilot import build_findings, detector_agreement
 from core.briefing import briefing_filename, build_briefing_pdf
 from core.comparison import seasonality_profile
@@ -589,6 +589,10 @@ def _render_afwijkingen_section(nb_view, result, alerts, ds: dict,
                 unsafe_allow_html=True)
 
     res = result.results
+    # Regionamen zonder coördinaten alsnog op de kaart krijgen: de gazetteer
+    # vult lat/lon aan voor bekende gebieden (echte metingen winnen altijd).
+    if "location_name" in res.columns:
+        res = gazetteer.annotate(res)
     has_geo = (
         "lat" in res.columns and "lon" in res.columns
         and res["lat"].notna().any() and res["lon"].notna().any()
@@ -702,6 +706,16 @@ def _render_afwijkingen_section(nb_view, result, alerts, ds: dict,
     # --- Tab 3: kaart (geomap + heatmap) ---
     if has_geo:
         with tabs[2]:
+            hits, total = gazetteer.coverage(
+                res["location_name"].dropna().unique()
+                if "location_name" in res.columns else []
+            )
+            if total and hits < total:
+                st.caption(
+                    f"{hits} van {total} regio's staan op de kaart. Regio's "
+                    f"zonder bekende coördinaten worden weggelaten — voeg "
+                    f"lat/lon-kolommen toe of vul core/gazetteer.py aan."
+                )
             from core.registry import get_visualizations
             vizs = get_visualizations()
             for name, v in vizs.items():
