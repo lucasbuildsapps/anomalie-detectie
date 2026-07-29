@@ -12,6 +12,9 @@ gatherUsageStats = false
 [server]
 # headless = true vereist op Streamlit Cloud (geen browser-popup poging)
 headless = true
+# Upload-limiet: een misvormd groot bestand kan het (ene) app-proces
+# voor alle gebruikers laten omvallen. 100 MB is ruim voor CSV/Excel.
+maxUploadSize = 100
 # runOnSave uit voor Cloud (read-only filesystem op sommige paden)
 runOnSave = false
 # XSRF-bescherming aan (veiliger); CORS daarom op default laten.
