@@ -14,10 +14,11 @@ import os
 from contextlib import asynccontextmanager
 
 import pandas as pd
-from fastapi import Depends, FastAPI, HTTPException, Query, Security
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security
 from fastapi.security import APIKeyHeader
 
 from core import storage
+from core.authz import Identity, identity_from_headers
 from core.logging_setup import get_logger
 from core.normbeeld import (
     AGGREGATIONS,
@@ -55,12 +56,38 @@ def require_api_key(key: str | None = Security(_api_key_header)) -> None:
         raise HTTPException(status_code=401, detail="Ongeldige of ontbrekende API-key")
 
 
+def caller(request: Request) -> Identity:
+    """Identiteit uit de proxy-headers (X-Forwarded-User/-Groups)."""
+    return identity_from_headers(request.headers)
+
+
+def requires(action: str):
+    """Dependency-fabriek: weiger het verzoek als de rol te laag is.
+
+    Autorisatie hoort in de API, niet alleen in de UI — een verborgen
+    knop is geen beveiliging. Zodra een andere frontend of script deze
+    endpoints gebruikt, geldt dezelfde controle.
+    """
+    def _check(who: Identity = Depends(caller)) -> Identity:
+        if not who.can(action):
+            logger.warning("verzoek geweigerd", extra={"ctx": {
+                "action": action, "user": who.username, "role": who.role}})
+            raise HTTPException(
+                status_code=403,
+                detail=(f"'{action}' vereist meer rechten dan rol "
+                        f"'{who.role}'."),
+            )
+        return who
+    return _check
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/datasets", dependencies=[Depends(require_api_key)])
+@app.get("/datasets",
+         dependencies=[Depends(require_api_key), Depends(requires("view"))])
 def list_datasets() -> list[dict]:
     return storage.list_datasets()
 
@@ -72,7 +99,7 @@ def _load_or_404(dataset_id: int) -> pd.DataFrame:
 
 
 @app.get("/datasets/{dataset_id}/observations",
-         dependencies=[Depends(require_api_key)])
+         dependencies=[Depends(require_api_key), Depends(requires("view"))])
 def get_observations(dataset_id: int, limit: int = Query(1000, le=100_000),
                      offset: int = 0) -> dict:
     df = _load_or_404(dataset_id)
@@ -85,7 +112,7 @@ def get_observations(dataset_id: int, limit: int = Query(1000, le=100_000),
 
 
 @app.get("/datasets/{dataset_id}/normbeeld",
-         dependencies=[Depends(require_api_key)])
+         dependencies=[Depends(require_api_key), Depends(requires("view"))])
 def get_normbeeld(
     dataset_id: int,
     location: str | None = None,
@@ -128,7 +155,7 @@ def get_normbeeld(
 
 
 @app.get("/datasets/{dataset_id}/alerts",
-         dependencies=[Depends(require_api_key)])
+         dependencies=[Depends(require_api_key), Depends(requires("view"))])
 def get_alerts(dataset_id: int, aggregation: str = "daily",
                horizon: int = Query(14, ge=1, le=60)) -> list[dict]:
     if aggregation not in AGGREGATIONS:
@@ -142,8 +169,23 @@ def get_alerts(dataset_id: int, aggregation: str = "daily",
     return detect_recent_alerts(normbeelds, aggregation=aggregation)
 
 
-@app.get("/audit", dependencies=[Depends(require_api_key)])
+@app.get("/audit",
+         dependencies=[Depends(require_api_key), Depends(requires("view_audit"))])
 def get_audit(limit: int = Query(200, le=1000)) -> list[dict]:
     return [
         {**row, "ts": str(row["ts"])} for row in storage.list_audit(limit)
     ]
+
+
+@app.get("/whoami", dependencies=[Depends(require_api_key)])
+def whoami(who: Identity = Depends(caller)) -> dict:
+    """Wie ben ik volgens de proxy, en wat mag ik. Handig om te
+    controleren of de SSO-koppeling headers echt doorgeeft."""
+    from core.authz import PERMISSIONS
+    return {
+        "username": who.username,
+        "role": who.role,
+        "groups": who.groups,
+        "identity_source": who.source,
+        "permissions": sorted(a for a in PERMISSIONS if who.can(a)),
+    }

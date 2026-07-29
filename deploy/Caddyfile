@@ -1,18 +1,39 @@
-# Reverse proxy met automatische TLS (Let's Encrypt) voor SENTINEL.
+# Reverse proxy met automatische TLS voor SENTINEL.
 #
-# SSO/identiteit: zodra er een identity provider staat (Authelia/Keycloak),
-# activeer je het forward_auth-blok hieronder. De proxy zet dan
-# X-Forwarded-User; de app gebruikt die header als identiteit in de
-# audit-trail (core/storage.py::current_user).
+# Twee taken:
+# 1. TLS-terminatie (Let's Encrypt, automatisch).
+# 2. Elk verzoek eerst langs Authelia sturen en de identiteit doorgeven
+#    als X-Forwarded-User / X-Forwarded-Groups. De app leest die headers
+#    in core/authz.py en leidt er de rol uit af.
+#
+# BELANGRIJK: de app mag nooit rechtstreeks bereikbaar zijn. Wie de app
+# direct kan benaderen, kan die headers zelf verzinnen en zich als
+# beheerder voordoen. In de compose-stack staat de app daarom op `expose`
+# (alleen op het interne netwerk) en niet op `ports`.
 
+# --- Inlogpagina van de identity provider ---
+auth.{$SENTINEL_DOMAIN} {
+	encode gzip
+	reverse_proxy authelia:9091
+}
+
+# --- De applicatie zelf ---
 {$SENTINEL_DOMAIN} {
 	encode gzip
 
-	# --- Activeer bij gebruik van Authelia als SSO-laag: ---
-	# forward_auth authelia:9091 {
-	# 	uri /api/verify?rd=https://auth.{$SENTINEL_DOMAIN}
-	# 	copy_headers Remote-User>X-Forwarded-User Remote-Groups>X-Forwarded-Groups
-	# }
+	# Wis identiteits-headers die de client zélf meestuurt, vóór de
+	# authenticatie. Zonder deze regel kan een bezoeker
+	# 'X-Forwarded-Groups: sentinel-admins' meesturen en zich zo tot
+	# beheerder promoveren.
+	request_header -X-Forwarded-User
+	request_header -X-Forwarded-Groups
+
+	# Authenticatie vóór alles. Niet-ingelogde bezoekers gaan naar de
+	# inlogpagina en komen daarna terug.
+	forward_auth authelia:9091 {
+		uri /api/authz/forward-auth
+		copy_headers Remote-User>X-Forwarded-User Remote-Groups>X-Forwarded-Groups Remote-Name Remote-Email
+	}
 
 	reverse_proxy app:8501 {
 		header_up X-Forwarded-For {remote_host}

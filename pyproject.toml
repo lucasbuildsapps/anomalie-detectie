@@ -27,6 +27,9 @@ ignore = [
 # E402: st.set_page_config moet vóór verdere imports draaien (Streamlit-eis).
 "app.py" = ["B008", "E402"]
 "ui/**" = ["B008", "E402"]
+# FastAPI's dependency-injection werkt via Depends() in argument-defaults;
+# dat is daar het idioom, geen bug.
+"api/**" = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

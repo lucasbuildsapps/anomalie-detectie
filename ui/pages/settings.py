@@ -10,7 +10,7 @@ from core.import_data import apply_mapping, read_table
 from core.registry import get_detectors
 from core.validation import validate_mapped
 from i18n.nl import t
-from ui.components import _try_load_demo_dataset
+from ui.components import _try_load_demo_dataset, deny_notice, may
 
 
 def page_settings():
@@ -95,7 +95,8 @@ def _settings_bronnen():
                     (st.success if ok else st.error)(msg)
             with c2:
                 if st.button("Nu ophalen", key=f"cs_run_{name}",
-                             type="primary", use_container_width=True):
+                             type="primary", use_container_width=True,
+                             disabled=not may("run_connector")):
                     with st.spinner("Ophalen en opslaan..."):
                         summary = run_connector(c)
                     if summary["status"] == "ok":
@@ -143,6 +144,9 @@ def _render_source_health():
 
 def _settings_admin():
     """Beheer: audit-trail en inwinning-runs (wie deed wat, draait alles?)."""
+    if not may("view_audit"):
+        deny_notice("view_audit")
+        return
     st.markdown("**Audit-trail**")
     st.caption(
         "Elke muterende actie en login-poging. Identiteit komt van de "
@@ -266,7 +270,8 @@ def _settings_datasets():
                         st.error(f"Bijwerken mislukt: {e}")
             with c2:
                 if st.button(t("btn_delete"), key=f"del_{ds['id']}",
-                             use_container_width=True):
+                             use_container_width=True,
+                             disabled=not may("delete_dataset")):
                     storage.delete_dataset(ds["id"])
                     st.cache_data.clear()
                     st.success(t("msg_deleted"))

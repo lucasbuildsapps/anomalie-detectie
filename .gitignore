@@ -41,3 +41,6 @@ backups/
 data/*.bak-*
 data/store.db.bak-*
 .coverage
+
+# SSO-gebruikers (wachtwoord-hashes) — NOOIT committen
+deploy/authelia/users.yml

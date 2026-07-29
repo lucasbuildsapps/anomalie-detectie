@@ -221,19 +221,17 @@ def init_db() -> None:
 # Audit-trail
 # ---------------------------------------------------------------------------
 def current_user() -> str:
-    """Identiteit van de huidige gebruiker.
+    """Naam van de huidige gebruiker voor de audit-trail.
 
-    Volgorde: reverse-proxy header (X-Forwarded-User, gezet door de
-    SSO-proxy) → env-var SENTINEL_USER (worker/CLI-context) → 'onbekend'.
+    De bepaling zelf zit in core/authz.py (SSO-header → env-var →
+    'onbekend'); hier alleen de naam, zodat storage niet afhankelijk is
+    van de rollen-logica.
     """
     try:
-        import streamlit as st
-        user = st.context.headers.get("X-Forwarded-User")
-        if user:
-            return str(user)
-    except Exception:  # geen streamlit-context (worker, tests)
-        pass
-    return os.environ.get("SENTINEL_USER") or "onbekend"
+        from core.authz import current_identity
+        return current_identity().username
+    except Exception:  # authz niet beschikbaar (bv. losse migratie-run)
+        return os.environ.get("SENTINEL_USER") or "onbekend"
 
 
 def _client_info() -> str | None:
@@ -252,14 +250,27 @@ def record_audit(action: str, object_type: str | None = None,
     """Schrijf één audit-regel. Mag NOOIT de hoofdoperatie laten falen:
     fouten worden gelogd, niet doorgegooid."""
     try:
+        # Rol en herkomst meeschrijven: bij een audit wil je niet alleen
+        # weten wíé iets deed, maar ook met welke rechten en of die
+        # identiteit van de SSO-proxy kwam of alleen uit een env-var.
+        payload = dict(detail or {})
+        try:
+            from core.authz import current_identity
+            ident = current_identity()
+            payload.setdefault("_role", ident.role)
+            payload.setdefault("_identity_source", ident.source)
+            actor = username or ident.username
+        except Exception:
+            actor = username or current_user()
+
         with _engine().begin() as con:
             con.execute(insert(audit_log_t).values(
                 ts=datetime.now(UTC).replace(tzinfo=None),
-                username=username or current_user(),
+                username=actor,
                 action=action,
                 object_type=object_type,
                 object_id=str(object_id) if object_id is not None else None,
-                detail=json.dumps(detail, default=str) if detail else None,
+                detail=json.dumps(payload, default=str) if payload else None,
                 client=_client_info(),
             ))
     except Exception:

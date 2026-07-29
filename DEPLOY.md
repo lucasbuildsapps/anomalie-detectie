@@ -31,10 +31,13 @@ Postgres en een dagelijkse backup-service.
 
 ```bash
 # 1. Secrets instellen
-cat > .env <<'ENV'
+cat > .env <<ENV
 POSTGRES_PASSWORD=kies-een-sterk-db-wachtwoord
 ANOMALY_PASSWORD=kies-een-sterk-app-wachtwoord
 SENTINEL_DOMAIN=sentinel.jouwdomein.nl
+AUTHELIA_JWT_SECRET=$(openssl rand -hex 32)
+AUTHELIA_SESSION_SECRET=$(openssl rand -hex 32)
+AUTHELIA_STORAGE_ENCRYPTION_KEY=$(openssl rand -hex 32)
 ENV
 
 # 2. Stack starten
@@ -49,13 +52,46 @@ docker compose -f docker-compose.prod.yml exec app python -m alembic upgrade hea
 - De audit-trail (wie deed wat) zit in de database: tabel `audit_log`,
   zichtbaar in de app onder Instellingen → Beheer.
 
-### SSO / gebruikersidentiteit (sterk aanbevolen)
+### SSO en rollen (inbegrepen in de stack)
 
-Het gedeelde wachtwoord is basisbescherming. Voor per-gebruiker identiteit
-zet je een identity provider (Authelia of Keycloak) vóór de app: het
-voorbereide `forward_auth`-blok staat in `deploy/Caddyfile`. Zodra de proxy
-`X-Forwarded-User` meestuurt, verschijnt die identiteit automatisch in de
-audit-trail — geen code-wijziging nodig.
+De stack bevat **Authelia** als identity provider. Caddy stuurt elk
+verzoek eerst langs Authelia en geeft de identiteit door als
+`X-Forwarded-User` / `X-Forwarded-Groups`; de app leidt daar de rol uit af
+(`core/authz.py`). De app doet dus geen eigen gebruikersbeheer — dat hoort
+centraal.
+
+**Rollen** volgen uit de groep waarin een gebruiker zit:
+
+| groep | rol | mag |
+|---|---|---|
+| `sentinel-viewers` | viewer | alles lezen |
+| `sentinel-analysts` | analyst | + beoordelen, importeren, bronnen draaien |
+| `sentinel-admins` | admin | + datasets verwijderen, bronnen beheren, audit inzien |
+
+Andere groepsnamen koppel je met `SENTINEL_GROUP_MAP`, bijvoorbeeld
+`SENTINEL_GROUP_MAP="ONS-TEAM-INTEL:analyst,ONS-TEAM-BEHEER:admin"`.
+
+**Gebruikers aanmaken** (bestands-backend; vervang door LDAP/AD zodra dat
+er is):
+
+```bash
+cp deploy/authelia/users.yml.example deploy/authelia/users.yml
+docker run --rm authelia/authelia:4 authelia crypto hash generate argon2   --password 'het-wachtwoord'
+# plak de hash in users.yml en zet de juiste groep
+```
+
+`users.yml` staat in `.gitignore` — committen zou wachtwoord-hashes lekken.
+
+**Waarom de app niet zelf bereikbaar mag zijn**: wie de app rechtstreeks
+kan benaderen, kan `X-Forwarded-Groups: sentinel-admins` verzinnen. Daarom
+staat de app in de compose-stack op `expose` (alleen intern), wist Caddy
+door de client meegestuurde identiteits-headers, en draait de app met
+`SENTINEL_DEFAULT_ROLE=viewer` zodat een verkeerd geconfigureerde proxy
+nooit stilzwijgend beheerdersrechten geeft. Tests in
+`tests/test_authz.py::TestDeploymentHardening` bewaken deze drie punten.
+
+Controleren of het werkt: `GET /whoami` op de API toont wie je bent, welke
+rol je hebt en waar die identiteit vandaan komt.
 
 ### Automatische data-inwinning
 
@@ -138,6 +174,7 @@ SENTINEL_API_KEY=geheim uvicorn api.main:app --port 8000
 - [ ] Migraties gedraaid (`python -m alembic upgrade head`)
 - [ ] Audit-trail gecontroleerd (Instellingen → Beheer)
 - [ ] Voor gevoelige data: IT-beveiliging goedkeuring + SSO-laag actief
+- [ ] `/whoami` toont de juiste rol; app niet rechtstreeks bereikbaar
 
 ---
 

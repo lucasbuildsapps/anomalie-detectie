@@ -14,6 +14,11 @@
 #   POSTGRES_PASSWORD=...
 #   ANOMALY_PASSWORD=...
 #   SENTINEL_DOMAIN=sentinel.example.org
+#   AUTHELIA_JWT_SECRET=...              (openssl rand -hex 32)
+#   AUTHELIA_SESSION_SECRET=...          (openssl rand -hex 32)
+#   AUTHELIA_STORAGE_ENCRYPTION_KEY=...  (openssl rand -hex 32)
+#
+# Gebruikers staan in deploy/authelia/users.yml (zie users.yml.example).
 
 services:
   caddy:
@@ -26,8 +31,25 @@ services:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    environment:
+      SENTINEL_DOMAIN: ${SENTINEL_DOMAIN}
     depends_on:
       - app
+      - authelia
+
+  authelia:
+    image: authelia/authelia:4
+    restart: unless-stopped
+    environment:
+      SENTINEL_DOMAIN: ${SENTINEL_DOMAIN}
+      AUTHELIA_JWT_SECRET: ${AUTHELIA_JWT_SECRET}
+      AUTHELIA_SESSION_SECRET: ${AUTHELIA_SESSION_SECRET}
+      AUTHELIA_STORAGE_ENCRYPTION_KEY: ${AUTHELIA_STORAGE_ENCRYPTION_KEY}
+    volumes:
+      - ./deploy/authelia:/config:ro
+      - authelia_data:/data
+    expose:
+      - "9091"
 
   app:
     build: .
@@ -36,6 +58,9 @@ services:
       DATABASE_URL: postgresql://sentinel:${POSTGRES_PASSWORD}@db:5432/sentinel
       ANOMALY_PASSWORD: ${ANOMALY_PASSWORD}
       SENTINEL_LOG_LEVEL: INFO
+      # Zonder geldige SSO-headers: alleen lezen. Zo kan een verkeerd
+      # geconfigureerde proxy niet stilzwijgend beheerdersrechten geven.
+      SENTINEL_DEFAULT_ROLE: viewer
     depends_on:
       db:
         condition: service_healthy
@@ -49,6 +74,7 @@ services:
     environment:
       DATABASE_URL: postgresql://sentinel:${POSTGRES_PASSWORD}@db:5432/sentinel
       SENTINEL_USER: ingest-worker
+      SENTINEL_ROLE: analyst
       SENTINEL_LOG_LEVEL: INFO
     depends_on:
       db:
@@ -90,3 +116,4 @@ volumes:
   pg_data:
   caddy_data:
   caddy_config:
+  authelia_data:

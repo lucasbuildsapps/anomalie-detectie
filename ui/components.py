@@ -182,6 +182,14 @@ def render_classification_bar():
                     if stale_txt else "")
         bits.append(f"{len(datasets)} dataset(s)")
 
+    from core.authz import ROLE_LABELS, current_identity
+    ident = current_identity()
+    if ident.source == "sso":
+        bits.append(f"<span class='status'>{_html.escape(ident.username)} "
+                    f"· {ident.role}</span>")
+    else:
+        bits.append(f"rol {ident.role} <span class='warn'>(geen SSO)</span>")
+        _ = ROLE_LABELS
     bits.append("<span class='status'>afgeschermd</span>" if is_protected()
                 else "<span class='warn'>open toegang</span>")
 
@@ -342,6 +350,29 @@ def _render_annotation_widget(dataset_id: int, date_iso: str, location: str,
                 key=f"an_nt_{key_suffix}", height=70,
             )
         if st.button(t("anno_save"), key=f"an_sv_{key_suffix}",
-                     type="secondary"):
+                     type="secondary", disabled=not may("annotate")):
             anno.save_annotation(dataset_id, key, new_note, new_status)
             st.success(t("anno_saved"))
+
+
+def may(action: str) -> bool:
+    """Mag de huidige gebruiker deze actie? Voor het uitschakelen van
+    knoppen in de UI.
+
+    Let op: dit is gemak, geen beveiliging. De echte controle staat in de
+    API (core/authz.py + api/main.py). Een verborgen knop houdt niemand
+    tegen die zelf een verzoek stuurt.
+    """
+    from core.authz import current_identity
+    return current_identity().can(action)
+
+
+def deny_notice(action: str) -> None:
+    """Toon waarom een actie niet beschikbaar is."""
+    from core.authz import PERMISSIONS, current_identity
+    ident = current_identity()
+    st.info(
+        f"Hiervoor is de rol **{PERMISSIONS.get(action, '?')}** nodig; "
+        f"jij hebt **{ident.role}**. Vraag een beheerder om je groep aan "
+        f"te passen."
+    )

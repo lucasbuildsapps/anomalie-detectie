@@ -1,0 +1,39 @@
+# Voorbeeld-gebruikers voor Authelia (bestands-backend).
+#
+# Kopieer naar users.yml en vervang de hashes. Genereer een hash met:
+#
+#   docker run --rm authelia/authelia:4 authelia crypto hash generate argon2 \
+#     --password 'jouw-wachtwoord'
+#
+# users.yml staat in .gitignore — committen zou hashes lekken.
+#
+# De groepen bepalen de rol in SENTINEL (zie core/authz.py):
+#   sentinel-admins    -> alles, inclusief verwijderen en audit inzien
+#   sentinel-analysts  -> beoordelen, importeren, bronnen draaien
+#   sentinel-viewers   -> alleen lezen
+
+users:
+  beheerder:
+    disabled: false
+    displayname: "Beheerder"
+    # Hash van een wachtwoord dat je zelf zet — NIET deze waarde gebruiken.
+    password: "$argon2id$v=19$m=65536,t=3,p=4$VERVANG$DEZE_HASH"
+    email: beheerder@example.org
+    groups:
+      - sentinel-admins
+
+  analist:
+    disabled: false
+    displayname: "Analist"
+    password: "$argon2id$v=19$m=65536,t=3,p=4$VERVANG$DEZE_HASH"
+    email: analist@example.org
+    groups:
+      - sentinel-analysts
+
+  meekijker:
+    disabled: false
+    displayname: "Meekijker"
+    password: "$argon2id$v=19$m=65536,t=3,p=4$VERVANG$DEZE_HASH"
+    email: meekijker@example.org
+    groups:
+      - sentinel-viewers

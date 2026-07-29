@@ -1,0 +1,71 @@
+# Authelia — identity provider voor SENTINEL.
+#
+# Rol in het geheel: Caddy stuurt elk verzoek eerst langs Authelia
+# (forward_auth). Authelia doet de login en zet daarna de headers
+# Remote-User en Remote-Groups, die Caddy doorgeeft als X-Forwarded-User
+# en X-Forwarded-Groups. De app leest die in core/authz.py en leidt er de
+# rol uit af — de app bouwt zelf géén gebruikersbeheer.
+#
+# Groepen komen overeen met core/authz.py::_DEFAULT_GROUP_MAP:
+#   sentinel-admins    -> admin
+#   sentinel-analysts  -> analyst
+#   sentinel-viewers   -> viewer
+#
+# Voor een echte organisatie vervang je de bestands-backend hieronder door
+# LDAP/Active Directory; de rest van de opstelling blijft gelijk.
+
+theme: dark
+
+server:
+  address: "tcp://0.0.0.0:9091"
+
+log:
+  level: info
+  format: json
+
+authentication_backend:
+  # Bestands-backend: prima om te starten, en om te testen zonder AD.
+  # Wachtwoorden staan als argon2-hash in users.yml.
+  file:
+    path: /config/users.yml
+    password:
+      algorithm: argon2
+
+access_control:
+  # Standaard alles weigeren; expliciet toestaan per groep.
+  default_policy: deny
+  rules:
+    - domain: "{{ env "SENTINEL_DOMAIN" }}"
+      policy: two_factor
+      subject:
+        - ["group:sentinel-admins"]
+        - ["group:sentinel-analysts"]
+        - ["group:sentinel-viewers"]
+
+session:
+  name: sentinel_session
+  cookies:
+    - domain: "{{ env "SENTINEL_DOMAIN" }}"
+      authelia_url: "https://auth.{{ env "SENTINEL_DOMAIN" }}"
+      default_redirection_url: "https://{{ env "SENTINEL_DOMAIN" }}"
+  expiration: 8h        # werkdag
+  inactivity: 45m       # onbeheerd scherm loopt af
+  remember_me: 0        # bewust uit voor gevoelig werk
+
+regulation:
+  # Brute-force-rem op IdP-niveau, náást de rem in de app zelf.
+  max_retries: 5
+  find_time: 2m
+  ban_time: 15m
+
+storage:
+  local:
+    path: /data/db.sqlite3
+
+notifier:
+  # Voor 2FA-registratie en wachtwoordherstel. In productie: SMTP.
+  filesystem:
+    filename: /data/notification.txt
+
+totp:
+  issuer: SENTINEL
