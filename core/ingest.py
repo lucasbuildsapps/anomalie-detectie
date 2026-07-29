@@ -68,6 +68,12 @@ def run_connector(connector: Connector) -> dict:
                 raise ValueError("; ".join(report.errors))
             summary["rows_added"] = storage.insert_observations(dataset_id, df)
 
+        # Momentopname na binnenkomst van nieuwe data: zo ontstaat vanzelf
+        # een historie van wát de tool wanneer zei — nodig om een eerder
+        # oordeel achteraf te kunnen verantwoorden.
+        if summary["rows_added"]:
+            _snapshot_after_ingest(dataset_id, connector.name)
+
         summary["status"] = "ok"
         _logger.info("ingest-run klaar", extra={"ctx": summary})
     except Exception as e:
@@ -86,6 +92,30 @@ def run_connector(connector: Connector) -> dict:
             {k: v for k, v in summary.items() if k != "source"},
         )
     return summary
+
+
+def _snapshot_after_ingest(dataset_id: int, source: str) -> None:
+    """Bewaar de analyse-stand na een geslaagde inwinning (best effort:
+    een mislukte snapshot mag de ingest zelf nooit laten falen)."""
+    try:
+        from core.normbeeld import (
+            _suggest_best_aggregation,
+            compute_all_normbeelds,
+            detect_recent_alerts,
+        )
+        df = storage.load_observations(dataset_id)
+        if df.empty:
+            return
+        agg = _suggest_best_aggregation(df)
+        normbeelds = compute_all_normbeelds(df, horizon_days=14, aggregation=agg)
+        alerts = detect_recent_alerts(normbeelds, aggregation=agg)
+        storage.save_snapshot(
+            dataset_id, alerts, normbeelds, aggregation=agg, horizon=14,
+            n_rows=len(df), label=f"na inwinning ({source})",
+        )
+    except Exception:
+        _logger.exception("snapshot na ingest mislukt",
+                          extra={"ctx": {"dataset_id": dataset_id}})
 
 
 def run_all(include_disabled: bool = False) -> list[dict]:

@@ -11,6 +11,7 @@ als Postgres). Schema-wijzigingen lopen via Alembic (migrations/).
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -126,6 +127,26 @@ audit_log_t = Table(
     Column("detail", Text),
     Column("client", String(128)),
     Index("ix_audit_ts", "ts"),
+)
+
+# Analyse-momentopnames: wát zei de tool op welk moment. Ruwe data groeit
+# en normbeelden verschuiven mee; zonder snapshot is achteraf niet meer te
+# reconstrueren waarop een beoordeling was gebaseerd. Voor operationeel
+# gebruik is dat een harde eis (herleidbaarheid van een oordeel).
+snapshots_t = Table(
+    "analysis_snapshots", _metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("dataset_id", Integer,
+           ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False),
+    Column("created_at", DateTime, nullable=False),
+    Column("created_by", String(128)),
+    Column("label", Text),
+    Column("aggregation", String(16)),
+    Column("horizon", Integer),
+    Column("n_rows", Integer),
+    Column("n_alerts", Integer),
+    Column("payload", Text, nullable=False),   # JSON: alerts + normbeeld-samenvatting
+    Index("ix_snap_dataset_ts", "dataset_id", "created_at"),
 )
 
 # Ingest-runs: één regel per connector-run (geautomatiseerde inwinning).
@@ -258,6 +279,95 @@ def list_audit(limit: int = 200) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Ingest-runs (geautomatiseerde inwinning)
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Analyse-momentopnames
+# ---------------------------------------------------------------------------
+def save_snapshot(dataset_id: int, alerts: list, normbeelds: dict,
+                  aggregation: str, horizon: int, n_rows: int,
+                  label: str | None = None) -> int:
+    """Leg vast wat de analyse op dit moment zei.
+
+    Bewaart de alerts plus een compacte samenvatting per regio (verwacht
+    niveau, bandgrenzen, band-model, aantal recente afwijkingen) — niet de
+    volledige reeksen: die zijn reproduceerbaar uit de ruwe data, de
+    beoordeling van het moment niet.
+    """
+    summary = {}
+    for loc, nb in (normbeelds or {}).items():
+        summary[str(loc)] = {
+            "expected": round(float(nb.expected_value), 3),
+            "lower": round(float(nb.lower_band), 3),
+            "upper": round(float(nb.upper_band), 3),
+            "band_model": getattr(nb, "band_model", None),
+            "band_coverage": (round(float(nb.band_coverage), 3)
+                              if nb.band_coverage is not None else None),
+            "confidence": nb.confidence,
+            "n_recent_deviations": int(nb.n_recent_deviations),
+            "methods_used": list(nb.methods_used),
+        }
+    payload = json.dumps({
+        "alerts": _jsonable(alerts),
+        "normbeelds": summary,
+    }, default=str)
+
+    with _engine().begin() as con:
+        res = con.execute(insert(snapshots_t).values(
+            dataset_id=dataset_id,
+            created_at=datetime.now(UTC).replace(tzinfo=None),
+            created_by=current_user(),
+            label=label,
+            aggregation=aggregation,
+            horizon=int(horizon),
+            n_rows=int(n_rows),
+            n_alerts=len(alerts or []),
+            payload=payload,
+        ))
+        snap_id = int(res.inserted_primary_key[0])
+    record_audit("save_snapshot", "dataset", str(dataset_id),
+                 {"snapshot_id": snap_id, "n_alerts": len(alerts or [])})
+    return snap_id
+
+
+def _jsonable(obj):
+    """pandas/numpy-types naar iets dat json.dumps aankan."""
+    if isinstance(obj, list):
+        return [_jsonable(o) for o in obj]
+    if isinstance(obj, dict):
+        return {str(k): _jsonable(v) for k, v in obj.items()}
+    if hasattr(obj, "item"):          # numpy scalar
+        try:
+            return obj.item()
+        except Exception:
+            return str(obj)
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    return str(obj)
+
+
+def list_snapshots(dataset_id: int | None = None, limit: int = 50) -> list[dict]:
+    """Momentopnames, nieuwste eerst (zonder payload — die is groot)."""
+    cols = [c for c in snapshots_t.c if c.name != "payload"]
+    stmt = select(*cols).order_by(snapshots_t.c.created_at.desc())
+    if dataset_id is not None:
+        stmt = stmt.where(snapshots_t.c.dataset_id == dataset_id)
+    with _engine().connect() as con:
+        rows = con.execute(stmt.limit(limit)).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def get_snapshot(snapshot_id: int) -> dict | None:
+    with _engine().connect() as con:
+        row = con.execute(
+            select(snapshots_t).where(snapshots_t.c.id == snapshot_id)
+        ).mappings().first()
+    if row is None:
+        return None
+    out = dict(row)
+    with contextlib.suppress(Exception):
+        out["payload"] = json.loads(out["payload"])
+    return out
+
+
 def record_ingest_run(source: str, started_at: datetime, status: str,
                       rows_offered: int | None = None,
                       rows_added: int | None = None,
