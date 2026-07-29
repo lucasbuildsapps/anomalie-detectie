@@ -101,6 +101,19 @@ with st.sidebar:
             "⚠ Demo-omgeving: geüploade data kan bij een herstart "
             "gewist worden."
         )
+    # Maak de beveiligings-stand expliciet: zonder geconfigureerd wachtwoord
+    # is de app open voor iedereen met de link. Dat mag nooit stil gebeuren.
+    from core.auth import is_protected
+    if is_protected():
+        st.caption("🔒 Wachtwoord-login actief.")
+    else:
+        st.warning(
+            "**Open toegang** — er is geen wachtwoord ingesteld. Iedereen "
+            "met de link kan alles zien en wijzigen. Instellen: secret "
+            "`password` (Streamlit Cloud → Settings → Secrets) of env-var "
+            "`ANOMALY_PASSWORD`.",
+            icon="⚠️",
+        )
     st.divider()
 
     nav_items = [t("nav_overview"), t("nav_normbeeld"), t("nav_compare")]

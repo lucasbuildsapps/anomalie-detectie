@@ -36,10 +36,17 @@ def _series_picker_xds(by_id: dict, key_prefix: str, default_ds_id: int,
         st.info("Deze dataset heeft geen regio-kolom of is leeg.")
         return None
 
-    regions = sorted(df["location_name"].dropna().unique(),
-                     key=lambda s: str(s).lower())
+    # Regio's alfabetisch, maar default = de regio met de MEESTE data.
+    # Anders opent de pagina op een toevallige regio met 1 waarneming en
+    # lijkt de tool kapot (lege overlay, 'te weinig data').
+    counts = df["location_name"].value_counts()
+    regions = sorted(counts.index, key=lambda s: str(s).lower())
+    busiest = counts.idxmax()
     region = st.selectbox(
-        "Regio", regions, key=f"{key_prefix}_region",
+        "Regio", regions,
+        index=regions.index(busiest),
+        format_func=lambda r, _c=counts: f"{r}  ·  {_c[r]} waarnemingen",
+        key=f"{key_prefix}_region",
     )
     cats: list[str] = []
     if "category" in df.columns and df["category"].notna().any():
@@ -113,8 +120,22 @@ def page_compare():
 
     series_a = build_series(df_a, reg_a, cats_a, agg)
     series_b = build_series(df_b, reg_b, cats_b, agg)
-    if series_a.empty or series_b.empty:
-        st.warning("Eén van de reeksen heeft geen data.")
+    # Guard vóór het tekenen: een reeks van 1-2 punten geeft een zinloze
+    # (en kapot ogende) overlay. Zeg liever precies wat er aan de hand is.
+    MIN_PERIODS = 5
+    too_short = [
+        (lbl, len(s)) for lbl, s in ((label_a, series_a), (label_b, series_b))
+        if len(s) < MIN_PERIODS
+    ]
+    if too_short:
+        details = " en ".join(
+            f"**{lbl}** heeft maar {n} periode(s) met data" for lbl, n in too_short
+        )
+        st.warning(
+            f"Te weinig data om te vergelijken: {details} "
+            f"(minimaal {MIN_PERIODS} nodig). Kies een andere regio — het "
+            f"aantal waarnemingen staat achter elke regio in de keuzelijst."
+        )
         return
 
     lag = cross_correlation_lag(series_a, series_b, agg)

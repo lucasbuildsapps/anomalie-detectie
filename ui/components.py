@@ -254,10 +254,23 @@ def _render_empty_state():
 
 
 def _pctl_label(row) -> str:
-    """'extremer dan X% van de historie' voor een afwijkings-rij."""
+    """'extremer dan X% van de historie' voor een afwijkings-rij.
+
+    Cap op 99: '100% van de historie' is logisch onmogelijk (het punt zelf
+    is deel van de historie) en ondermijnt het vertrouwen in de cijfers.
+    """
     pctl = float(row.get("resid_pctl", 0.5))
     extremer = pctl if row["status"] == "boven" else 1.0 - pctl
-    return f"extremer dan {min(extremer, 0.999) * 100:.0f}% van de historie"
+    return f"extremer dan {min(extremer, 0.99) * 100:.0f}% van de historie"
+
+
+def _fmt_num(x: float) -> str:
+    """Compact getal-formaat: 1 decimaal onder de 10 (zodat een band van
+    0.4 niet als '0' toont en de tekst zichzelf niet tegenspreekt)."""
+    x = float(x)
+    if abs(x) < 10 and abs(x - round(x)) >= 0.05:
+        return f"{x:.1f}"
+    return f"{x:.0f}"
 
 
 def _render_annotation_widget(dataset_id: int, date_iso: str, location: str,

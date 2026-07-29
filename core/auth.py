@@ -105,6 +105,11 @@ def _register_success(key: str) -> None:
         _attempts.pop(key, None)
 
 
+def is_protected() -> bool:
+    """True zodra een wachtwoord is geconfigureerd (login-scherm actief)."""
+    return _get_configured_password() is not None
+
+
 def check_password() -> bool:
     """Toon login-formulier indien een wachtwoord is geconfigureerd.
 

@@ -385,7 +385,7 @@ def build_sitrep_pdf(
         for a in alerts[:12]:
             arrow = "boven" if a["richting"] == "boven" else "onder"
             extr = a.get("extremer_dan")
-            extr_txt = (f", extremer dan {min(extr, 0.999) * 100:.0f}% "
+            extr_txt = (f", extremer dan {min(extr, 0.99) * 100:.0f}% "
                         f"v.d. historie" if extr is not None else "")
             pdf.multi_cell(0, 4.6, _safe(
                 f"- {a['datum']}  {a['locatie']}: {a['waarde']} "

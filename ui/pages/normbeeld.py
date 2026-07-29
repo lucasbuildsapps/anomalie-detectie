@@ -22,6 +22,7 @@ from i18n.nl import t
 from ui.cache import _dataset_meta, cached_analysis, cached_detail_normbeeld
 from ui.components import (
     _event_markers,
+    _fmt_num,
     _pctl_label,
     _render_annotation_widget,
     _render_empty_state,
@@ -562,7 +563,7 @@ def _render_afwijkingen_section(nb_view, result, alerts, ds: dict,
                 st.markdown(
                     f"<div class='alert-row'>{d_str} · "
                     f"<strong>{row['actual']:.0f}</strong> per {unit} "
-                    f"({richting}, verwacht {row['lower']:.0f}–{row['upper']:.0f}) "
+                    f"({richting}, verwacht {_fmt_num(row['lower'])}–{_fmt_num(row['upper'])}) "
                     f"· {_pctl_label(row)}</div>",
                     unsafe_allow_html=True,
                 )
@@ -579,7 +580,7 @@ def _render_afwijkingen_section(nb_view, result, alerts, ds: dict,
             for a in alerts[:10]:
                 arrow = "boven band" if a["richting"] == "boven" else "onder band"
                 extr = a.get("extremer_dan")
-                extr_txt = (f" · extremer dan {min(extr, 0.999)*100:.0f}% v.d. historie"
+                extr_txt = (f" · extremer dan {min(extr, 0.99)*100:.0f}% v.d. historie"
                             if extr is not None else "")
                 rows += (
                     f"<div class='alert-row'>"
