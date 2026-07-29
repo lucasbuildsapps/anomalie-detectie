@@ -15,3 +15,5 @@ sqlalchemy>=2.0,<3.0
 # Postgres-driver (alleen nodig wanneer een externe database wordt gebruikt;
 # de prebuilt 'binary'-variant vereist geen compiler).
 psycopg[binary]>=3.1
+# Ingest-worker (geplande data-inwinning)
+apscheduler>=3.10,<4.0
