@@ -63,6 +63,46 @@ def _render_performance(dataset_id: int):
     )
 
 
+def _render_evaluation(dataset_id: int):
+    """Meet de detectoren tegen bevestigde bevindingen.
+
+    Dit is de stap van 'de tool produceert signalen' naar 'we weten welke
+    methode op deze data werkt'. Labels komen uit het normale triage-werk:
+    alles wat als bevestigd of geescaleerd is gemarkeerd.
+    """
+    from core.evaluation import (
+        evaluate_detectors,
+        incidents_from_annotations,
+        summarize,
+        to_frame,
+    )
+
+    incidents = incidents_from_annotations(dataset_id)
+    with st.expander(
+        f"Welke detector werkt op deze data? ({len(incidents)} bevestigde "
+        f"incidenten als ijkpunt)"
+    ):
+        if len(incidents) < 3:
+            st.caption(
+                "Nog te weinig ijkpunten. Markeer bevindingen als "
+                "'bevestigd' of 'geëscaleerd'; vanaf ongeveer drie kan hier "
+                "per detector recall en precisie berekend worden."
+            )
+            return
+        df = storage.load_observations(dataset_id)
+        scores = evaluate_detectors(df, incidents)
+        st.markdown(summarize(scores))
+        st.dataframe(to_frame(scores), use_container_width=True,
+                     hide_index=True)
+        st.caption(
+            "**Recall** = welk deel van de bekende incidenten is opgemerkt "
+            "(missers zijn meestal duurder dan vals alarm). **Precisie** = "
+            "welk deel van de meldingen was raak. Let op: alleen wat "
+            "gelabeld is telt mee — een terechte melding zonder label "
+            "verschijnt hier als vals alarm."
+        )
+
+
 def _render_findings(result, ds: dict):
     findings = build_findings(result, top_n=40)
     strong = [f for f in findings if f["severity"] in ("hoog", "midden")]
@@ -247,6 +287,7 @@ def page_triage():
 
     ds = by_id[chosen]
     _render_performance(ds["id"])
+    _render_evaluation(ds["id"])
 
     gap_policy = (ds["column_mapping"] or {}).get("gap_policy", "zero")
     cached = cached_analysis(

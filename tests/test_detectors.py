@@ -127,3 +127,51 @@ class TestZScoreEdgeCases:
     def test_zero_mad_flags_nothing(self):
         out = ZScoreDetector().detect(_df([4.0] * 30), "timestamp", "value")
         assert not out["is_anomaly"].any()
+
+
+class TestMissingValuesDoNotDisableDetectors:
+    """Regressie: één lege waarde legde een detector volledig stil.
+
+    np.median geeft NaN zodra er een NaN in zit; daarmee werd élke score
+    NaN en markeerde de detector niets meer — zonder foutmelding. Op de
+    demo-dataset waren 3 lege waarden op 1544 rijen genoeg om Z-score
+    volledig uit te schakelen, terwijl de grootste piek op z=33 zat. Het
+    evaluatie-harnas bracht dit aan het licht.
+    """
+
+    def _spiky_with_gaps(self):
+        rng = np.random.default_rng(2)
+        n = 200
+        vals = np.clip(20 + rng.normal(0, 2, n), 0, None)
+        vals[50] = 300.0          # onmiskenbare piek
+        vals[[10, 120, 180]] = np.nan   # ontbrekende waarnemingen
+        return pd.DataFrame({
+            "timestamp": pd.date_range("2025-01-01", periods=n, freq="D"),
+            "value": vals,
+        })
+
+    def test_zscore_still_finds_the_spike(self):
+        out = ZScoreDetector().detect(self._spiky_with_gaps(),
+                                      "timestamp", "value")
+        assert out["anomaly_score"].notna().all(), "scores mogen niet NaN zijn"
+        assert out["is_anomaly"].sum() >= 1
+        assert bool(out.loc[50, "is_anomaly"])
+
+    def test_zscore_does_not_flag_missing_values(self):
+        out = ZScoreDetector().detect(self._spiky_with_gaps(),
+                                      "timestamp", "value")
+        # Ontbrekend is onbekend, niet afwijkend.
+        assert not bool(out.loc[10, "is_anomaly"])
+
+    def test_stl_survives_gaps(self):
+        from detectors.stl import STLResidualDetector
+        out = STLResidualDetector().detect(self._spiky_with_gaps(),
+                                   "timestamp", "value")
+        assert out["anomaly_score"].notna().all()
+
+    def test_all_detectors_produce_finite_scores_with_gaps(self):
+        from core.registry import get_detectors
+        df = self._spiky_with_gaps()
+        for name, det in get_detectors().items():
+            out = det.detect(df, "timestamp", "value")
+            assert out["anomaly_score"].notna().all(), f"{name} geeft NaN-scores"

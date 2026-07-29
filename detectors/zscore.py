@@ -50,12 +50,18 @@ Een waarde wordt als afwijking gemarkeerd als `|z_i| > drempel`.
     def detect(self, df, time_col, value_col, threshold=3.5):
         out = df.copy().sort_values(time_col).reset_index(drop=True)
         x = out[value_col].astype(float).to_numpy()
-        median = np.median(x)
-        mad = np.median(np.abs(x - median))
-        if mad == 0:
+        # NaN-veilig: np.median geeft NaN zodra één waarde ontbreekt, en dan
+        # wordt élke score NaN en markeert deze detector niets meer. Op de
+        # demo-dataset waren 3 lege waarden op 1544 rijen genoeg om hem
+        # volledig stil te leggen — zonder foutmelding.
+        median = np.nanmedian(x) if np.isfinite(x).any() else 0.0
+        mad = np.nanmedian(np.abs(x - median)) if np.isfinite(x).any() else 0.0
+        if not np.isfinite(mad) or mad == 0:
             score = np.zeros_like(x)
         else:
             score = 0.6745 * (x - median) / mad
+        # Ontbrekende waarnemingen zijn geen afwijking; ze zijn onbekend.
+        score = np.nan_to_num(score, nan=0.0, posinf=0.0, neginf=0.0)
         out["anomaly_score"] = score
         out["is_anomaly"] = np.abs(score) > threshold
         return out

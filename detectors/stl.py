@@ -78,12 +78,15 @@ met `|z| > drempel` worden als afwijking gemarkeerd.
         stl = STL(daily, period=period, robust=True).fit()
         resid = stl.resid
 
-        median = np.median(resid)
-        mad = np.median(np.abs(resid - median))
-        if mad == 0:
+        # NaN-veilig (zelfde valkuil als in zscore.py): één ontbrekende
+        # waarde maakt np.median NaN en daarmee élke score NaN, waarna deze
+        # detector stilzwijgend niets meer markeert.
+        median = np.nanmedian(resid)
+        mad = np.nanmedian(np.abs(resid - median))
+        if not np.isfinite(mad) or mad == 0:
             score = pd.Series(np.zeros(len(resid)), index=resid.index)
         else:
-            score = 0.6745 * (resid - median) / mad
+            score = (0.6745 * (resid - median) / mad).fillna(0.0)
 
         day_idx = out[time_col].dt.floor("D")
         out["anomaly_score"] = day_idx.map(score).fillna(0).values
