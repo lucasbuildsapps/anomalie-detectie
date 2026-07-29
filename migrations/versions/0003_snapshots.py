@@ -8,8 +8,8 @@ from sqlalchemy import inspect
 
 from core.storage import ingest_runs_t, snapshots_t
 
-revision = "0003_snapshots"
-down_revision = "0002_timestamp_datetime"
+revision = "0003"
+down_revision = "0002"
 branch_labels = None
 depends_on = None
 
