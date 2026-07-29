@@ -30,7 +30,8 @@ Klik daarna op **"Laad demo-dataset"** voor een gevuld voorbeeld
 3. **Forecast** — 5 voorspelmethoden (STL, Holt-Winters, rolling,
    seasonal naive, mediaan). In de detail-weergave kiest een **backtest**
    de empirisch beste methodes en toont de eerlijke voorspelfout.
-4. **Afwijkingsdetectie** — 5 onafhankelijke detectie-algoritmes stemmen;
+4. **Afwijkingsdetectie** — 5 detectie-algoritmes stemmen (met deels
+   overlappende gevoeligheid — zie METHODS.md);
    severity vereist minimaal 2 stemmen (hoog = vrijwel unaniem).
 5. **Vergelijken** — twee reeksen overlay met automatische lag-detectie
    ("reeks B volgt A met ~X perioden", via cross-correlatie), plus
@@ -41,32 +42,54 @@ Klik daarna op **"Laad demo-dataset"** voor een gevuld voorbeeld
 ## Opslag
 
 Standaard lokaal SQLite (`data/store.db`). Voor blijvende, gedeelde opslag
-(bv. op Streamlit Cloud) koppel je een externe Postgres door `database_url`
-als secret te zetten — de code schakelt automatisch over. Zie
-`SETUP_DATABASE.md`. Toegang loopt via één gedeeld teamwachtwoord (`auth.py`).
+koppel je een externe Postgres via `DATABASE_URL` (env-var) of
+`database_url` als secret — de code schakelt automatisch over. Zie
+`SETUP_DATABASE.md`. Schema-wijzigingen lopen via Alembic
+(`python -m alembic upgrade head`).
+
+Toegang loopt via één gedeeld teamwachtwoord (`core/auth.py`, met
+lockout na herhaald falen). Elke muterende actie en login-poging staat in
+de audit-trail (tabel `audit_log`); achter een SSO-reverse-proxy wordt de
+`X-Forwarded-User`-header automatisch de identiteit.
 
 ## Architectuur
 
 ```
-app.py                  Streamlit UI (pagina's, styling, routing)
+app.py                  Entry-shell: config, auth, sidebar, routing (~180 regels)
+ui/
+  theme.py              Paletten + CSS (P = lazy palet-proxy)
+  state.py              Sessie-state-defaults
+  cache.py              st.cache_data-wrappers rond de analyse-kern
+  components.py         Gedeelde componenten (topbar, markeringen, annotaties)
+  pages/                overview / normbeeld / compare / settings
 core/
-  storage.py            Opslag via SQLAlchemy (SQLite of Postgres)
+  storage.py            Opslag via SQLAlchemy (SQLite of Postgres) + audit-trail
   import_data.py        Excel/CSV-parsing + kolom-mapping
+  validation.py         Import-validatie (blokkerende fouten + warnings)
   auto_mapping.py       Kolom-rol detectie (heuristieken)
   normbeeld.py          Normbeeld: forecast, banden, backtest  ← kern
-  comparison.py         Cross-correlatie/lag, change-points, seizoen
+  comparison.py         Cross-correlatie/lag (permutatietest), change-points
   auto_pilot.py         Detectie-ensemble + severity-stemming
   profiler.py           Data-profilering (seizoen, trend, stationariteit)
   explanations.py       Plain-language uitleg per bevinding
+  ingest.py             Ingest-pipeline (connector → validatie → opslag)
   briefing.py           PDF-export (fpdf2)
   excel_export.py       XLSX-export
   annotations.py        Analist-notities per bevinding
-  auth.py               Optionele wachtwoord-login
+  auth.py               Wachtwoord-login met lockout
+  logging_setup.py      Gestructureerde (JSON-)logging
+api/                    FastAPI-service over core/ (uvicorn api.main:app)
+connectors/             Plug-in databronnen voor automatische inwinning
+ingest_worker.py        Geplande inwinning (APScheduler; aparte service)
 detectors/              Plug-in detectie-algoritmes (1 bestand = 1 methode)
 visualizations/         Plug-in grafieken
+migrations/             Alembic-migraties
 i18n/nl.py              Alle UI-teksten (Nederlands)
-tests/                  Pytest-suite voor de kern-wiskunde
+tests/                  Pytest-suite (kern-wiskunde, storage, API, UI-smoke)
 ```
+
+Wetenschappelijke verantwoording van elke rekenmethode: **METHODS.md**.
+Productie-deployment (Postgres + TLS + backups): `docker-compose.prod.yml`.
 
 ### Een detectiemethode toevoegen
 

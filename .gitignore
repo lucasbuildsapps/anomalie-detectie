@@ -34,3 +34,10 @@ dist/
 
 # Logs
 *.log
+
+# Backups en productie-secrets
+backups/
+.env
+data/*.bak-*
+data/store.db.bak-*
+.coverage

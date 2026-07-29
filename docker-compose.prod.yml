@@ -1,0 +1,92 @@
+# Productie-stack voor eigen server / on-premise.
+#
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Componenten:
+#   - caddy:    TLS-terminatie + reverse proxy (zet X-Forwarded-* headers;
+#               daar prik je later ook SSO/forward-auth op — zie Caddyfile)
+#   - app:      de Streamlit-app (niet direct exposed)
+#   - worker:   geplande data-inwinning (connectors/)
+#   - db:       Postgres (persistente, gedeelde opslag)
+#   - backup:   nachtelijkse pg_dump naar ./backups (7 dagen retentie)
+#
+# Secrets via .env naast dit bestand:
+#   POSTGRES_PASSWORD=...
+#   ANOMALY_PASSWORD=...
+#   SENTINEL_DOMAIN=sentinel.example.org
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://sentinel:${POSTGRES_PASSWORD}@db:5432/sentinel
+      ANOMALY_PASSWORD: ${ANOMALY_PASSWORD}
+      SENTINEL_LOG_LEVEL: INFO
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8501"
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["python", "ingest_worker.py"]
+    environment:
+      DATABASE_URL: postgresql://sentinel:${POSTGRES_PASSWORD}@db:5432/sentinel
+      SENTINEL_USER: ingest-worker
+      SENTINEL_LOG_LEVEL: INFO
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sentinel
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./backups:/backups
+    entrypoint: >
+      sh -c 'while true; do
+        pg_dump -h db -U sentinel sentinel | gzip > /backups/sentinel-$$(date +%F).sql.gz;
+        find /backups -name "sentinel-*.sql.gz" -mtime +7 -delete;
+        sleep 86400;
+      done'
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pg_data:
+  caddy_data:
+  caddy_config:

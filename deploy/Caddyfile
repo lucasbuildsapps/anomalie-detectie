@@ -1,0 +1,20 @@
+# Reverse proxy met automatische TLS (Let's Encrypt) voor SENTINEL.
+#
+# SSO/identiteit: zodra er een identity provider staat (Authelia/Keycloak),
+# activeer je het forward_auth-blok hieronder. De proxy zet dan
+# X-Forwarded-User; de app gebruikt die header als identiteit in de
+# audit-trail (core/storage.py::current_user).
+
+{$SENTINEL_DOMAIN} {
+	encode gzip
+
+	# --- Activeer bij gebruik van Authelia als SSO-laag: ---
+	# forward_auth authelia:9091 {
+	# 	uri /api/verify?rd=https://auth.{$SENTINEL_DOMAIN}
+	# 	copy_headers Remote-User>X-Forwarded-User Remote-Groups>X-Forwarded-Groups
+	# }
+
+	reverse_proxy app:8501 {
+		header_up X-Forwarded-For {remote_host}
+	}
+}
