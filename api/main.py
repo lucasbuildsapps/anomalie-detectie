@@ -18,7 +18,12 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security
 from fastapi.security import APIKeyHeader
 
 from core import storage
-from core.authz import Identity, identity_from_headers
+from core.authz import (
+    Identity,
+    identity_from_headers,
+    reset_identity,
+    set_identity,
+)
 from core.logging_setup import get_logger
 from core.normbeeld import (
     AGGREGATIONS,
@@ -41,6 +46,22 @@ app = FastAPI(
     description="Normbeeld- en afwijkingsanalyse als service over core/.",
     lifespan=_lifespan,
 )
+
+@app.middleware("http")
+async def bind_identity(request: Request, call_next):
+    """Zet de identiteit van dit verzoek in de context.
+
+    Zonder dit valt `core.authz.current_identity()` diep in de stack terug
+    op de Streamlit-context — die er hier niet is. Gevolg was dat de
+    need-to-know-filtering in storage.list_datasets() in de API niets deed
+    en compartimenteerde datasets gewoon zichtbaar waren.
+    """
+    token = set_identity(identity_from_headers(request.headers))
+    try:
+        return await call_next(request)
+    finally:
+        reset_identity(token)
+
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -93,6 +114,9 @@ def list_datasets() -> list[dict]:
 
 
 def _load_or_404(dataset_id: int) -> pd.DataFrame:
+    # list_datasets() filtert al op need-to-know. Bewust 404 en geen 403:
+    # een 403 verklapt dát de dataset bestaat, wat bij compartimentering
+    # zelf al informatie is.
     if not any(d["id"] == dataset_id for d in storage.list_datasets()):
         raise HTTPException(status_code=404, detail="Dataset niet gevonden")
     return storage.load_observations(dataset_id)

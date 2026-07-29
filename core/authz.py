@@ -23,7 +23,9 @@ Rollen (oplopend):
 """
 from __future__ import annotations
 
+import contextlib
 import os
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 
 VIEWER, ANALYST, ADMIN = "viewer", "analyst", "admin"
@@ -155,8 +157,34 @@ def identity_from_headers(headers) -> Identity:
                     source="default")
 
 
+#: Identiteit van het huidige verzoek. Nodig omdat de app twee frontends
+#: heeft: Streamlit (identiteit uit st.context) en de FastAPI-service
+#: (identiteit uit het request). Lagen als core/storage.py mogen geen van
+#: beide kennen — die vragen simpelweg `current_identity()`.
+_current: ContextVar[Identity | None] = ContextVar(
+    "sentinel_identity", default=None)
+
+
+def set_identity(identity: Identity):
+    """Zet de identiteit voor de duur van dit verzoek. Returnt een token
+    voor `reset_identity`."""
+    return _current.set(identity)
+
+
+def reset_identity(token) -> None:
+    with contextlib.suppress(ValueError):
+        _current.reset(token)
+
+
 def current_identity() -> Identity:
-    """Identiteit van de huidige gebruiker in een Streamlit-context."""
+    """Identiteit van de huidige gebruiker.
+
+    Volgorde: expliciet gezet voor dit verzoek (API-middleware) →
+    Streamlit-context → env/default.
+    """
+    explicit = _current.get()
+    if explicit is not None:
+        return explicit
     headers = None
     try:
         import streamlit as st

@@ -222,3 +222,82 @@ class TestDeploymentHardening:
         root = pathlib.Path(__file__).resolve().parent.parent
         ignored = (root / ".gitignore").read_text(encoding="utf-8")
         assert "deploy/authelia/users.yml" in ignored
+
+
+class TestCompartmentalisation:
+    """Need-to-know per dataset (roadmap 17). Een dataset met een
+    compartiment-groep is alleen zichtbaar voor leden van die groep."""
+
+    def _make(self, name, group=None):
+        ds = storage.create_dataset(name, "", {})
+        if group:
+            storage.set_dataset_group(ds, group)
+        return ds
+
+    def test_open_dataset_is_visible_to_everyone(self, monkeypatch):
+        self._make("open-set")
+        monkeypatch.setenv("SENTINEL_DEFAULT_ROLE", "viewer")
+        assert "open-set" in {d["name"] for d in storage.list_datasets()}
+
+    def test_compartment_hides_dataset_from_outsiders(self):
+        self._make("geheim", group="ops-alpha")
+        ident = Identity("buitenstaander", VIEWER, groups=["andere-groep"])
+        rows = storage.list_datasets(include_hidden=True)
+        row = next(r for r in rows if r["name"] == "geheim")
+        assert not storage.can_see_dataset(row, ident)
+
+    def test_group_member_sees_it(self):
+        self._make("geheim", group="ops-alpha")
+        ident = Identity("lid", VIEWER, groups=["ops-alpha"])
+        row = next(r for r in storage.list_datasets(include_hidden=True)
+                   if r["name"] == "geheim")
+        assert storage.can_see_dataset(row, ident)
+
+    def test_group_match_is_case_insensitive(self):
+        self._make("geheim", group="Ops-Alpha")
+        ident = Identity("lid", VIEWER, groups=["ops-alpha"])
+        row = next(r for r in storage.list_datasets(include_hidden=True)
+                   if r["name"] == "geheim")
+        assert storage.can_see_dataset(row, ident)
+
+    def test_admin_always_sees_everything(self):
+        self._make("geheim", group="ops-alpha")
+        ident = Identity("beheerder", ADMIN, groups=[])
+        row = next(r for r in storage.list_datasets(include_hidden=True)
+                   if r["name"] == "geheim")
+        assert storage.can_see_dataset(row, ident)
+
+    def test_clearing_the_group_reopens_the_dataset(self):
+        ds = self._make("geheim", group="ops-alpha")
+        storage.set_dataset_group(ds, None)
+        ident = Identity("iemand", VIEWER, groups=[])
+        row = next(r for r in storage.list_datasets(include_hidden=True)
+                   if r["name"] == "geheim")
+        assert storage.can_see_dataset(row, ident)
+
+    def test_compartment_change_is_audited(self):
+        ds = self._make("geheim")
+        storage.set_dataset_group(ds, "ops-alpha")
+        actions = [a["action"] for a in storage.list_audit(20)]
+        assert "dataset_compartiment_gewijzigd" in actions
+
+    def test_api_hides_compartmented_dataset(self, monkeypatch):
+        """Bewust 404 en geen 403: een 403 verklapt dat de dataset bestaat."""
+        ds = self._make("geheim", group="ops-alpha")
+        with TestClient(app) as c:
+            outsider = {"X-Forwarded-User": "x",
+                        "X-Forwarded-Groups": "sentinel-viewers"}
+            assert ds not in [d["id"] for d in
+                              c.get("/datasets", headers=outsider).json()]
+            r = c.get(f"/datasets/{ds}/observations", headers=outsider)
+            assert r.status_code == 404
+
+    def test_api_shows_it_to_group_member(self, monkeypatch):
+        monkeypatch.setenv("SENTINEL_GROUP_MAP",
+                           "ops-alpha:analyst,sentinel-viewers:viewer")
+        ds = self._make("geheim", group="ops-alpha")
+        with TestClient(app) as c:
+            member = {"X-Forwarded-User": "lid",
+                      "X-Forwarded-Groups": "ops-alpha"}
+            ids = [d["id"] for d in c.get("/datasets", headers=member).json()]
+            assert ds in ids

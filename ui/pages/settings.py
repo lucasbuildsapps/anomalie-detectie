@@ -327,6 +327,25 @@ def _settings_datasets():
                     index=cred_opts.index(cur_cred) if cur_cred in cred_opts else 0,
                     key=f"cred_{ds['id']}",
                 )
+            if may("manage_sources"):
+                cur_group = ds.get("required_group") or ""
+                new_group = st.text_input(
+                    "Compartiment (groep)", value=cur_group,
+                    key=f"grp_{ds['id']}",
+                    help="Leeg = zichtbaar voor iedereen met leesrecht. Vul "
+                         "een groepsnaam in (zoals in de identity provider) "
+                         "om deze dataset tot die groep te beperken. "
+                         "Beheerders zien altijd alles.",
+                )
+                if new_group != cur_group and st.button(
+                    "Compartiment opslaan", key=f"grp_sv_{ds['id']}",
+                    type="secondary",
+                ):
+                    storage.set_dataset_group(ds["id"], new_group)
+                    st.cache_data.clear()
+                    st.success("Compartiment bijgewerkt.")
+                    st.rerun()
+
             if st.button("Metadata opslaan", key=f"meta_sv_{ds['id']}",
                          type="secondary"):
                 meta["gap_policy"] = gp

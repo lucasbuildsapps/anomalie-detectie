@@ -57,6 +57,10 @@ datasets = Table(
     Column("description", Text),
     Column("created_at", String(64), nullable=False),
     Column("column_mapping", Text, nullable=False),
+    # Compartimentering (need-to-know): alleen wie in deze groep zit — of
+    # een beheerder — ziet deze dataset. NULL = zichtbaar voor iedereen
+    # met leesrecht.
+    Column("required_group", String(128)),
 )
 
 observations = Table(
@@ -427,21 +431,63 @@ def source_health() -> list[dict]:
 # ---------------------------------------------------------------------------
 # Datasets
 # ---------------------------------------------------------------------------
-def list_datasets() -> list[dict]:
+def can_see_dataset(row, identity=None) -> bool:
+    """Need-to-know: mag deze identiteit deze dataset zien?
+
+    Zonder `required_group` is een dataset zichtbaar voor iedereen met
+    leesrecht. Met een groep geldt: alleen leden van die groep, plus
+    beheerders (die moeten de opzet kunnen beheren).
+    """
+    required = (row.get("required_group") if isinstance(row, dict)
+                else getattr(row, "required_group", None))
+    if not required:
+        return True
+    try:
+        from core.authz import ADMIN, current_identity
+        ident = identity or current_identity()
+    except Exception:
+        return True  # authz niet beschikbaar (migratie/CLI): niet blokkeren
+    if ident.role == ADMIN:
+        return True
+    return required.strip().lower() in {g.strip().lower() for g in ident.groups}
+
+
+def list_datasets(include_hidden: bool = False) -> list[dict]:
+    """Datasets die de huidige gebruiker mag zien.
+
+    `include_hidden=True` negeert de compartimentering — alleen voor
+    beheer-weergaven en achtergrondtaken.
+    """
     with _engine().connect() as con:
         rows = con.execute(
             select(datasets).order_by(datasets.c.name)
         ).mappings().all()
-    return [
-        {
+    out = []
+    for r in rows:
+        item = {
             "id": r["id"],
             "name": r["name"],
             "description": r["description"],
             "created_at": r["created_at"],
             "column_mapping": json.loads(r["column_mapping"]),
+            "required_group": r["required_group"],
         }
-        for r in rows
-    ]
+        if include_hidden or can_see_dataset(item):
+            out.append(item)
+    return out
+
+
+def set_dataset_group(dataset_id: int, group: str | None) -> None:
+    """Zet (of wis) de compartiment-groep van een dataset."""
+    value = (group or "").strip() or None
+    with _engine().begin() as con:
+        con.execute(
+            datasets.update()
+            .where(datasets.c.id == dataset_id)
+            .values(required_group=value)
+        )
+    record_audit("dataset_compartiment_gewijzigd", "dataset", dataset_id,
+                 {"required_group": value})
 
 
 def create_dataset(name: str, description: str, column_mapping: dict) -> int:
