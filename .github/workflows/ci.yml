@@ -39,9 +39,14 @@ jobs:
       - name: Build image
         run: docker build -t sentinel:ci .
 
+      # Advisory scan: rapporteert kwetsbaarheden maar blokkeert niet.
+      # continue-on-error omdat de action zelf regelmatig faalt op het
+      # downloaden van de scanner/DB (GitHub rate limits) — een kapotte
+      # download mag de build niet rood maken.
       - name: Scan image (Trivy)
+        continue-on-error: true
         uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: sentinel:ci
           severity: HIGH,CRITICAL
-          exit-code: "0"   # rapporteer, blokkeer (nog) niet
+          exit-code: "0"
