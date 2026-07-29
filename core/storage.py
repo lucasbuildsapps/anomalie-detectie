@@ -5,22 +5,41 @@ Werkt op twee backends met dezelfde code:
 - Productie: externe Postgres (bv. Supabase) als DATABASE_URL is gezet
   (env-var) of `database_url` in .streamlit/secrets.toml staat.
 
-De dedup-logica (query bestaande row_hashes, filter, insert) is bewust
-dialect-onafhankelijk, zodat SQLite en Postgres zich identiek gedragen.
+Dedupe gebeurt in de database zelf: de unique constraint op
+(dataset_id, row_hash) plus ON CONFLICT DO NOTHING (native op zowel SQLite
+als Postgres). Schema-wijzigingen lopen via Alembic (migrations/).
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
 from sqlalchemy import (
-    Column, Float, ForeignKey, Integer, MetaData, String, Table, Text,
-    UniqueConstraint, create_engine, delete, func, insert, select,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    delete,
+    func,
+    insert,
+    select,
 )
+
+from core.logging_setup import get_logger
+
+_logger = get_logger("storage")
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "store.db"
 
@@ -44,7 +63,10 @@ observations = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("dataset_id", Integer,
            ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False),
-    Column("timestamp", String(64), nullable=False),
+    # Echte DateTime (UTC, naief opgeslagen): maakt range-queries en
+    # DB-side aggregatie mogelijk. Migratie van oudere string-kolommen:
+    # zie migrations/versions/0002_timestamp_datetime.py.
+    Column("timestamp", DateTime, nullable=False),
     Column("value", Float),
     Column("category", Text),
     Column("location_name", Text),
@@ -53,6 +75,7 @@ observations = Table(
     Column("extras", Text),
     Column("row_hash", String(64), nullable=False),
     UniqueConstraint("dataset_id", "row_hash", name="uq_obs_dataset_hash"),
+    Index("ix_obs_dataset_ts", "dataset_id", "timestamp"),
 )
 
 annotations_t = Table(
@@ -86,6 +109,38 @@ saved_views_t = Table(
     Column("name", String(255), nullable=False),
     Column("payload", Text, nullable=False),
     Column("created_at", String(64), nullable=False),
+)
+
+# Audit-trail: wie deed wat, wanneer. Voor operationeel gebruik is dit een
+# harde eis — elke muterende actie en elke login-poging wordt vastgelegd.
+# `username` komt uit de reverse-proxy header (X-Forwarded-User) zodra SSO
+# voor de app staat; tot die tijd 'onbekend'.
+audit_log_t = Table(
+    "audit_log", _metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("ts", DateTime, nullable=False),
+    Column("username", String(128)),
+    Column("action", String(64), nullable=False),
+    Column("object_type", String(32)),
+    Column("object_id", String(64)),
+    Column("detail", Text),
+    Column("client", String(128)),
+    Index("ix_audit_ts", "ts"),
+)
+
+# Ingest-runs: één regel per connector-run (geautomatiseerde inwinning).
+# Basis voor bron-gezondheid ("is mijn data actueel?") en alerting.
+ingest_runs_t = Table(
+    "ingest_runs", _metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("source", String(128), nullable=False),
+    Column("started_at", DateTime, nullable=False),
+    Column("finished_at", DateTime),
+    Column("status", String(16), nullable=False),  # 'ok' / 'error'
+    Column("rows_offered", Integer),
+    Column("rows_added", Integer),
+    Column("error", Text),
+    Index("ix_ingest_source_ts", "source", "started_at"),
 )
 
 
@@ -134,11 +189,118 @@ def _engine():
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def init_db() -> None:
     _metadata.create_all(_engine())
+
+
+# ---------------------------------------------------------------------------
+# Audit-trail
+# ---------------------------------------------------------------------------
+def current_user() -> str:
+    """Identiteit van de huidige gebruiker.
+
+    Volgorde: reverse-proxy header (X-Forwarded-User, gezet door de
+    SSO-proxy) → env-var SENTINEL_USER (worker/CLI-context) → 'onbekend'.
+    """
+    try:
+        import streamlit as st
+        user = st.context.headers.get("X-Forwarded-User")
+        if user:
+            return str(user)
+    except Exception:  # geen streamlit-context (worker, tests)
+        pass
+    return os.environ.get("SENTINEL_USER") or "onbekend"
+
+
+def _client_info() -> str | None:
+    try:
+        import streamlit as st
+        fwd = st.context.headers.get("X-Forwarded-For")
+        return str(fwd) if fwd else None
+    except Exception:
+        return None
+
+
+def record_audit(action: str, object_type: str | None = None,
+                 object_id: int | str | None = None,
+                 detail: dict | None = None,
+                 username: str | None = None) -> None:
+    """Schrijf één audit-regel. Mag NOOIT de hoofdoperatie laten falen:
+    fouten worden gelogd, niet doorgegooid."""
+    try:
+        with _engine().begin() as con:
+            con.execute(insert(audit_log_t).values(
+                ts=datetime.now(UTC).replace(tzinfo=None),
+                username=username or current_user(),
+                action=action,
+                object_type=object_type,
+                object_id=str(object_id) if object_id is not None else None,
+                detail=json.dumps(detail, default=str) if detail else None,
+                client=_client_info(),
+            ))
+    except Exception:
+        _logger.exception("audit-regel schrijven faalde",
+                          extra={"ctx": {"action": action}})
+
+
+def list_audit(limit: int = 200) -> list[dict]:
+    """Recentste audit-regels, nieuwste eerst (voor de beheer-weergave)."""
+    with _engine().connect() as con:
+        rows = con.execute(
+            select(audit_log_t).order_by(audit_log_t.c.ts.desc()).limit(limit)
+        ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Ingest-runs (geautomatiseerde inwinning)
+# ---------------------------------------------------------------------------
+def record_ingest_run(source: str, started_at: datetime, status: str,
+                      rows_offered: int | None = None,
+                      rows_added: int | None = None,
+                      error: str | None = None) -> None:
+    with _engine().begin() as con:
+        con.execute(insert(ingest_runs_t).values(
+            source=source,
+            started_at=started_at,
+            finished_at=datetime.now(UTC).replace(tzinfo=None),
+            status=status,
+            rows_offered=rows_offered,
+            rows_added=rows_added,
+            error=error,
+        ))
+
+
+def list_ingest_runs(source: str | None = None, limit: int = 100) -> list[dict]:
+    stmt = select(ingest_runs_t).order_by(ingest_runs_t.c.started_at.desc())
+    if source:
+        stmt = stmt.where(ingest_runs_t.c.source == source)
+    with _engine().connect() as con:
+        rows = con.execute(stmt.limit(limit)).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def source_health() -> list[dict]:
+    """Per bron: laatste run, status en rijen — de basis voor het
+    bron-gezondheidspaneel ("werk ik met actuele data?")."""
+    runs = list_ingest_runs(limit=500)
+    seen: dict[str, dict] = {}
+    for r in runs:  # nieuwste eerst
+        src = r["source"]
+        if src not in seen:
+            seen[src] = {
+                "source": src,
+                "last_run": r["started_at"],
+                "last_status": r["status"],
+                "last_rows_added": r["rows_added"],
+                "last_error": r["error"],
+            }
+        if seen[src].get("last_success") is None and r["status"] == "ok":
+            seen[src]["last_success"] = r["started_at"]
+    return list(seen.values())
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +332,9 @@ def create_dataset(name: str, description: str, column_mapping: dict) -> int:
                 column_mapping=json.dumps(column_mapping),
             )
         )
-        return int(result.inserted_primary_key[0])
+        new_id = int(result.inserted_primary_key[0])
+    record_audit("dataset_aangemaakt", "dataset", new_id, {"name": name})
+    return new_id
 
 
 def update_dataset_mapping(dataset_id: int, column_mapping: dict) -> None:
@@ -182,6 +346,7 @@ def update_dataset_mapping(dataset_id: int, column_mapping: dict) -> None:
                 column_mapping=json.dumps(column_mapping)
             )
         )
+    record_audit("dataset_mapping_bijgewerkt", "dataset", dataset_id)
 
 
 def delete_dataset(dataset_id: int) -> None:
@@ -189,16 +354,20 @@ def delete_dataset(dataset_id: int) -> None:
         # Expliciet kinderen verwijderen (SQLite handhaaft FK-cascade niet altijd)
         con.execute(delete(annotations_t).where(
             annotations_t.c.dataset_id == dataset_id))
-        con.execute(delete(observations).where(
-            observations.c.dataset_id == dataset_id))
+        n = con.execute(delete(observations).where(
+            observations.c.dataset_id == dataset_id)).rowcount
         con.execute(delete(datasets).where(datasets.c.id == dataset_id))
+    record_audit("dataset_verwijderd", "dataset", dataset_id,
+                 {"observaties_verwijderd": n})
 
 
 def clear_observations(dataset_id: int) -> None:
     """Verwijder alle observaties van een dataset (dataset zelf blijft)."""
     with _engine().begin() as con:
-        con.execute(delete(observations).where(
-            observations.c.dataset_id == dataset_id))
+        n = con.execute(delete(observations).where(
+            observations.c.dataset_id == dataset_id)).rowcount
+    record_audit("observaties_gewist", "dataset", dataset_id,
+                 {"observaties_verwijderd": n})
 
 
 def dataset_data_hash(dataset_id: int) -> str:
@@ -223,64 +392,88 @@ def _safe(v):
     return v
 
 
+def _to_naive_utc(ts) -> datetime:
+    """Pandas/py-timestamp → naïeve UTC-datetime voor de DateTime-kolom."""
+    t = pd.Timestamp(ts)
+    if t.tzinfo is not None:
+        t = t.tz_convert("UTC").tz_localize(None)
+    return t.to_pydatetime()
+
+
+def _insert_ignore_conflicts(con, rows: list[dict]) -> None:
+    """Batch-insert die bestaande (dataset_id, row_hash)-paren stil overslaat.
+
+    Gebruikt de dialect-native ON CONFLICT DO NOTHING (SQLite én Postgres)
+    zodat dedupe in de database gebeurt in plaats van alle bestaande hashes
+    naar de client te halen (dat schaalde O(datasetgrootte) per import).
+    """
+    dialect = con.dialect.name
+    if dialect == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert as dialect_insert
+    elif dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as dialect_insert
+    else:  # onbekend dialect: val terug op gewone insert (kan IntegrityError geven)
+        con.execute(insert(observations), rows)
+        return
+    stmt = dialect_insert(observations).on_conflict_do_nothing(
+        index_elements=["dataset_id", "row_hash"]
+    )
+    con.execute(stmt, rows)
+
+
 def insert_observations(dataset_id: int, df: pd.DataFrame) -> int:
-    """Insert rijen; dedupe via row_hash (dialect-onafhankelijk: bestaande
-    hashes worden opgehaald en de batch wordt gefilterd). Returnt nieuw aantal."""
+    """Insert rijen; dedupe via de unique constraint op (dataset_id, row_hash)
+    met ON CONFLICT DO NOTHING. Returnt het aantal daadwerkelijk nieuwe rijen."""
+    extra_cols = [c for c in df.columns if c not in STANDARD_FIELDS]
+
     rows: list[dict] = []
-    hashes: list[str] = []
-    for _, row in df.iterrows():
+    for row in df.to_dict("records"):
         ts_raw = row.get("timestamp")
         if pd.isna(ts_raw):
             continue
-        ts = pd.Timestamp(ts_raw).isoformat()
 
-        extras = {
-            k: _safe(v) for k, v in row.items() if k not in STANDARD_FIELDS
-        }
+        extras = {k: _safe(row.get(k)) for k in extra_cols}
         extras_json = json.dumps(extras, default=str)
 
+        # Let op: de hash-sleutel gebruikt de RUWE veldwaarden (zoals bij de
+        # oorspronkelijke implementatie), zodat bestaande databases dezelfde
+        # hashes houden en her-import geen duplicaten oplevert.
         key_str = "|".join(
             str(_safe(row.get(c))) for c in
             ["timestamp", "value", "category", "location_name", "lat", "lon"]
         ) + "|" + extras_json
         row_hash = hashlib.sha256(key_str.encode()).hexdigest()
 
+        val = row.get("value")
+        lat = row.get("lat")
+        lon = row.get("lon")
         rows.append({
             "dataset_id": dataset_id,
-            "timestamp": ts,
-            "value": None if pd.isna(row.get("value")) else float(row["value"]),
+            "timestamp": _to_naive_utc(ts_raw),
+            "value": None if val is None or pd.isna(val) else float(val),
             "category": _safe(row.get("category")),
             "location_name": _safe(row.get("location_name")),
-            "lat": None if pd.isna(row.get("lat")) else float(row["lat"]),
-            "lon": None if pd.isna(row.get("lon")) else float(row["lon"]),
+            "lat": None if lat is None or pd.isna(lat) else float(lat),
+            "lon": None if lon is None or pd.isna(lon) else float(lon),
             "extras": extras_json,
             "row_hash": row_hash,
         })
-        hashes.append(row_hash)
 
     if not rows:
         return 0
 
+    count_stmt = select(func.count(observations.c.id)).where(
+        observations.c.dataset_id == dataset_id
+    )
     with _engine().begin() as con:
-        existing = set(con.execute(
-            select(observations.c.row_hash).where(
-                observations.c.dataset_id == dataset_id
-            )
-        ).scalars().all())
+        before = con.execute(count_stmt).scalar_one()
+        _insert_ignore_conflicts(con, rows)
+        after = con.execute(count_stmt).scalar_one()
 
-        # Filter dubbele rijen (zowel t.o.v. DB als binnen de batch zelf)
-        fresh = []
-        seen = set()
-        for r in rows:
-            h = r["row_hash"]
-            if h in existing or h in seen:
-                continue
-            seen.add(h)
-            fresh.append(r)
-
-        if fresh:
-            con.execute(insert(observations), fresh)
-        return len(fresh)
+    n_new = int(after - before)
+    record_audit("observaties_geimporteerd", "dataset", dataset_id,
+                 {"aangeboden": len(rows), "nieuw": n_new})
+    return n_new
 
 
 def load_observations(dataset_id: int) -> pd.DataFrame:
@@ -297,8 +490,9 @@ def load_observations(dataset_id: int) -> pd.DataFrame:
         return df
     # Defensief normaliseren: data uit oudere imports of andere DB-backends
     # kan afwijkende types bevatten (strings, Decimals, gemengde formaten).
-    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce",
-                                     format="mixed")
+    if not pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce",
+                                         format="mixed")
     df["value"] = pd.to_numeric(df["value"], errors="coerce")
     for col in ("lat", "lon"):
         if col in df.columns:
@@ -379,7 +573,8 @@ def _ensure_table(table) -> None:
     try:
         table.create(_engine(), checkfirst=True)
     except Exception:
-        pass
+        _logger.exception("tabel aanmaken faalde",
+                          extra={"ctx": {"table": table.name}})
 
 
 def add_event(event_date: str, label: str) -> int:
@@ -388,7 +583,10 @@ def add_event(event_date: str, label: str) -> int:
         result = con.execute(insert(events_t).values(
             event_date=event_date, label=label, created_at=_now_iso(),
         ))
-        return int(result.inserted_primary_key[0])
+        new_id = int(result.inserted_primary_key[0])
+    record_audit("markering_toegevoegd", "event", new_id,
+                 {"event_date": event_date, "label": label})
+    return new_id
 
 
 def list_events() -> list[dict]:
@@ -411,6 +609,7 @@ def delete_event(event_id: int) -> None:
     _ensure_table(events_t)
     with _engine().begin() as con:
         con.execute(delete(events_t).where(events_t.c.id == event_id))
+    record_audit("markering_verwijderd", "event", event_id)
 
 
 # ---------------------------------------------------------------------------
@@ -422,7 +621,9 @@ def save_view(name: str, payload: dict) -> int:
         result = con.execute(insert(saved_views_t).values(
             name=name, payload=json.dumps(payload), created_at=_now_iso(),
         ))
-        return int(result.inserted_primary_key[0])
+        new_id = int(result.inserted_primary_key[0])
+    record_audit("weergave_opgeslagen", "view", new_id, {"name": name})
+    return new_id
 
 
 def list_views() -> list[dict]:
@@ -445,3 +646,4 @@ def delete_view(view_id: int) -> None:
     _ensure_table(saved_views_t)
     with _engine().begin() as con:
         con.execute(delete(saved_views_t).where(saved_views_t.c.id == view_id))
+    record_audit("weergave_verwijderd", "view", view_id)
