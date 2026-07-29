@@ -514,6 +514,14 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
             f"Banddekking: {nb_view.band_coverage * 100:.0f}% van de historie "
             f"binnen de band (doel ≈ {expected_cov:.0f}%)"
         )
+    if nb_view.band_model == "poisson":
+        trust_bits.append("band: Poisson-interval (schaarse telling-data)")
+    elif nb_view.band_model == "negbin":
+        disp = (f", dispersie {nb_view.dispersion:.1f}"
+                if nb_view.dispersion else "")
+        trust_bits.append(
+            f"band: negatief-binomiaal (telling-data met clustering{disp})"
+        )
     if nb_view.widening_source == "backtest":
         trust_bits.append(
             "voorspelband verbreedt met de horizon o.b.v. gemeten backtest-fout"

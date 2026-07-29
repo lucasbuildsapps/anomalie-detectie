@@ -133,6 +133,33 @@ licht optimistisch. Twee correcties maken dit inzichtelijk en beheersbaar:
 2. **Horizon-verbreding** (§7): de voorspelband gebruikt out-of-sample
    backtest-fouten, niet de in-sample residuen.
 
+### 6b. Discrete band voor schaarse telling-data (Poisson / negatief-binomiaal)
+
+Voor reeksen van **niet-negatieve gehele aantallen met mediaan < 5**
+(`_is_low_count_series`) worden residual-quantiles vervangen door een
+discreet interval (`_count_band`). Reden: bij bv. 0,6 gebeurtenissen per
+dag nemen residuen maar een handvol waarden aan en wordt de quantile-band
+volledig gedomineerd door enkele spikes — met een ondergrens die niets
+betekent en een bovengrens die óf te ruim óf te krap is.
+
+Model per periode *t* met ensemble-verwachting μ<sub>t</sub> (gevloerd op
+0,1):
+
+- **Poisson** als de Pearson-dispersie φ ≤ 1,3:
+  `band = [F⁻¹(α; μ_t), F⁻¹(1−α; μ_t)]` met F de Poisson-CDF.
+- **Negatief-binomiaal (NB2)** bij overdispersie (φ > 1,3), zoals bij
+  geclusterde aanvalsgolven: var = φ·μ, dus r = μ/(φ−1),
+  p = r/(r+μ). Cameron & Trivedi (2013), *Regression Analysis of Count
+  Data*.
+
+φ wordt geschat als recency-gewogen gemiddelde van (y−μ)²/μ over de
+historie (zelfde gewichten als §6); bij `gap_policy='mask'` tellen
+niet-geobserveerde buckets niet mee. De voorspelband hergebruikt de φ van
+de historie (op de voorspelling valt niets te schatten) en past dezelfde
+horizon-verbreding toe door de offsets rond μ te schalen. Het gekozen
+model (`band_model`) en φ (`dispersion`) staan in de UI-betrouwbaarheids-
+regel, zodat de analist ziet wélk band-mechanisme actief is.
+
 ## 7. Voorspelband en horizon-verbreding
 
 Onzekerheid groeit met de voorspelafstand; een band die op stap 14 even

@@ -155,6 +155,8 @@ class Normbeeld:
     band_alpha: float | None = None        # gebruikte quantile-tail (bv. 0.02)
     band_coverage: float | None = None     # fractie historie binnen de band
     widening_source: str | None = None     # 'backtest' of 'default'
+    band_model: str = "quantile"           # 'quantile' / 'poisson' / 'negbin'
+    dispersion: float | None = None        # Pearson-dispersie (count-band)
 
     @property
     def n_history_days(self) -> int:  # backward compat
@@ -665,6 +667,77 @@ def _quantile_band(
     return q_lo, q_hi, alpha
 
 
+def _is_low_count_series(series: pd.Series) -> bool:
+    """True voor schaarse telling-data: niet-negatieve gehele aantallen met
+    een laag typisch niveau. Voor zulke reeksen zijn residual-quantiles
+    onbetrouwbaar (residuen nemen maar een handvol discrete waarden aan en
+    de band wordt gedomineerd door een paar spikes)."""
+    vals = series.values.astype(float)
+    if len(vals) == 0 or np.nanmin(vals) < 0:
+        return False
+    if not np.allclose(vals, np.round(vals), atol=1e-9):
+        return False
+    return float(np.nanmedian(vals)) < 5.0
+
+
+def _count_band(
+    series: pd.Series, expected_hist: np.ndarray, alpha: float,
+    observed_mask: pd.Series | None = None,
+    phi_fixed: float | None = None,
+) -> tuple[np.ndarray, np.ndarray, str, float]:
+    """Discrete band voor telling-data: Poisson, of negatief-binomiaal bij
+    overdispersie (variantie > gemiddelde, zoals bij geclusterde aanvallen).
+
+    Per periode t met verwachting mu_t:
+      lower_t = ppf(alpha, mu_t), upper_t = ppf(1 - alpha, mu_t)
+
+    De dispersie phi wordt Pearson-geschat op de (recency-gewogen) historie:
+      phi = gewogen gemiddelde van (y - mu)^2 / mu
+    phi <= 1.3 -> Poisson; anders NB met var = phi * mu (r = mu / (phi - 1)).
+
+    Returnt (lower, upper, model, phi) met arrays op de lengte van
+    expected_hist. Zie METHODS.md §7.
+    """
+    from scipy import stats
+
+    mu = np.clip(np.asarray(expected_hist, dtype=float), 0.1, None)
+    y = series.values.astype(float)
+
+    n = len(y)
+    half_life = max(10.0, n / 3.0)
+    ages = np.arange(n, dtype=float)[::-1]
+    weights = np.power(0.5, ages / half_life)
+    if observed_mask is not None:
+        mask_arr = np.asarray(observed_mask, dtype=float)
+        if mask_arr.sum() >= 5:
+            weights = weights * mask_arr
+
+    if phi_fixed is not None:
+        # Forecast-pad: dispersie is op de historie gemeten en wordt hier
+        # hergebruikt (op de voorspelling zelf zijn de residuen per
+        # definitie nul, dus daar valt niets te schatten).
+        phi = float(phi_fixed)
+    else:
+        pearson = (y - mu) ** 2 / mu
+        phi = float(np.average(pearson, weights=weights)) if weights.sum() > 0 \
+            else float(pearson.mean())
+    phi = max(phi, 1.0)
+
+    if phi <= 1.3:
+        lower = stats.poisson.ppf(alpha, mu)
+        upper = stats.poisson.ppf(1.0 - alpha, mu)
+        model = "poisson"
+    else:
+        # NB2-parameterisatie: var = mu + mu^2/r = phi*mu  ->  r = mu/(phi-1)
+        r = np.clip(mu / (phi - 1.0), 0.05, None)
+        p = r / (r + mu)
+        lower = stats.nbinom.ppf(alpha, r, p)
+        upper = stats.nbinom.ppf(1.0 - alpha, r, p)
+        model = "negbin"
+
+    return lower.astype(float), np.maximum(upper, lower).astype(float), model, phi
+
+
 # ---------------------------------------------------------------------------
 # Method selection (heuristisch)
 # ---------------------------------------------------------------------------
@@ -779,16 +852,26 @@ def compute_normbeeld(
     def _floor(arr):
         return np.clip(arr, 0, None) if nonneg else np.asarray(arr, dtype=float)
 
-    # --- Quantile-band (asymmetrisch, recency-gewogen) ---
-    q_lo, q_hi, band_alpha = _quantile_band(
-        series, expected_hist,
-        observed_mask=observed if gap_policy == "mask" else None,
-    )
-
-    # Invariant: upper >= lower, óók na flooring van alleen de ondergrens
-    # (anders kan een pathologische fit de band ondersteboven zetten).
-    hist_lower = _floor(expected_hist + q_lo)
-    hist_upper = np.maximum(expected_hist + q_hi, hist_lower)
+    # --- Band: discreet (telling-data) of quantile (continu/hoog niveau) ---
+    # Voor schaarse gehele aantallen (mediaan < 5) zijn residual-quantiles
+    # onbetrouwbaar; daar past een Poisson- of negatief-binomiaal-interval
+    # rond de verwachting beter. Zie METHODS.md §7.
+    obs_mask = observed if gap_policy == "mask" else None
+    q_lo, q_hi, band_alpha = _quantile_band(series, expected_hist,
+                                            observed_mask=obs_mask)
+    band_model = "quantile"
+    dispersion = None
+    if _is_low_count_series(series):
+        cb_lo, cb_hi, band_model, dispersion = _count_band(
+            series, expected_hist, band_alpha, observed_mask=obs_mask,
+        )
+        hist_lower = cb_lo
+        hist_upper = cb_hi
+    else:
+        # Invariant: upper >= lower, óók na flooring van alleen de ondergrens
+        # (anders kan een pathologische fit de band ondersteboven zetten).
+        hist_lower = _floor(expected_hist + q_lo)
+        hist_upper = np.maximum(expected_hist + q_hi, hist_lower)
 
     hist = pd.DataFrame({
         "date":     series.index,
@@ -830,8 +913,19 @@ def compute_normbeeld(
     if widening is None:
         widening = np.minimum(1.0 + 0.03 * np.arange(horizon_days), 1.5)
 
-    fc_lower = _floor(future_expected + q_lo * widening)
-    fc_upper = np.maximum(future_expected + q_hi * widening, fc_lower)
+    if band_model in ("poisson", "negbin"):
+        # Discreet interval per toekomstige verwachting; horizon-verbreding
+        # schaalt de offsets rond mu (zelfde principe als bij quantiles).
+        fb_lo, fb_hi, _, _ = _count_band(
+            pd.Series(future_expected, index=future_idx),
+            future_expected, band_alpha, phi_fixed=dispersion,
+        )
+        mu_f = np.asarray(future_expected, dtype=float)
+        fc_lower = np.clip(mu_f - (mu_f - fb_lo) * widening, 0, None)
+        fc_upper = np.maximum(mu_f + (fb_hi - mu_f) * widening, fc_lower)
+    else:
+        fc_lower = _floor(future_expected + q_lo * widening)
+        fc_upper = np.maximum(future_expected + q_hi * widening, fc_lower)
     forecast = pd.DataFrame({
         "date":     future_idx,
         "expected": future_expected,
@@ -926,6 +1020,8 @@ def compute_normbeeld(
         band_alpha=band_alpha,
         band_coverage=band_coverage,
         widening_source=widening_source,
+        band_model=band_model,
+        dispersion=dispersion,
     )
 
 
