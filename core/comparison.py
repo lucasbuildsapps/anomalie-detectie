@@ -48,6 +48,8 @@ class LagResult:
     corrs: list[float]            # correlatie per lag
     unit: str                     # 'dag' / 'week' / 'maand'
     n_overlap: int                # aantal overlappende periodes
+    sig_threshold: float = 1.0    # 95%-drempel voor max|corr| onder H0
+    significant: bool = False     # |best_corr| boven die drempel?
 
 
 def cross_correlation_lag(
@@ -97,21 +99,38 @@ def cross_correlation_lag(
         bz = _z(b.values)
 
     lags = list(range(-max_lag, max_lag + 1))
-    corrs: list[float] = []
-    for lag in lags:
-        if lag >= 0:
-            x = az[: n - lag] if lag > 0 else az
-            y = bz[lag:] if lag > 0 else bz
-        else:
-            x = az[-lag:]
-            y = bz[: n + lag]
-        if len(x) < 8:
-            corrs.append(0.0)
-            continue
-        denom = np.sqrt((x * x).sum() * (y * y).sum())
-        corrs.append(float((x * y).sum() / denom) if denom > 0 else 0.0)
 
+    def _corr_profile(x_arr: np.ndarray, y_arr: np.ndarray) -> list[float]:
+        out: list[float] = []
+        for lag in lags:
+            if lag >= 0:
+                x = x_arr[: n - lag] if lag > 0 else x_arr
+                y = y_arr[lag:] if lag > 0 else y_arr
+            else:
+                x = x_arr[-lag:]
+                y = y_arr[: n + lag]
+            if len(x) < 8:
+                out.append(0.0)
+                continue
+            denom = np.sqrt((x * x).sum() * (y * y).sum())
+            out.append(float((x * y).sum() / denom) if denom > 0 else 0.0)
+        return out
+
+    corrs = _corr_profile(az, bz)
     best_i = int(np.argmax(corrs))
+
+    # Significantie via permutatietest. We nemen het MAXIMUM over alle lags:
+    # wie over ~61 lags de hoogste correlatie kiest, vindt óók in pure ruis
+    # een "beste" lag — de drempel moet dat selectie-effect meerekenen
+    # (klassieke t.o.v.-één-lag-drempels zoals 2/sqrt(n) zijn hier te laag).
+    rng = np.random.default_rng(0)
+    n_perm = 200
+    max_abs = np.empty(n_perm)
+    for p in range(n_perm):
+        perm_profile = _corr_profile(az, rng.permutation(bz))
+        max_abs[p] = float(np.max(np.abs(perm_profile)))
+    sig_threshold = float(np.quantile(max_abs, 0.95))
+
     return LagResult(
         best_lag=lags[best_i],
         best_corr=corrs[best_i],
@@ -119,6 +138,8 @@ def cross_correlation_lag(
         corrs=corrs,
         unit=AGGREGATIONS[aggregation][1],
         n_overlap=n,
+        sig_threshold=sig_threshold,
+        significant=abs(corrs[best_i]) > sig_threshold,
     )
 
 
@@ -146,7 +167,17 @@ def detect_change_points(
             continue
         scores[i] = abs(after.mean() - before.mean()) / np.sqrt(pooled * 2.0 / w)
 
-    threshold = 2.0
+    # Drempel schaalt met de reekslengte: bij honderden kandidaat-posities
+    # vuurt een vaste t=2.0 gegarandeerd op ruis. De statistiek heeft
+    # Student-t-staarten (df = 2w-2, dus zwaarder dan normaal bij kleine w);
+    # we nemen de Bonferroni-gecorrigeerde t-quantile over het effectieve
+    # aantal onafhankelijke vensters (overlappende vensters correleren over
+    # ~w posities). Vloer van 2.0 voor korte reeksen.
+    from scipy import stats as _st
+    n_eff = max((n - 2 * w) // w, 3)
+    threshold = max(2.0, float(
+        _st.t.ppf(1.0 - 0.05 / (2 * n_eff), df=2 * w - 2)
+    ))
     candidates = [(i, scores[i]) for i in range(n) if scores[i] > threshold]
     candidates.sort(key=lambda p: -p[1])
     chosen: list[int] = []

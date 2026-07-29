@@ -17,13 +17,18 @@ import numpy as np
 import pandas as pd
 
 from core.activity_log import (
-    ActivityLog, TAG_DATA, TAG_DETECT, TAG_DONE, TAG_PROFIL,
-    TAG_SELECT, TAG_TUNE, TAG_VOTING,
+    TAG_DATA,
+    TAG_DETECT,
+    TAG_DONE,
+    TAG_PROFIL,
+    TAG_SELECT,
+    TAG_TUNE,
+    TAG_VOTING,
+    ActivityLog,
 )
 from core.explanations import explain_finding
 from core.profiler import DataProfile, profile_data
 from core.registry import get_detectors
-
 
 # Steering-doelband voor de auto-tuning: fractie rijen met severity
 # hoog óf midden (het "signaal" dat een analist daadwerkelijk bekijkt).
@@ -34,8 +39,11 @@ TARGET_SIGNAL_MAX = 0.05
 def classify_severity(votes: np.ndarray, n_methods: int) -> np.ndarray:
     """Severity op basis van absolute stem-aantallen, niet fracties.
 
-    Grondregel: minimaal 2 onafhankelijke methodes moeten een punt markeren
-    voordat het überhaupt een afwijking heet — één enkele methode is ruis.
+    Grondregel: minimaal 2 methodes moeten een punt markeren voordat het
+    überhaupt een afwijking heet — één enkele methode is ruis. NB: de
+    methodes zijn niet statistisch onafhankelijk (Z-score, rolling en
+    STL-residu correleren sterk op de meeste reeksen); de stemmen zijn
+    corroboratie-indicaties, geen onafhankelijke bewijzen.
     Expliciete tabel per methode-aantal (fracties werken niet bij 3 methodes,
     waar 'hoog = ≥80%' de facto unanimiteit eiste en 1 stem al 'laag' gaf):
 
@@ -91,24 +99,29 @@ def _select_methods(profile: DataProfile, log: ActivityLog) -> list[str]:
         return None
 
     if (n := has("Z-score")):
-        chosen.append(n); reasons.append("Z-score: standaard")
+        chosen.append(n)
+        reasons.append("Z-score: standaard")
     if (n := has("Isolation Forest")):
-        chosen.append(n); reasons.append("Isolation Forest: multidimensionaal vangnet")
+        chosen.append(n)
+        reasons.append("Isolation Forest: multidimensionaal vangnet")
     if (n := has("Rolling")):
-        chosen.append(n); reasons.append("Rolling: korte-termijn afwijkingen")
-    if profile.seasonality_period and profile.n_days >= 2 * profile.seasonality_period + 1:
-        if (n := has("STL")):
-            chosen.append(n)
-            reasons.append(
-                f"STL: seizoenspatroon van {profile.seasonality_period} dagen gedetecteerd"
-            )
-    if (profile.has_trend or not profile.is_stationary) and profile.n_days >= 20:
-        if (n := has("Change-point")):
-            chosen.append(n)
-            reasons.append(
-                "Change-point: " +
-                ("trend aanwezig" if profile.has_trend else "niet-stationaire reeks")
-            )
+        chosen.append(n)
+        reasons.append("Rolling: korte-termijn afwijkingen")
+    if (profile.seasonality_period
+            and profile.n_days >= 2 * profile.seasonality_period + 1
+            and (n := has("STL"))):
+        chosen.append(n)
+        reasons.append(
+            f"STL: seizoenspatroon van {profile.seasonality_period} dagen gedetecteerd"
+        )
+    if ((profile.has_trend or not profile.is_stationary)
+            and profile.n_days >= 20
+            and (n := has("Change-point"))):
+        chosen.append(n)
+        reasons.append(
+            "Change-point: " +
+            ("trend aanwezig" if profile.has_trend else "niet-stationaire reeks")
+        )
 
     for r in reasons:
         log.log(TAG_SELECT, r)
@@ -343,6 +356,7 @@ def build_findings(
             row, res, result.profile, methods_flagged, methods_not_flagged
         )
         findings.append({
+            "gevoeligheid": result.sensitivity_used,
             "datum": pd.Timestamp(row["timestamp"]).date().isoformat(),
             "locatie": row.get("location_name") or row.get("category") or "—",
             "waarde": int(row["value"]) if pd.notna(row["value"]) else 0,

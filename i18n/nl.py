@@ -44,7 +44,7 @@ STRINGS = {
     # Severity
     "severity_explainer_title": "Wat betekent hoog / midden / laag?",
     "severity_explainer": (
-        "Elke afwijking wordt door meerdere onafhankelijke algoritmes "
+        "Elke afwijking wordt door meerdere algoritmes "
         "gecontroleerd; de classificatie telt hoeveel er een punt markeren. "
         "Minimaal 2 methodes moeten het eens zijn voordat iets een afwijking "
         "heet — één enkele methode is ruis. **Hoog** = (vrijwel) alle "

@@ -1,0 +1,239 @@
+# METHODS — wetenschappelijke verantwoording
+
+Dit document beschrijft elke rekenmethode in SENTINEL: formule, aannames,
+literatuur en beperkingen. Doel: een methodoloog of auditor moet elke
+getoonde uitspraak kunnen herleiden en toetsen. Code-referenties wijzen
+naar de implementatie; de pytest-suite (`tests/`) verifieert het gedrag.
+
+**Leeswijzer voor de analist**: elk getal in de tool heeft een
+betrouwbaarheids-context (banddekking, backtest-fout, gevoeligheid,
+aantal stemmen). Een bevinding zonder die context lezen is de tool
+verkeerd gebruiken.
+
+---
+
+## 1. Aggregatie en gap-beleid
+
+Waarnemingen worden per uur/dag/week/maand gesommeerd
+(`core/normbeeld.py::_aggregate`). Een periode zonder waarnemingen is
+ambigu; het **gap-beleid** maakt de interpretatie expliciet:
+
+| beleid | interpretatie | verwerking |
+|---|---|---|
+| `zero` | geen rapport = geen activiteit | lege bucket → 0 (default voor event-data) |
+| `interpolate` | gat = collectie-uitval, activiteit liep door | lineair geschat |
+| `mask` | waarheid onbekend | geschat vóór modelfit, maar uitgesloten van bandberekening en nooit als afwijking geflagd |
+
+Bij week/maand-aggregatie wordt een onvolledige laatste bucket weggelaten
+(voorkomt valse "onder band"-meldingen; getest in `tests/test_normbeeld.py`).
+
+## 2. Periode-detectie
+
+Autocorrelatie op kandidaat-lags (`_detect_period`). Dagdata: vrije
+zoektocht over lags 2–60, acceptatie bij r > 0.25. Week-/maand-/uurdata:
+alleen de a-priori plausibele jaarlijkse/dagelijkse lag (52, 12, 24) met
+r > 0.3 en een minimale reekslengte. Zonder detectie geldt een
+domein-fallback (dag → 7, week → 4, maand → 12, uur → 24).
+
+*Beperking*: de vrije zoektocht kan een harmonische van de echte periode
+kiezen (bv. 14 i.p.v. 7). Gevolg is een suboptimale maar geen foutieve fit.
+
+## 3. Voorspelmethoden
+
+Alle methoden leveren (verwachting-op-historie, toekomst-verwachting,
+residu-σ). Implementatie: `core/normbeeld.py::_forecast_with` e.o.
+
+### 3.1 STL + lineaire trend-extrapolatie
+Seasonal-Trend decomposition using LOESS — **Cleveland et al. (1990),
+J. Official Statistics 6(1)**. Robuuste variant (`robust=True`). De trend
+wordt geëxtrapoleerd met een kleinste-kwadraten-lijn door de laatste ~14
+trendpunten; het seizoen wordt fase-correct herhaald.
+*Aannames*: additief seizoen, lokaal lineaire trend.
+*Beperkingen*: extrapolatie op 14 punten is gevoelig voor recente
+uitschieters in de trendcomponent; vereist ≥ 2 volle perioden + 1 punt.
+
+### 3.2 Holt-Winters / ETS
+Exponentiële demping met additieve trend en (bij voldoende data) additief
+seizoen — **Holt (1957), Winters (1960)**; moderne behandeling in
+**Hyndman & Athanasopoulos, *Forecasting: Principles and Practice* (3e
+ed., hfst. 8)**. Implementatie: `statsmodels.tsa.holtwinters`, parameters
+via maximum likelihood. Bij optimalisatie-falen: terugval zonder
+seizoenscomponent.
+
+### 3.3 Voortschrijdend gemiddelde (rolling)
+Verwachting op t = gemiddelde van het venster **vóór** t (`shift(1)`) —
+zonder die shift zou een spike zijn eigen detectie dempen (leakage;
+getest in `tests/test_prediction_robustness.py`). Venster ≈ 7 perioden.
+Toekomst: gemiddelde van de laatste w punten (vlak).
+
+### 3.4 Seasonal naive
+Herhaal de waarde van één periode terug. Standaard-benchmark
+(**Hyndman & Athanasopoulos, hfst. 5**): elke complexere methode hoort
+deze te verslaan, anders is het patroon zwakker dan gedacht.
+*NB*: de eerste periode van de historie-fit gebruikt backfill en is dus
+licht vertekend; de eerste `period` punten tellen daarom niet mee in de
+residu-σ.
+
+### 3.5 Mediaan + MAD
+Vlakke voorspelling (mediaan) met Median Absolute Deviation als
+spreidingsmaat (σ ≈ 1.4826·MAD bij normaliteit; wij gebruiken
+conservatief 1.5·MAD met vloer 1.0). Fallback voor reeksen waar niets
+anders betrouwbaar past.
+
+## 4. Ensemble en methode-selectie
+
+- **Heuristische selectie** (overzichten, snel): op basis van
+  reekslengte en gedetecteerd seizoen (`_auto_select_methods`).
+- **Backtest-selectie** (detailweergave, rigoureus): rolling-origin
+  backtest (zie §5); de twee methoden met de laagste out-of-sample-fout
+  worden gecombineerd, gewogen met 1/(fout+5) zodat een aantoonbaar
+  betere methode zwaarder telt en het +5-punt demping tegen extreme
+  gewichten geeft.
+- Het ensemble-gemiddelde wordt licht gladgestreken (venster 3).
+
+## 5. Backtest (rolling origin)
+
+`_backtest_method`: houd per fold `horizon` punten achter, train op de
+rest, vergelijk. **4 folds** (2 bleek instabiel voor methode-selectie).
+Foutmetriek per punt: |voorspeld − werkelijk| / max(|werkelijk|, 1) —
+robuust voor nullen en vergelijkbaar over locaties (variant op MAPE/sMAPE;
+zie Hyndman & Koehler 2006 over valkuilen van MAPE bij nullen).
+Methodologie: rolling-origin evaluation, **Tashman (2000), Int. J.
+Forecasting 16(4)**.
+
+De getoonde "gem. voorspelfout %" per methode is deze out-of-sample-fout —
+niet de fit op de trainingsdata.
+
+## 6. Tolerantieband
+
+`_quantile_band`. Asymmetrisch en quantile-gebaseerd op residuen
+(werkelijk − ensemble-verwachting op de historie):
+
+- **alpha** schaalt met de reekslengte: `clip(5/n, 0.01, 0.10)` — korte
+  reeksen krijgen bredere staarten zodat het aantal geflagde punten
+  werkbaar blijft.
+- **Recency-weging**: exponentieel, halfwaardetijd = max(10, n/3). De band
+  volgt het huidige regime, niet het volledige verleden.
+- **Minimale breedte**: max(1, 10% van het mediaanniveau) — voorkomt een
+  degeneratieve band op vlakke reeksen.
+- Ondergrens wordt op 0 geklemd voor niet-negatieve (count-)data; de
+  invariant upper ≥ lower blijft daarbij behouden.
+
+**Waarom geen ±2σ**: op scheve count-data gaf een symmetrische band een
+betekenisloze ondergrens (0) en te veel valse "boven band"-meldingen.
+
+**Eerlijkheids-kanttekening (in-sample)**: de residu-quantiles worden
+berekend op dezelfde data waarop het ensemble is gefit; de band is daarmee
+licht optimistisch. Twee correcties maken dit inzichtelijk en beheersbaar:
+
+1. **Empirische banddekking** (`band_coverage`): het feitelijke aandeel
+   van de historie binnen de band wordt berekend en in de UI getoond
+   naast het doel (≈ 1 − 2·alpha). Wijkt de dekking sterk af, dan is de
+   band voor die reeks niet betrouwbaar.
+2. **Horizon-verbreding** (§7): de voorspelband gebruikt out-of-sample
+   backtest-fouten, niet de in-sample residuen.
+
+## 7. Voorspelband en horizon-verbreding
+
+Onzekerheid groeit met de voorspelafstand; een band die op stap 14 even
+smal is als op stap 1 is aantoonbaar te optimistisch.
+`backtest_step_widening` meet de gemiddelde absolute out-of-sample-fout
+per voorspelstap (uit de backtest-folds), normaliseert op stap 1, maakt
+de factoren monotoon niet-dalend (cummax) en begrenst ze op 3×. De
+band-offsets q_lo/q_hi worden per stap met die factor geschaald.
+
+Zonder backtest-informatie (overzichten, korte reeksen) geldt een
+conservatieve default: +3% bandbreedte per stap, gemaximeerd op 1.5×.
+De bron van de verbreding (`backtest` of `default`) staat op het
+`Normbeeld`-object en in de UI.
+
+## 8. Afwijkingsdetectie (detector-ensemble)
+
+Vijf detectoren (`detectors/`), elk met eigen aannames:
+
+| detector | statistiek | referentie |
+|---|---|---|
+| Z-score (MAD) | modified z = 0.6745·(x−med)/MAD | Iglewicz & Hoaglin (1993) |
+| Rolling mean ± N·σ | afstand tot lokaal gemiddelde | — |
+| STL-residu | z-score op decompositie-residu | Cleveland et al. (1990) |
+| Change-point | windowed Welch-achtige t-statistiek | zie §10 |
+| Isolation Forest | isolatie-diepte in random trees | Liu, Ting & Zhou (2008), ICDM |
+
+### Stemmen en severity
+`core/auto_pilot.py::classify_severity` — absolute stem-aantallen:
+minimaal 2 methoden moeten een punt markeren; "hoog" vereist (vrijwel)
+unanimiteit. De exacte tabel staat in de docstring en in
+`tests/test_severity.py`.
+
+**Belangrijk**: de detectoren zijn **niet statistisch onafhankelijk**
+(Z-score, rolling en STL-residu correleren sterk op de meeste reeksen).
+Stemmen zijn corroboratie-indicaties, geen onafhankelijke bewijzen. De
+UI-teksten zijn hierop aangepast.
+
+### Auto-tuning — quota, geen significantie
+De gevoeligheid ('streng'/'normaal'/'soepel') wordt maximaal 3 iteraties
+bijgesteld tot 0.3%–5% van de rijen signaal-severity heeft. Dit is een
+**triage-ontwerp**: het garandeert een werkbare lijst "meest opvallende
+punten van deze dataset", óók als de dataset statistisch onopvallend is.
+Consequenties:
+
+- severity-labels zijn **niet vergelijkbaar tussen datasets**;
+- een gevulde lijst is **geen bewijs dat er iets aan de hand is**.
+
+De gebruikte gevoeligheid en het aantal iteraties staan daarom bij elke
+bevindingenlijst en in elke bevinding (`gevoeligheid`-veld).
+
+## 9. Lag-detectie (cross-correlatie)
+
+`core/comparison.py::cross_correlation_lag`. Correlatie van de **eerste
+verschillen**, niet de niveaus: twee reeksen die beide groeien lijken in
+niveaus altijd gecorreleerd zonder enig echt verband (spurious
+correlation; klassiek: **Yule (1926)**; zie ook Granger & Newbold (1974)
+over spurious regression).
+
+**Significantie**: omdat de beste lag over ~61 kandidaten wordt gekozen,
+is de hoogste correlatie ook in pure ruis substantieel (selectie-effect).
+Een permutatietest (200 hershufflingen van de verschilreeks, telkens
+max|r| over alle lags) levert de 95%-drempel `sig_threshold`;
+`significant` geeft aan of de gevonden lag daarboven ligt. Niet-
+significante lags worden in de UI als indicatief gemarkeerd.
+
+## 10. Change-points
+
+Windowed t-statistiek: |gem(na) − gem(voor)| / √(pooled var · 2/w),
+venster w = 3–8 punten, met non-maximum suppression (minimale onderlinge
+afstand). De drempel is **Bonferroni-gecorrigeerd over het effectieve
+aantal onafhankelijke vensters** (overlappende vensters correleren over
+~w posities) met Student-t-kwantielen (df = 2w−2), vloer 2.0. Getest:
+een duidelijke niveauverschuiving wordt gevonden; 400 punten pure ruis
+leveren (vrijwel) niets op (`tests/test_statistical_fixes.py`).
+
+*Alternatief bij doorgroei*: PELT (`ruptures`-bibliotheek) is de
+standaard voor offline change-point-detectie — **Killick, Fearnhead &
+Eckley (2012), JASA 107(500)**.
+
+## 11. Anomalie-percentiel
+
+Per historiepunt de empirische rang van het residu (0–1). "Extremer dan
+X% van de historie" is een **rang-uitspraak binnen de eigen reeks**,
+geen kansuitspraak.
+
+## 12. Bekende beperkingen (open)
+
+- Lage-count-reeksen (< ~2 events/periode) zouden principieel beter
+  passen bij een Poisson/negatief-binomiaal model dan bij
+  quantile-banden; de huidige aanpak degradeert netjes maar is daar
+  niet optimaal.
+- De banddekking wordt gerapporteerd maar (nog) niet automatisch
+  gekalibreerd naar een doeldekking.
+- Detector-correlatie wordt benoemd maar niet gekwantificeerd; een
+  correlatie-matrix per dataset zou de stem-interpretatie verder
+  aanscherpen.
+
+## 13. Reproduceerbaarheid
+
+- Alle stochastische onderdelen (permutatietest, Isolation Forest)
+  gebruiken vaste seeds.
+- `tests/` dekt elke bewering in dit document; draai
+  `python -m pytest tests/ -q` na elke wijziging aan `core/` of
+  `detectors/`.

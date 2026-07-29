@@ -19,6 +19,9 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from core.logging_setup import get_logger
+
+_logger = get_logger("normbeeld")
 
 DAY_NAMES = [
     "maandag", "dinsdag", "woensdag", "donderdag",
@@ -150,6 +153,8 @@ class Normbeeld:
     backtest_scores: dict | None = None    # method_key -> gem. fout % (sMAPE)
     backtest_error: float | None = None    # fout % van beste methode (indicatie)
     band_alpha: float | None = None        # gebruikte quantile-tail (bv. 0.02)
+    band_coverage: float | None = None     # fractie historie binnen de band
+    widening_source: str | None = None     # 'backtest' of 'default'
 
     @property
     def n_history_days(self) -> int:  # backward compat
@@ -484,19 +489,29 @@ def _forecast_with(
 # ---------------------------------------------------------------------------
 def _backtest_method(
     series: pd.Series, method: str, period: int, horizon: int,
-    n_folds: int = 2, max_points: int = 400,
-) -> float | None:
+    n_folds: int = 4, max_points: int = 400,
+    return_step_errors: bool = False,
+):
     """Gemiddelde voorspelfout (%) van één methode via rolling-origin backtest.
 
     Houdt per fold `horizon` punten achter, traint op de rest, vergelijkt.
     Fout-metriek: |voorspeld - werkelijk| / max(|werkelijk|, 1) — robuust
     voor nullen, vergelijkbaar over locaties. Test op max. de laatste
     `max_points` punten zodat het recente regime telt én ETS snel blijft.
+
+    4 folds (was 2): methode-selectie op 2 folds bleek instabiel — één
+    afwijkende fold kon de 'beste' methode laten omslaan. Folds waarvoor
+    te weinig historie overblijft (cutoff < 10) worden overgeslagen.
+
+    Met `return_step_errors=True` returnt (score, per_stap_gem_abs_fout,
+    per_stap_n) — de basis voor horizon-afhankelijke bandverbreding.
     """
     s = series.tail(max_points) if len(series) > max_points else series
     if len(s) < max(20, 2 * horizon + 10):
         return None
     errors: list[float] = []
+    step_abs = np.zeros(horizon)
+    step_n = np.zeros(horizon)
     for i in range(n_folds, 0, -1):
         cutoff = len(s) - i * horizon
         if cutoff < 10:
@@ -507,12 +522,21 @@ def _backtest_method(
         if pred is None:
             return None
         future = np.asarray(pred[1], dtype=float)[:len(actual)]
+        abs_err = np.abs(future - actual)
         denom = np.maximum(np.abs(actual), 1.0)
-        errors.extend(np.abs(future - actual) / denom)
+        errors.extend(abs_err / denom)
+        k = len(actual)
+        step_abs[:k] += abs_err
+        step_n[:k] += 1
     if not errors:
         return None
     score = float(np.mean(errors) * 100)
-    return score if np.isfinite(score) else None
+    if not np.isfinite(score):
+        return None
+    if return_step_errors:
+        steps = step_abs / np.maximum(step_n, 1)
+        return score, steps, step_n
+    return score
 
 
 def backtest_all_methods(
@@ -525,6 +549,38 @@ def backtest_all_methods(
         if err is not None:
             out[m] = err
     return out
+
+
+def backtest_step_widening(
+    series: pd.Series, methods: list[str], period: int, horizon: int,
+) -> np.ndarray | None:
+    """Horizon-afhankelijke bandverbredings-factoren uit de backtest.
+
+    Voorspelonzekerheid groeit met de horizon; een band die op stap 14 even
+    smal is als op stap 1 is te optimistisch. We meten dat empirisch: de
+    gemiddelde absolute out-of-sample-fout per voorspelstap, genormaliseerd
+    op stap 1. De factoren zijn monotoon niet-dalend gemaakt (cummax) en
+    begrensd op 3x, zodat één rare fold de band niet opblaast.
+
+    Returnt array met lengte `horizon` (allemaal >= 1), of None als geen
+    enkele methode een bruikbaar stap-profiel oplevert.
+    """
+    profiles = []
+    for m in methods:
+        out = _backtest_method(series, m, period, horizon,
+                               return_step_errors=True)
+        if out is None:
+            continue
+        _score, steps, step_n = out
+        if (step_n > 0).sum() < 2:
+            continue
+        base = max(float(steps[0]), 1e-9)
+        prof = np.clip(steps / base, 1.0, 3.0)
+        profiles.append(prof)
+    if not profiles:
+        return None
+    w = np.mean(np.asarray(profiles), axis=0)
+    return np.maximum.accumulate(np.clip(w, 1.0, 3.0))
 
 
 # ---------------------------------------------------------------------------
@@ -758,8 +814,24 @@ def compute_normbeeld(
             periods=horizon_days, freq="D",
         )
 
-    fc_lower = _floor(future_expected + q_lo)
-    fc_upper = np.maximum(future_expected + q_hi, fc_lower)
+    # --- Horizon-verbreding: onzekerheid groeit met de voorspelafstand ---
+    # Bij backtest-selectie meten we de groei empirisch (out-of-sample fout
+    # per stap); anders een conservatieve default van +3% bandbreedte per
+    # stap, gemaximeerd op 1.5x. Zonder verbreding zou de band op stap 14
+    # even smal zijn als op stap 1 — aantoonbaar te optimistisch.
+    widening = None
+    widening_source = "default"
+    if select == "backtest" and len(series) >= 20 and used_methods:
+        widening = backtest_step_widening(
+            series, used_methods, use_period, horizon_days
+        )
+        if widening is not None:
+            widening_source = "backtest"
+    if widening is None:
+        widening = np.minimum(1.0 + 0.03 * np.arange(horizon_days), 1.5)
+
+    fc_lower = _floor(future_expected + q_lo * widening)
+    fc_upper = np.maximum(future_expected + q_hi * widening, fc_lower)
     forecast = pd.DataFrame({
         "date":     future_idx,
         "expected": future_expected,
@@ -786,6 +858,18 @@ def compute_normbeeld(
         hist.loc[mask_idx, "status"] = "geen data"
         hist.loc[mask_idx, "actual"] = np.nan
         hist.loc[mask_idx, "resid_pctl"] = np.nan
+
+    # Empirische banddekking: welk deel van de (geobserveerde) historie viel
+    # binnen de band? Hoort dicht bij 1 - 2*alpha te liggen; een veel lagere
+    # waarde betekent dat de band te smal is voor deze reeks.
+    observed_hist = hist.dropna(subset=["actual"])
+    band_coverage = None
+    if len(observed_hist) >= 10:
+        inside = (
+            (observed_hist["actual"] >= observed_hist["lower"])
+            & (observed_hist["actual"] <= observed_hist["upper"])
+        )
+        band_coverage = float(inside.mean())
 
     # `expected_value` = HUIDIG normbeeld (laatste 25% van historie)
     tail_n = max(3, len(hist) // 4)
@@ -840,6 +924,8 @@ def compute_normbeeld(
             min(backtest_scores.values()) if backtest_scores else None
         ),
         band_alpha=band_alpha,
+        band_coverage=band_coverage,
+        widening_source=widening_source,
     )
 
 
@@ -877,11 +963,8 @@ def compute_all_normbeelds(
                 gap_policy=gap_policy,
             )
         except Exception:
-            import sys as _sys
-            import traceback as _tb
-            print(f">>> normbeeld faalde voor locatie {loc!r}:",
-                  file=_sys.stderr, flush=True)
-            _tb.print_exc(file=_sys.stderr)
+            _logger.exception("normbeeld faalde voor locatie",
+                              extra={"ctx": {"location": str(loc)}})
             continue
         if nb is not None:
             out[loc] = nb
