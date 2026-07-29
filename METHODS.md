@@ -341,6 +341,39 @@ Beperking: dit vindt alleen wat correleert. Een regio zonder duidelijke
 peer-groep (35 van 103 in de demo-dataset hebben er wél een) blijft
 buiten beeld — daar is het normbeeld het enige signaal.
 
+## 11c. Evaluatie tegen bekende incidenten (`core/evaluation.py`)
+
+De rest van dit document beschrijft *hoe* er gemeten wordt. Deze
+paragraaf gaat over de vraag of het **werkt** op een concrete dataset.
+
+Per detector wordt tegen een lijst gelabelde incidenten berekend:
+
+- **recall** — welk deel van de incidenten is opgemerkt. In
+  inlichtingenwerk is een misser doorgaans duurder dan een vals alarm,
+  dus dit is de belangrijkste maat.
+- **precisie** — welk deel van de meldingen was raak.
+- **F1** — harmonisch gemiddelde, om op te sorteren.
+
+Een melding telt als treffer binnen `tolerance_periods` van het label:
+detectie op de 3e bij een label op de 2e is een rapportageverschil, geen
+misser. Labels komen bij voorkeur uit het gewone triage-werk (bevindingen
+gemarkeerd als bevestigd/geëscaleerd), zodat er geen apart
+annotatie-project nodig is.
+
+**Beperking**: dit meet alleen wat gelabeld is. Een detector die iets
+terechts vindt dat niet op de lijst staat, telt hier als vals alarm.
+Labels zijn dus zelf een bron van vertekening.
+
+**Wat de eerste meting opleverde** (demo-dataset, 6 zwaarste dagen als
+ijkpunt): de ensemble scoorde het best (F1 0,30; recall 83%), en
+change-point vond terecht niets — die zoekt niveauverschuivingen, geen
+pieken. Belangrijker: Z-score markeerde aanvankelijk **nul** punten
+terwijl de grootste piek op z = 33 lag. Oorzaak was een NaN-gevoelige
+mediaan (drie lege waarden op 1544 rijen maakten élke score NaN). Die
+detector droeg dus niets bij aan de stemming, zonder foutmelding. Na de
+fix vindt Z-score 6 van 6. Dit is precies waarvoor het harnas bestaat:
+zonder meting was die stilte nooit opgevallen.
+
 ## 12. Bekende beperkingen (open)
 
 - De banddekking wordt gerapporteerd maar (nog) niet automatisch
@@ -351,6 +384,8 @@ buiten beeld — daar is het normbeeld het enige signaal.
   twee.
 - Het aggregeren gebeurt in pandas, niet in de database; bij datasets
   richting miljoenen rijen is SQL-side aggregatie nodig.
+- Het evaluatie-harnas (§11c) meet per detector, maar de
+  severity-drempels worden er nog niet automatisch op bijgesteld.
 
 **Opgelost sinds de eerste versie**: lage-count-reeksen gebruiken nu een
 Poisson/negatief-binomiaal band (§6b) in plaats van residual-quantiles;
