@@ -6,19 +6,25 @@ import html as _html
 import pandas as pd
 import streamlit as st
 
+from core import annotations as anno
 from core import storage
 from i18n.nl import t
 from ui.cache import cached_analysis
 from ui.components import _render_empty_state, render_topbar
 
 
-def _dataset_status(n_alerts: int, quality: dict) -> tuple[str, str]:
-    """(kleur, label) op basis van recente afwijkingen en datakwaliteit."""
+def _dataset_status(n_unhandled: int, quality: dict) -> tuple[str, str]:
+    """(kleur, label) op basis van ONBEHANDELDE afwijkingen en datakwaliteit.
+
+    Behandelde afwijkingen (status onderzocht/vals alarm/bevestigd/
+    geëscaleerd) tellen niet meer mee — anders blijft een dataset rood
+    terwijl de analist alles al beoordeeld heeft (alert-moeheid).
+    """
     stale = quality.get("staleness_days")
     cov = quality.get("coverage")
-    if n_alerts >= 3 or (stale is not None and stale > 60):
+    if n_unhandled >= 3 or (stale is not None and stale > 60):
         return ("#c53030", "aandacht vereist")
-    if n_alerts >= 1 or (cov is not None and cov < 0.7) \
+    if n_unhandled >= 1 or (cov is not None and cov < 0.7) \
             or (stale is not None and stale > 30):
         return ("#c05621", "let op")
     return ("#2e8b57", "normaal beeld")
@@ -53,7 +59,8 @@ def page_overview():
             continue
         df_raw, _, _, normbeelds, alerts, effective_agg = cached
         q = data_quality(df_raw, effective_agg)
-        color, label = _dataset_status(len(alerts), q)
+        triage = anno.triage_counts(ds["id"], alerts)
+        color, label = _dataset_status(triage["unhandled"], q)
 
         rel = meta.get("source_reliability") or ""
         cred = meta.get("info_credibility") or ""
@@ -72,7 +79,10 @@ def page_overview():
                     <span class="finding-loc">{_html.escape(ds['name'])}</span>
                 </div>
                 <div class="finding-meta">
-                    {len(alerts)} recente afwijking(en) ·
+                    {triage['unhandled']} onbehandelde /
+                    {triage['total']} recente afwijking(en)
+                    {('· ' + str(triage['escalated']) + ' geëscaleerd')
+                     if triage['escalated'] else ''} ·
                     {len(normbeelds)} regio's · {q['n_rows']} rijen
                     {bron}{stale}{cov}
                 </div>
