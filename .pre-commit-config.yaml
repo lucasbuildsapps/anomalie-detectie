@@ -1,0 +1,23 @@
+# Pre-commit hooks: lint draait lokaal vóór elke commit, zodat CI nooit
+# op stijl faalt. Eénmalig activeren:
+#
+#   pip install pre-commit
+#   pre-commit install
+#
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=2000]
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+        exclude: \.csv$

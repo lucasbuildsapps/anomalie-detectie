@@ -1,17 +1,14 @@
 # Deployment-handleiding
 
-Drie opties om de tool online beschikbaar te maken, oplopend in veiligheid en
-beheer-complexiteit.
+De aanbevolen productie-route is **Optie 1: de compose-stack** — die zet in
+één keer TLS, Postgres, de ingest-worker en dagelijkse backups neer. De
+overige opties zijn er voor demo's en handmatige setups.
 
 ---
 
 ## ⚠️ Eerst: veiligheid
 
 **Lees dit voordat je gaat deployen.**
-
-Deze tool slaat geüploade data lokaal in SQLite op (`data/store.db`). Bij online
-deployment betekent dat: alle data die analisten uploaden wordt opgeslagen op
-de server waar de app draait.
 
 | Datatype | Veilig om publiek te deployen? |
 |---|---|
@@ -20,151 +17,127 @@ de server waar de app draait.
 | Geclassificeerde of Vertrouwelijke data | **NEE** — alleen on-premise |
 | Persoonsgegevens (AVG/GDPR) | Verwerkersovereenkomst nodig |
 
-Voor inlichtingen-werk: vraag **altijd** je IT-beveiliging voordat je gevoelige
-data in een tool stopt die online draait, ook al staat er een wachtwoord op.
+Voor inlichtingen-werk: vraag **altijd** je IT-beveiliging voordat je
+gevoelige data in een online tool stopt, ook al staat er een wachtwoord op.
+Streamlit Community Cloud is voor dit werkveld **uitsluitend** geschikt
+voor demo's met synthetische of publieke data.
 
 ---
 
-## Wachtwoord-authenticatie instellen
+## Optie 1 — Productie-stack (docker compose) — aanbevolen
 
-Voordat je gaat deployen, configureer een wachtwoord:
-
-**Optie A — secrets.toml** (aanbevolen voor self-hosted)
-
-```bash
-cp .streamlit/secrets.toml.example .streamlit/secrets.toml
-# Bewerk en zet een sterk wachtwoord
-```
-
-**Optie B — Environment variable** (handig voor Docker/cloud)
+Eén stack met Caddy (automatische TLS), de app, de ingest-worker,
+Postgres en een dagelijkse backup-service.
 
 ```bash
-export ANOMALY_PASSWORD="kies-een-sterk-wachtwoord"
+# 1. Secrets instellen
+cat > .env <<'ENV'
+POSTGRES_PASSWORD=kies-een-sterk-db-wachtwoord
+ANOMALY_PASSWORD=kies-een-sterk-app-wachtwoord
+SENTINEL_DOMAIN=sentinel.jouwdomein.nl
+ENV
+
+# 2. Stack starten
+docker compose -f docker-compose.prod.yml up -d --build
+
+# 3. Database-migraties (eerste keer en na elke update)
+docker compose -f docker-compose.prod.yml exec app python -m alembic upgrade head
 ```
 
-Zonder een van beide draait de app zonder login (alleen geschikt voor lokaal).
+- Backups landen dagelijks in `./backups/` (7 dagen retentie).
+- Logs zijn JSON-per-regel: `docker compose logs app worker`.
+- De audit-trail (wie deed wat) zit in de database: tabel `audit_log`,
+  zichtbaar in de app onder Instellingen → Beheer.
 
----
+### SSO / gebruikersidentiteit (sterk aanbevolen)
 
-## Optie 1 — Streamlit Community Cloud (snelste, gratis)
+Het gedeelde wachtwoord is basisbescherming. Voor per-gebruiker identiteit
+zet je een identity provider (Authelia of Keycloak) vóór de app: het
+voorbereide `forward_auth`-blok staat in `deploy/Caddyfile`. Zodra de proxy
+`X-Forwarded-User` meestuurt, verschijnt die identiteit automatisch in de
+audit-trail — geen code-wijziging nodig.
 
-**Geschikt voor**: demo's, niet-gevoelige data, persoonlijke projecten.
-**Niet geschikt voor**: classified, vertrouwelijk, of bedrijfskritisch.
+### Automatische data-inwinning
 
-### Stappen
-
-1. Push de code naar een **public of private GitHub repository**.
-2. Ga naar [share.streamlit.io](https://share.streamlit.io).
-3. Klik *New app* → kies je repo, branch, en `app.py` als entry point.
-4. Onder *Advanced settings*, zet je `password` als secret:
-   ```toml
-   password = "..."
-   ```
-5. Deploy. De URL wordt `https://[naam].streamlit.app`.
-
-**Caveats**:
-- Data persisteert NIET tussen redeploys (SQLite-file wordt overschreven).
-- Alles in `data/` is publiek leesbaar als je repo public is.
-- Geen HTTPS-certificaat-control, geen IP-whitelisting in gratis versie.
-
----
-
-## Optie 2 — Docker op eigen VPS
-
-**Geschikt voor**: serieus intern gebruik, IT-beheerde omgeving, opslag van
-data onder eigen controle.
-
-### Build
-
-```bash
-docker build -t anomalie-detectie .
-```
-
-### Lokaal testen
-
-```bash
-docker run -p 8501:8501 \
-  -e ANOMALY_PASSWORD="test-wachtwoord" \
-  -v $(pwd)/data:/app/data \
-  anomalie-detectie
-```
-
-Open `http://localhost:8501`. De `-v` mount zorgt dat de SQLite-database
-persisteert in de host-map.
-
-### Productie-deployment op een VPS
-
-Op een Linux-VPS (Ubuntu 22.04, Debian 12, etc.):
-
-```bash
-# Op de server
-git clone https://your-git-host/anomalie-detectie.git
-cd anomalie-detectie
-docker build -t anomalie-detectie .
-docker run -d \
-  --name anomalie \
-  --restart unless-stopped \
-  -p 127.0.0.1:8501:8501 \
-  -e ANOMALY_PASSWORD="echt-sterk-wachtwoord" \
-  -v /var/lib/anomalie/data:/app/data \
-  anomalie-detectie
-```
-
-Zet **Caddy** of **nginx** als reverse proxy ervoor voor HTTPS:
-
-```caddy
-# /etc/caddy/Caddyfile
-anomalie.jouwdomein.nl {
-    reverse_proxy 127.0.0.1:8501
-}
-```
-
-Caddy regelt automatisch een Let's Encrypt TLS-certificaat.
+De `worker`-service draait connectors uit `connectors/` op hun eigen
+schema. Nieuwe bron toevoegen = één bestand met een `fetch()`-implementatie
+(zie `connectors/demo_csv.py` als sjabloon) en `enabled = True`.
+Bron-gezondheid is zichtbaar in Instellingen → Datasets.
 
 ### Updates uitrollen
 
 ```bash
-docker stop anomalie && docker rm anomalie
 git pull
-docker build -t anomalie-detectie .
-docker run -d --name anomalie ...  # zelfde commando als hierboven
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml exec app python -m alembic upgrade head
 ```
 
 ---
 
-## Optie 3 — On-premise / corporate cloud
+## Optie 2 — Losse Docker-container (zonder compose)
 
-**Voor inlichtingen-werk de enige verantwoorde optie.**
+Voor een snelle interne test-server met SQLite:
 
-Praktisch:
-- Container draaien op een VM in jullie eigen datacenter / private cloud
-- Auth via jullie SSO (Azure AD, ADFS, LDAP) — vereist een extra auth-proxy
-  laag zoals **oauth2-proxy** of **Authelia** vóór de Streamlit-app
-- TLS-certificaten van jullie eigen CA
-- Toegang alleen via VPN
-- Logs naar centrale SIEM
-- Vraag het IT-beveiligingsteam vroeg in het proces
-
-Voor een minimale corporate setup:
-
+```bash
+docker build -t sentinel .
+docker run -d \
+  --name sentinel \
+  --restart unless-stopped \
+  -p 127.0.0.1:8501:8501 \
+  -e ANOMALY_PASSWORD="echt-sterk-wachtwoord" \
+  -v /var/lib/sentinel/data:/app/data \
+  sentinel
 ```
-Browser (intern) → Reverse proxy + SSO (oauth2-proxy) → Streamlit container
-                                                      ↓
-                                                Volumes voor data
+
+Zet zelf een reverse proxy met TLS ervoor (Caddy/nginx) en richt backups
+in (`scripts/backup_db.sh` via cron).
+
+---
+
+## Optie 3 — Streamlit Community Cloud (alleen demo's)
+
+**Uitsluitend voor demo's met niet-gevoelige data.** Zie
+`DEPLOY_STREAMLIT_CLOUD.md`. Opslag is er ephemeral; koppel desnoods een
+externe Postgres via het `database_url`-secret (zie `SETUP_DATABASE.md`).
+
+---
+
+## Optie 4 — On-premise / corporate cloud
+
+**Voor inlichtingen-werk de enige verantwoorde optie.** Zelfde
+compose-stack als Optie 1, plus:
+
+- Auth via jullie SSO (Azure AD/ADFS/LDAP) — federeer die in
+  Authelia/Keycloak; de app leest `X-Forwarded-User`.
+- TLS-certificaten van jullie eigen CA (vervang de Caddy auto-TLS).
+- Toegang alleen via VPN; logs (JSON) naar centrale SIEM.
+- Vraag het IT-beveiligingsteam vroeg in het proces.
+
+---
+
+## API voor andere tooling
+
+De analyse-kern is ook als REST-API beschikbaar (voor koppelingen,
+notebooks of een toekomstige frontend):
+
+```bash
+pip install -r requirements-dev.txt
+SENTINEL_API_KEY=geheim uvicorn api.main:app --port 8000
+# docs: http://localhost:8000/docs
 ```
 
 ---
 
 ## Beveiligings-checklist vóór live gaan
 
-- [ ] Sterk uniek wachtwoord ingesteld (geen default)
-- [ ] `secrets.toml` staat in `.gitignore` (al gedaan)
+- [ ] Sterk uniek wachtwoord ingesteld (geen default); lockout is standaard actief
+- [ ] `secrets.toml` / `.env` staan in `.gitignore` (al gedaan)
 - [ ] HTTPS actief (niet over HTTP toegankelijk)
-- [ ] `data/` map persistent én buiten de container/server-root
-- [ ] Backups van `data/store.db` ingericht (cron + rsync)
-- [ ] Toegang gelogd (Caddy/nginx access log)
-- [ ] Bewust gemaakt: wie heeft toegang tot welke datasets
-- [ ] Voor gevoelige data: IT-beveiliging goedkeuring
+- [ ] Database in een volume/externe Postgres, niet in de container
+- [ ] Backups draaien én een restore is één keer getest
+- [ ] Migraties gedraaid (`python -m alembic upgrade head`)
+- [ ] Audit-trail gecontroleerd (Instellingen → Beheer)
+- [ ] Voor gevoelige data: IT-beveiliging goedkeuring + SSO-laag actief
 
 ---
 
@@ -172,16 +145,9 @@ Browser (intern) → Reverse proxy + SSO (oauth2-proxy) → Streamlit container
 
 | Wat | Waar | Persistent? |
 |---|---|---|
-| Geïmporteerde data | `data/store.db` (SQLite) | Ja, mits volume gemount |
-| Datasets-metadata | `data/store.db` | Ja |
-| Annotaties | `data/store.db` | Ja |
-| Logo | `assets/logo.png` | Image-fixed |
+| Geïmporteerde data, annotaties, audit-trail, ingest-runs | Postgres of `data/store.db` | Ja, mits volume/externe DB |
+| Opgeslagen weergaves & markeringen | zelfde database | Ja |
 | Theme-keuze | Browser session_state | Nee (per sessie) |
-
-**Belangrijk**: bij Streamlit Community Cloud is de filesystem **ephemeral** —
-data overleeft een redeploy niet. Voor data-persistentie moet je een externe
-database gebruiken (PostgreSQL via Streamlit secrets bijvoorbeeld). Dat is een
-toekomstige uitbreiding.
 
 ---
 
@@ -190,7 +156,5 @@ toekomstige uitbreiding.
 Vastgelopen? Stuur de output van:
 
 ```bash
-docker logs anomalie 2>&1 | tail -50
+docker compose -f docker-compose.prod.yml logs --tail 50 app worker db
 ```
-
-Bij Streamlit Cloud: dashboard → *Manage app* → *Logs*.

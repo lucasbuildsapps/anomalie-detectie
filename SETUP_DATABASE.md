@@ -54,9 +54,28 @@ controleer dat de data er nog is.
 
 - Geen `database_url` → lokale SQLite (`data/store.db`). Niets verandert.
 - Wel een `database_url` → Postgres. Tabellen worden automatisch aangemaakt
-  (`datasets`, `observations`, `annotations`). Dezelfde code, ander backend.
+  (`datasets`, `observations`, `annotations`, `audit_log`, `ingest_runs`,
+  ...). Dezelfde code, ander backend.
 - De omschakeling zit in `core/storage.py` (`_database_url()`); de rest van de
   app merkt er niets van.
+
+## Migraties (bestaande databases)
+
+Schema-wijzigingen lopen via Alembic. Na een update van de code draai je
+eenmalig, met dezelfde `DATABASE_URL`:
+
+```bash
+python -m alembic upgrade head
+```
+
+Nieuwe (lege) databases hebben dit niet nodig — de tabellen worden dan
+al in de nieuwste vorm aangemaakt. Bestaande databases van vóór juli 2026
+wél: de migratie zet o.a. de `timestamp`-kolom om van tekst naar een echte
+datum/tijd-kolom.
+
+> De productie-compose-stack (`DEPLOY.md`, Optie 1) gebruikt zijn eigen
+> Postgres en heeft Supabase niet nodig; dit document is vooral voor
+> Streamlit Cloud-demo's en handmatige setups.
 
 ## Belangrijke aandachtspunten
 
