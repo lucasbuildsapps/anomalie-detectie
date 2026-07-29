@@ -1,0 +1,50 @@
+# Dagelijkse data-inwinning zonder eigen server.
+#
+# Draait de enabled connectors tegen dezelfde database als de app. Handig
+# wanneer de app op Streamlit Cloud staat (daar draait geen worker) en de
+# data in een externe Postgres leeft.
+#
+# Benodigde repository-secrets (Settings -> Secrets and variables -> Actions):
+#   DATABASE_URL   postgres://...   (dezelfde als de app gebruikt)
+#   ACLED_API_KEY  optioneel, alleen voor de ACLED-connector
+#   ACLED_EMAIL    idem
+#
+# Handmatig draaien kan altijd via het tabblad Actions -> Ingest -> Run workflow.
+
+name: Ingest
+
+on:
+  schedule:
+    - cron: "17 5 * * *"   # elke dag 05:17 UTC (buiten het piekuur van de API's)
+  workflow_dispatch:        # knop om 'm handmatig te starten
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install psycopg[binary]
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m alembic upgrade head
+
+      - name: Run connectors
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ACLED_API_KEY: ${{ secrets.ACLED_API_KEY }}
+          ACLED_EMAIL: ${{ secrets.ACLED_EMAIL }}
+          SENTINEL_USER: github-actions-ingest
+          SENTINEL_LOG_LEVEL: INFO
+        run: python -c "from core.ingest import run_all; print(run_all())"

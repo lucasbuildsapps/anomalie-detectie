@@ -28,6 +28,7 @@ def page_settings():
         t("settings_tab_upload"),
         t("settings_tab_expert"),
         t("settings_tab_theme"),
+        t("settings_tab_bronnen"),
         t("settings_tab_admin"),
     ])
     with tabs[0]:
@@ -39,7 +40,81 @@ def page_settings():
     with tabs[3]:
         _settings_theme()
     with tabs[4]:
+        _settings_bronnen()
+    with tabs[5]:
         _settings_admin()
+
+
+def _settings_bronnen():
+    """Automatische bronnen: testen, handmatig draaien, status bekijken.
+
+    Zonder deze knoppen is de connector-laag onzichtbaar: je kunt niet
+    controleren of een bron werkt zonder de worker te starten.
+    """
+    from connectors.base import get_connectors
+    from core.ingest import run_connector
+
+    st.markdown("**Automatische data-inwinning**")
+    st.caption(
+        "Elke bron is een plug-in in `connectors/`. Test hem hier, draai "
+        "hem handmatig, en zet `enabled = True` in het bestand zodra hij "
+        "werkt — dan pakt de geplande inwinning hem op."
+    )
+
+    try:
+        conns = get_connectors()
+    except Exception as e:
+        st.error(f"Connectors laden mislukt: {e}")
+        return
+    if not conns:
+        st.info("Geen connectors gevonden.")
+        return
+
+    for name, c in sorted(conns.items()):
+        status = "actief (gepland)" if c.enabled else "uit"
+        with st.expander(f"{name} — {status}"):
+            st.caption(c.description or "(geen omschrijving)")
+            st.caption(
+                f"Doel-dataset: **{c.dataset_name}** · interval: "
+                f"{c.schedule_minutes} min"
+            )
+            missing = c.missing_config()
+            if missing:
+                st.warning(
+                    f"Nog niet bruikbaar — ontbrekende instelling(en): "
+                    f"`{'`, `'.join(missing)}`. Zet die als secret "
+                    f"(Streamlit Cloud → Settings → Secrets) of env-var."
+                )
+
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Verbinding testen", key=f"cs_test_{name}",
+                             use_container_width=True):
+                    with st.spinner("Bron benaderen..."):
+                        ok, msg = c.self_test()
+                    (st.success if ok else st.error)(msg)
+            with c2:
+                if st.button("Nu ophalen", key=f"cs_run_{name}",
+                             type="primary", use_container_width=True):
+                    with st.spinner("Ophalen en opslaan..."):
+                        summary = run_connector(c)
+                    if summary["status"] == "ok":
+                        st.success(
+                            f"{summary['rows_added']} nieuwe rijen "
+                            f"({summary['rows_offered']} aangeboden, rest was "
+                            f"al bekend)."
+                        )
+                        st.cache_data.clear()
+                    else:
+                        st.error(summary["error"])
+
+            runs = storage.list_ingest_runs(name, limit=5)
+            if runs:
+                st.dataframe(
+                    pd.DataFrame(runs)[["started_at", "status", "rows_added",
+                                        "error"]],
+                    use_container_width=True, hide_index=True,
+                )
 
 
 def _render_source_health():
@@ -97,6 +172,42 @@ def _settings_admin():
         })
         st.dataframe(show, use_container_width=True, hide_index=True,
                      height=380)
+
+    st.divider()
+    st.markdown("**Analyse-momentopnames**")
+    st.caption(
+        "Wat zei de tool wanneer? Elke geslaagde inwinning legt de stand "
+        "vast (afwijkingen + normbeeld per regio), zodat een eerder oordeel "
+        "achteraf te verantwoorden is."
+    )
+    try:
+        snaps = storage.list_snapshots(limit=100)
+    except Exception:
+        snaps = []
+    if not snaps:
+        st.caption("Nog geen momentopnames.")
+    else:
+        sdf = pd.DataFrame(snaps)[
+            ["created_at", "dataset_id", "label", "n_alerts", "n_rows",
+             "aggregation", "created_by"]
+        ].rename(columns={
+            "created_at": "Moment (UTC)", "dataset_id": "Dataset",
+            "label": "Aanleiding", "n_alerts": "Afwijkingen",
+            "n_rows": "Rijen", "aggregation": "Tijdschaal",
+            "created_by": "Door",
+        })
+        st.dataframe(sdf, use_container_width=True, hide_index=True)
+        pick = st.number_input(
+            "Momentopname openen (id)", min_value=0, value=0, step=1,
+            key="adm_snap_id",
+            help="Id uit de tabel hierboven; 0 = niets openen.",
+        )
+        if pick:
+            snap = storage.get_snapshot(int(pick))
+            if snap is None:
+                st.warning("Geen momentopname met dat id.")
+            else:
+                st.json(snap["payload"], expanded=False)
 
     st.divider()
     st.markdown("**Inwinning-runs (automatische bronnen)**")

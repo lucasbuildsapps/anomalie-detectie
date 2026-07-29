@@ -126,6 +126,7 @@ STRINGS = {
     "settings_tab_upload": "Upload",
     "settings_tab_expert": "Expert",
     "settings_tab_theme": "Weergave",
+    "settings_tab_bronnen": "Bronnen",
     "settings_tab_admin": "Beheer",
 
     # Annotaties
