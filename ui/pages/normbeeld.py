@@ -249,6 +249,7 @@ def page_normbeeld():
     )
 
     # ----- Geografisch beeld (prominente plek, direct onder de reeks) -----
+    _render_assumptions(normbeelds.get(selected), ds_meta, result)
     _render_situation_map(result, ds, selected)
 
     # ----- Export (briefing + SITREP + Excel) -----
@@ -602,6 +603,38 @@ def _render_situation_map(result, ds: dict, selected_location: str | None):
         for name, v in vizs.items():
             if "heatmap" in name.lower():
                 v.render(res, time_col="timestamp", value_col="value")
+
+
+def _render_assumptions(nb_view, ds_meta: dict, result=None):
+    """Aannameregister: welke keuzes zitten onder dit beeld?
+
+    ICD 203 vraagt onderscheid tussen de gegevens en de aannames van de
+    analist. Die keuzes (gap-beleid, tijdschaal, methode, bandmodel)
+    stonden nergens bij elkaar en werden dus stilzwijgend geërfd.
+    """
+    from core.assumptions import collect, critical_only, summarise
+
+    items = collect(
+        nb_view,
+        gap_policy=ds_meta.get("gap_policy", "zero"),
+        aggregation_choice=st.session_state.aggregation,
+        methods_override=st.session_state.nb_methods_override,
+        sensitivity=getattr(result, "sensitivity_used", None),
+        source_reliability=ds_meta.get("source_reliability"),
+    )
+    crit = critical_only(items)
+    titel = (f"Aannames onder dit beeld ({len(crit)} met wezenlijk effect)"
+             if crit else f"Aannames onder dit beeld ({len(items)})")
+    with st.expander(titel, expanded=False):
+        st.caption(summarise(items))
+        for a in items:
+            st.markdown(a.as_line())
+        st.caption(
+            "Waarom dit erbij staat: een uitkomst kan goed gerekend maar "
+            "verkeerd aangenomen zijn, en dat is aan het getal niet te "
+            "zien. 'Gemeten' betekent dat de tool het heeft uitgezocht; "
+            "'standaardwaarde' betekent dat niemand die keuze bewust maakte."
+        )
 
 
 def _render_timescale_advice(dataset_id: int, df_raw, current_agg: str):
