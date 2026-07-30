@@ -985,9 +985,16 @@ def _count_band(
                 phi_t = (pd.Series(np.where(mask_bool, phi_t, np.nan))
                          .ffill().bfill().fillna(1.0).values)
 
-    # Modelkeuze op de typische dispersie; de band zelf gebruikt phi per
-    # periode, zodat rustige en drukke perioden hun eigen breedte krijgen.
+    # Modelkeuze op de typische dispersie (stabiel); de band zelf gebruikt
+    # phi per periode, zodat rustige en drukke perioden hun eigen breedte
+    # krijgen.
     phi_typ = float(np.nanmedian(phi_t))
+    # Gerapporteerde dispersie is die van het HUIDIGE regime: dat is wat
+    # de voorspelband nodig heeft en wat de analist wil weten ("hoe grillig
+    # is het nu"). De mediaan over de hele historie zou een reeks die net
+    # onstuimig is geworden een te smalle voorspelband geven.
+    tail = phi_t[-LOCAL_SPREAD_WINDOW:] if len(phi_t) else phi_t
+    phi_recent = float(np.nanmedian(tail)) if len(tail) else phi_typ
     if phi_typ <= 1.3:
         lower = stats.poisson.ppf(alpha, mu)
         upper = stats.poisson.ppf(1.0 - alpha, mu)
@@ -1001,7 +1008,7 @@ def _count_band(
         model = "negbin"
 
     return (lower.astype(float), np.maximum(upper, lower).astype(float),
-            model, phi_typ)
+            model, phi_recent)
 
 
 # ---------------------------------------------------------------------------
