@@ -105,6 +105,40 @@ def _render_evaluation(dataset_id: int):
         )
 
 
+def _render_changes(dataset_id: int):
+    """Wat is er veranderd sinds de vorige beoordeling?
+
+    Staat bovenaan omdat dit is wat een terugkerende analist als eerste
+    wil weten. Zonder dit vergelijk je op geheugen, en daar vallen dingen
+    weg. ICD 203 vraagt bovendien om wijzigingen t.o.v. eerdere oordelen
+    expliciet te benoemen.
+    """
+    from core.changes import since_last, summarise
+
+    try:
+        changes, previous = since_last(dataset_id)
+    except Exception:
+        return
+    if previous is None:
+        return
+
+    kleur = {"nieuw": P["high"], "niveau": P["mid"],
+             "vertrouwen": P["mid"], "model": P["accent"],
+             "verdwenen": P["text_muted"]}
+    st.markdown("<div class='section-label'>Sinds de vorige beoordeling</div>",
+                unsafe_allow_html=True)
+    st.caption(summarise(changes, previous))
+    for c in changes[:10]:
+        st.markdown(
+            f"<div class='alert-row'>"
+            f"<span style='color:{kleur.get(c.kind, P['text_muted'])};'>"
+            f"{'●' if c.important else '○'}</span> "
+            f"<strong>{_html.escape(c.subject)}</strong> — "
+            f"{_html.escape(c.description)}</div>",
+            unsafe_allow_html=True,
+        )
+
+
 def _render_watchboard(ds: dict, normbeelds: dict):
     """Watchboard: wat hadden we vóóraf afgesproken in de gaten te houden?
 
@@ -409,6 +443,7 @@ def page_triage():
         st.rerun()
 
     ds = by_id[chosen]
+    _render_changes(ds["id"])
     _render_performance(ds["id"])
     _render_evaluation(ds["id"])
 

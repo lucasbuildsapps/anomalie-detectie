@@ -550,6 +550,37 @@ Twee ontwerpkeuzes die de moeite waard zijn:
 Een indicator die niet afgaat is zelf ook informatie: de dingen die
 vooraf belangrijk werden gevonden, gebeuren nu niet.
 
+## 11f. Aannameregister en verschil-met-vorige-beoordeling
+
+Twee eisen uit ICD 203 die de tool eerder niet invulde.
+
+**Onderscheid gegevens en aannames** (`core/assumptions.py`). De tool
+maakt keuzes die de uitkomst sturen — gap-beleid, tijdschaal, methode,
+bandmodel, gevoeligheid — en die stonden nergens bij elkaar. Ze werden
+dus stilzwijgend geërfd. Elke aanname krijgt nu drie dingen mee: wát er is
+aangenomen, **waarop dat berust** (standaardwaarde / gemeten / keuze van
+de gebruiker) en wat het betekent als het niet klopt.
+
+Het scherpste voorbeeld is het gap-beleid. Standaard geldt "geen rapport
+= geen activiteit". Valt de collectie uit, dan leest de tool dat als echte
+stilte en meldt keurig "onder de band". Zo'n uitkomst is niet fout
+gerekend maar fout aangenomen — en dat is aan het getal niet te zien.
+Risicovolle aannames zijn daarom gemarkeerd.
+
+**Wijzigingen t.o.v. eerdere oordelen** (`core/changes.py`). De standaard
+vraagt die expliciet te benoemen; praktisch wil een analist die na een
+week terugkomt weten wát er anders is in plaats van het hele beeld te
+herlezen. De momentopnames (§ opslag) bevatten de stand per moment; twee
+daarvan worden vergeleken op nieuwe/verdwenen afwijkingen, verschuiving
+van het verwachte niveau, verandering van vertrouwen en wisseling van
+bandmodel.
+
+Bewust met drempels: elk normbeeld schuift een beetje bij nieuwe data.
+Alleen verschuivingen vanaf 20% én minstens 1 eenheid tellen mee, zodat
+0,2 → 0,3 niet als "50% stijging" verschijnt. Een daling van het
+vertrouwen is altijd belangrijk; een stijging wordt gemeld maar niet
+gemarkeerd. Geen verschillen is zelf ook informatie: het beeld is stabiel.
+
 ## 12. Bekende beperkingen (open)
 
 - De banddekking wordt gerapporteerd maar (nog) niet automatisch
