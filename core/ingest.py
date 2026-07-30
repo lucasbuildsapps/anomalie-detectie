@@ -118,8 +118,13 @@ def _snapshot_after_ingest(dataset_id: int, source: str) -> None:
         # zaterdagavond liggen tot maandag. Losstaand van de snapshot in
         # een eigen try, zodat een kapot meldkanaal de vastlegging niet
         # meesleept.
-        if alerts:
-            _notify_after_ingest(dataset_id, alerts)
+        #
+        # Bewust ook aanroepen bij nul afwijkingen: de eerste run legt de
+        # nulmeting vast. Met een `if alerts`-guard bleef die achterwege
+        # bij een rustige eerste run, en werd de eerste run mét
+        # afwijkingen de nulmeting — precies die afwijkingen verdwenen dan
+        # geruisloos.
+        _notify_after_ingest(dataset_id, alerts)
     except Exception:
         _logger.exception("snapshot na ingest mislukt",
                           extra={"ctx": {"dataset_id": dataset_id}})

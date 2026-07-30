@@ -175,6 +175,65 @@ licht optimistisch. Twee correcties maken dit inzichtelijk en beheersbaar:
 2. **Horizon-verbreding** (§7): de voorspelband gebruikt out-of-sample
    backtest-fouten, niet de in-sample residuen.
 
+### 6a. Lokale spreiding — waarom de band met het regime meebeweegt
+
+De eerste versie berekende één bandbreedte voor de héle reeks
+(recency-gewogen residu-quantiles) en telde die overal bij de verwachting
+op. Op een reeks met een regimewissel is dat aantoonbaar fout.
+
+**Wat het opleverde** op de demo-dataset (Oekraïne, dagbasis, gemiddelde
+loopt van ~9/dag in 2022 naar ~200/dag in 2026):
+
+| jaar | gem. werkelijk | band (oud) | afwijkingen (oud) |
+|---|---|---|---|
+| 2022 | 9,1 | 0 – 469 | **0** |
+| 2023 | 7,9 | 0 – 470 | **0** |
+| 2024 | 31,8 | 0 – 491 | **0** |
+| 2025 | 154,3 | 8 – 603 | 10 |
+
+Drie volle jaren — 826 dagen — zonder één enkele afwijking, niet omdat er
+niets gebeurde maar omdat de band van het drukste regime op de rustigste
+jaren werd losgelaten. De tool was blind voor alles vóór het huidige
+regime, en dat was aan de cijfers niet te zien: er stond simpelweg
+"normaal".
+
+**Twee oorzaken, beide opgelost:**
+
+1. **Vaste breedte in eenheden.** Voor tellingen groeit de spreiding mee
+   met het niveau (Poisson: var = μ). Bij 8 per dag hoort een smallere
+   band dan bij 200. De discrete band (§6b) rekent per periode vanuit
+   μ_t en doet dat vanzelf; die geldt nu voor **alle** telling-data, niet
+   alleen schaarse reeksen.
+2. **Globale spreidingsschatting.** Ook de dispersie φ was één getal voor
+   de hele reeks, gedomineerd door het drukke regime (φ = 133). Die wordt
+   nu lopend geschat over ~90 perioden (`_local_dispersion`), zodat
+   rustige en onstuimige perioden hun eigen breedte krijgen. Voor continue
+   data doet `_local_residual_scale` hetzelfde met een lopende
+   MAD-achtige maat die de quantile-band schaalt.
+
+Beide schattingen gebruiken `shift(1)`: de spreiding op t rust op data
+strikt vóór t. Zonder die shift zit een uitschieter in zijn eigen venster,
+blaast hij de dispersie op en verdwijnt hij in een band die hij zelf
+verbreedde — dezelfde leakage die eerder in de rolling-detector zat.
+
+**Na de correctie:**
+
+| jaar | gem. werkelijk | band (nieuw) | afwijkingen (nieuw) |
+|---|---|---|---|
+| 2022 | 9,1 | 0 – 92 | 2 |
+| 2023 | 7,9 | 0 – 82 | 2 |
+| 2024 | 31,8 | 0 – 170 | 10 |
+| 2025 | 154,3 | 7 – 588 | 17 |
+
+Empirische banddekking blijft 97,2% bij een doel van 98% — de band is
+smaller geworden zonder de kalibratie te verliezen. Bewaakt in
+`tests/test_local_bands.py`.
+
+**Blijvende beperking**: de band is nog steeds breed in absolute zin
+(0–92 bij een gemiddelde van 9), omdat deze data werkelijk zeer bursty is
+(φ ≈ 50). Dat is eerlijk — geen artefact meer, maar een eigenschap van het
+verschijnsel.
+
 ### 6b. Discrete band voor schaarse telling-data (Poisson / negatief-binomiaal)
 
 Voor reeksen van **niet-negatieve gehele aantallen met mediaan < 5**

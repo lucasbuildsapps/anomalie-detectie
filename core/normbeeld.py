@@ -857,17 +857,83 @@ def _quantile_band(
     return q_lo, q_hi, alpha
 
 
-def _is_low_count_series(series: pd.Series) -> bool:
-    """True voor schaarse telling-data: niet-negatieve gehele aantallen met
-    een laag typisch niveau. Voor zulke reeksen zijn residual-quantiles
-    onbetrouwbaar (residuen nemen maar een handvol discrete waarden aan en
-    de band wordt gedomineerd door een paar spikes)."""
+#: Venster (in perioden) waarover de lokale spreiding wordt geschat.
+#: Groot genoeg voor een stabiele schatting, klein genoeg om een
+#: regimewissel te volgen.
+LOCAL_SPREAD_WINDOW = 90
+LOCAL_SPREAD_MIN_PERIODS = 20
+
+
+def _local_dispersion(y: np.ndarray, mu: np.ndarray,
+                      window: int = LOCAL_SPREAD_WINDOW) -> np.ndarray:
+    """Pearson-dispersie per periode, geschat op een lopend venster.
+
+    Waarom lokaal en niet één getal voor de hele reeks: bij een reeks die
+    van ~8 naar ~200 per dag gaat, wordt een globale dispersie gedomineerd
+    door het drukste regime en vervolgens toegepast op de rustige jaren.
+    De band werd daardoor in 2022 absurd breed (0–469 bij een gemiddelde
+    van 9) en er werd in drie volle jaren geen enkele afwijking gevonden.
+
+    Een lopend venster laat de spreiding met het regime meebewegen, zodat
+    'ongewoon voor die periode' ook echt per periode wordt beoordeeld.
+    """
+    safe_mu = np.clip(np.asarray(mu, dtype=float), 0.1, None)
+    pearson = (np.asarray(y, dtype=float) - safe_mu) ** 2 / safe_mu
+    # shift(1): de spreiding op t wordt geschat op data strikt vóór t.
+    # Zonder die shift zit de piek in zijn eigen venster, blaast hij de
+    # dispersie op en verdwijnt hij in een band die hij zelf verbreedde —
+    # dezelfde leakage als eerder in de rolling-detector.
+    s = pd.Series(pearson).shift(1)
+    phi = s.rolling(window, min_periods=LOCAL_SPREAD_MIN_PERIODS).mean()
+    # Aan het begin is er nog geen venster; val terug op de eerste
+    # bruikbare schatting in plaats van op het globale (te hoge) getal.
+    phi = phi.bfill().ffill()
+    if phi.isna().all():
+        phi = pd.Series(np.full(len(safe_mu), float(np.mean(pearson))))
+    return np.clip(phi.values.astype(float), 1.0, None)
+
+
+def _local_residual_scale(resid: np.ndarray,
+                          window: int = LOCAL_SPREAD_WINDOW) -> np.ndarray:
+    """Lopende spreidingsmaat van de residuen (MAD-achtig, robuust).
+
+    Continue variant van `_local_dispersion`: geeft per periode een
+    schaalfactor waarmee de quantile-band meebeweegt met het regime.
+    """
+    # shift(1) om dezelfde reden als in _local_dispersion: een uitschieter
+    # mag zijn eigen band niet verbreden.
+    s = pd.Series(np.abs(np.asarray(resid, dtype=float))).shift(1)
+    scale = s.rolling(window, min_periods=LOCAL_SPREAD_MIN_PERIODS).median()
+    scale = scale.bfill().ffill()
+    global_scale = float(np.median(np.abs(resid))) if len(resid) else 1.0
+    scale = scale.fillna(global_scale if global_scale > 0 else 1.0)
+    vals = scale.values.astype(float)
+    # Nooit nul: anders wordt elke afwijking oneindig significant.
+    floor = max(global_scale * 0.1, 1e-6)
+    return np.clip(vals, floor, None)
+
+
+def _is_count_series(series: pd.Series) -> bool:
+    """True voor telling-data: niet-negatieve gehele aantallen.
+
+    Voor tellingen groeit de spreiding mee met het niveau (Poisson:
+    var = mu). Een band met een vaste breedte in eenheden is daar
+    principieel verkeerd: bij 8 per dag hoort een smallere band dan bij
+    200 per dag. Daarom krijgt álle telling-data de discrete band, niet
+    alleen de schaarse reeksen — dat laatste liet juist de drukke reeksen
+    met een constante, veel te brede band achter.
+    """
     vals = series.values.astype(float)
     if len(vals) == 0 or np.nanmin(vals) < 0:
         return False
-    if not np.allclose(vals, np.round(vals), atol=1e-9):
-        return False
-    return float(np.nanmedian(vals)) < 5.0
+    return bool(np.allclose(vals, np.round(vals), atol=1e-9))
+
+
+def _is_low_count_series(series: pd.Series) -> bool:
+    """Schaarse telling-data (mediaan < 5). Behouden voor bestaande
+    aanroepers en tests; de bandkeuze gebruikt `_is_count_series`."""
+    return _is_count_series(series) and float(
+        np.nanmedian(series.values.astype(float))) < 5.0
 
 
 def _count_band(
@@ -906,26 +972,36 @@ def _count_band(
         # Forecast-pad: dispersie is op de historie gemeten en wordt hier
         # hergebruikt (op de voorspelling zelf zijn de residuen per
         # definitie nul, dus daar valt niets te schatten).
-        phi = float(phi_fixed)
+        phi_t = np.full(len(mu), max(float(phi_fixed), 1.0))
     else:
-        pearson = (y - mu) ** 2 / mu
-        phi = float(np.average(pearson, weights=weights)) if weights.sum() > 0 \
-            else float(pearson.mean())
-    phi = max(phi, 1.0)
+        # Lokale dispersie: de spreiding beweegt mee met het regime. Eén
+        # getal voor de hele reeks liet de band van de drukste periode los
+        # op de rustigste jaren — zie _local_dispersion.
+        phi_t = _local_dispersion(y, mu)
+        if observed_mask is not None:
+            mask_bool = np.asarray(observed_mask, dtype=bool)
+            if mask_bool.sum() >= 5 and len(mask_bool) == len(phi_t):
+                # Niet-geobserveerde perioden mogen de schatting niet sturen.
+                phi_t = (pd.Series(np.where(mask_bool, phi_t, np.nan))
+                         .ffill().bfill().fillna(1.0).values)
 
-    if phi <= 1.3:
+    # Modelkeuze op de typische dispersie; de band zelf gebruikt phi per
+    # periode, zodat rustige en drukke perioden hun eigen breedte krijgen.
+    phi_typ = float(np.nanmedian(phi_t))
+    if phi_typ <= 1.3:
         lower = stats.poisson.ppf(alpha, mu)
         upper = stats.poisson.ppf(1.0 - alpha, mu)
         model = "poisson"
     else:
         # NB2-parameterisatie: var = mu + mu^2/r = phi*mu  ->  r = mu/(phi-1)
-        r = np.clip(mu / (phi - 1.0), 0.05, None)
+        r = np.clip(mu / np.clip(phi_t - 1.0, 1e-6, None), 0.05, None)
         p = r / (r + mu)
         lower = stats.nbinom.ppf(alpha, r, p)
         upper = stats.nbinom.ppf(1.0 - alpha, r, p)
         model = "negbin"
 
-    return lower.astype(float), np.maximum(upper, lower).astype(float), model, phi
+    return (lower.astype(float), np.maximum(upper, lower).astype(float),
+            model, phi_typ)
 
 
 # ---------------------------------------------------------------------------
@@ -1057,17 +1133,27 @@ def compute_normbeeld(
                                             observed_mask=obs_mask)
     band_model = "quantile"
     dispersion = None
-    if _is_low_count_series(series):
+    if _is_count_series(series):
         cb_lo, cb_hi, band_model, dispersion = _count_band(
             series, expected_hist, band_alpha, observed_mask=obs_mask,
         )
         hist_lower = cb_lo
         hist_upper = cb_hi
     else:
+        # Ook hier lokaal: de globale quantiles worden geschaald met de
+        # lopende spreiding, zodat een rustige periode een smallere band
+        # krijgt dan een onstuimige. Zonder dit kreeg 2022 de bandbreedte
+        # van 2026.
+        resid_hist = series.values.astype(float) - np.asarray(expected_hist,
+                                                              dtype=float)
+        local_scale = _local_residual_scale(resid_hist)
+        ref_scale = float(np.median(local_scale))
+        factor = (local_scale / ref_scale) if ref_scale > 0 else np.ones_like(
+            local_scale)
         # Invariant: upper >= lower, óók na flooring van alleen de ondergrens
         # (anders kan een pathologische fit de band ondersteboven zetten).
-        hist_lower = _floor(expected_hist + q_lo)
-        hist_upper = np.maximum(expected_hist + q_hi, hist_lower)
+        hist_lower = _floor(expected_hist + q_lo * factor)
+        hist_upper = np.maximum(expected_hist + q_hi * factor, hist_lower)
 
     hist = pd.DataFrame({
         "date":     series.index,
