@@ -59,8 +59,33 @@ def _settings_bronnen():
     st.caption(
         "Elke bron is een plug-in in `connectors/`. Test hem hier, draai "
         "hem handmatig, en zet `enabled = True` in het bestand zodra hij "
-        "werkt — dan pakt de geplande inwinning hem op."
+        "werkt — dan pakt de geplande inwinning hem op. Stap-voor-stap: "
+        "zie **BRONNEN_INSTELLEN.md** in de repository."
     )
+    with st.expander("ⓘ  In het kort: wat heb ik nodig per bron?"):
+        st.markdown(
+            "| bron | sleutel nodig | wat je krijgt |
+"
+            "|---|---|---|
+"
+            "| **GDELT** | nee | nieuwsvolume per gebied — activiteits-"
+            "indicator, geen gebeurtenissen-telling |
+"
+            "| **NASA FIRMS** | ja, direct per e-mail | satelliet-"
+            "warmtedetecties met coördinaten; ziet óók landbouw en "
+            "industrie |
+"
+            "| **ACLED** | ja, na registratie | gevalideerde conflict-"
+            "gebeurtenissen met type en dodental |
+"
+        )
+        st.markdown(
+            "Twee dingen die vaak misgaan: een sleutel moet **zowel** in "
+            "Streamlit Cloud als in de GitHub Actions-secrets staan (de "
+            "geplande inwinning draait daar), en `DATABASE_URL` moet in "
+            "beide naar dezelfde database wijzen — anders schrijft de "
+            "inwinning ergens waar de app niet kijkt."
+        )
 
     try:
         conns = get_connectors()
