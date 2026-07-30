@@ -22,6 +22,8 @@ from ui.cache import cached_analysis, cached_comovement
 from ui.components import (
     _render_annotation_widget,
     _render_empty_state,
+    deny_notice,
+    may,
     render_topbar,
 )
 from ui.theme import P
@@ -101,6 +103,126 @@ def _render_evaluation(dataset_id: int):
             "gelabeld is telt mee — een terechte melding zonder label "
             "verschijnt hier als vals alarm."
         )
+
+
+def _render_watchboard(ds: dict, normbeelds: dict):
+    """Watchboard: wat hadden we vóóraf afgesproken in de gaten te houden?
+
+    Dit staat bewust bovenaan de triage. De bevindingenlijst is inductief
+    ('wat valt op?'); dit is deductief ('gebeurt waar we op letten?').
+    Dat laatste is navolgbaar en daarmee verdedigbaar.
+    """
+    from core.indicators import (
+        CONDITIONS,
+        NEEDS_THRESHOLD,
+        Indicator,
+        evaluate_all,
+        summarise,
+    )
+
+    try:
+        rows = storage.list_indicators(ds["id"])
+    except Exception as e:
+        st.error(f"Indicatoren laden mislukt: {e}")
+        return
+
+    indicators = [
+        Indicator(
+            name=r["name"], dataset_id=r["dataset_id"], condition=r["condition"],
+            location=r["location"], category=r["category"],
+            threshold=r["threshold"], periods=r["periods"] or 1,
+            meaning=r["meaning"] or "", enabled=bool(r["enabled"]), id=r["id"],
+        )
+        for r in rows
+    ]
+    states = evaluate_all(indicators, normbeelds or {})
+
+    st.markdown("<div class='section-label'>Watchboard</div>",
+                unsafe_allow_html=True)
+    st.caption(summarise(states))
+
+    for state in states:
+        ind = state.indicator
+        color = P["high"] if state.active else P["text_muted"]
+        label = "ACTIEF" if state.active else "RUST"
+        sinds = (f" · sinds {state.since:%d-%m-%Y}"
+                 if state.active and state.since is not None else "")
+        st.markdown(
+            f"""
+            <div class="finding-card" style="--card-color: {color};">
+                <div class="finding-header">
+                    <span class="severity-pill" style="background: {color};">
+                        {label}</span>
+                    <span class="finding-loc">{_html.escape(ind.name)}</span>
+                    <span class="finding-date">{_html.escape(ind.describe())}
+                        {sinds}</span>
+                </div>
+                <div class="finding-stat">{_html.escape(state.evidence)}</div>
+                {f'<div class="finding-meta">Betekenis: '
+                 f'{_html.escape(ind.meaning)}</div>' if ind.meaning else ''}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with st.expander("Indicator toevoegen of beheren"):
+        if not may("annotate"):
+            deny_notice("annotate")
+            return
+        st.caption(
+            "Schrijf vooraf op wát ertoe doet. Dat is de kern van "
+            "waarschuwingswerk: achteraf is bij elke uitschieter wel een "
+            "verhaal te bedenken, vooraf niet."
+        )
+        c1, c2 = st.columns(2)
+        with c1:
+            name = st.text_input("Naam", key="wb_name",
+                                 placeholder="bv. Stilte rond Kyiv")
+            cond_keys = list(CONDITIONS)
+            condition = st.selectbox(
+                "Voorwaarde", cond_keys,
+                format_func=lambda k: CONDITIONS[k], key="wb_cond")
+            periods = st.number_input("Perioden achtereen", min_value=1,
+                                      max_value=60, value=1, key="wb_per")
+        with c2:
+            regios = sorted(normbeelds or {})
+            regio = st.selectbox("Regio", ["(alle regio's)"] + regios,
+                                 key="wb_loc")
+            threshold = None
+            if condition in NEEDS_THRESHOLD:
+                threshold = st.number_input(
+                    "Drempel", value=0.0, key="wb_thr",
+                    help="Absolute waarde, of percentage bij 'stijging'.")
+            meaning = st.text_input(
+                "Betekenis als dit afgaat", key="wb_meaning",
+                placeholder="bv. mogelijk hergroepering")
+
+        if st.button("Indicator vastleggen", type="primary", key="wb_add"):
+            if not name.strip():
+                st.warning("Geef de indicator een naam.")
+            else:
+                storage.add_indicator(
+                    ds["id"], name.strip(), condition,
+                    location=None if regio == "(alle regio's)" else regio,
+                    threshold=threshold, periods=int(periods),
+                    meaning=meaning.strip(),
+                )
+                st.success("Vastgelegd — met datum en naam, zodat achteraf "
+                           "aantoonbaar is dat dit vooraf is bepaald.")
+                st.rerun()
+
+        for r in rows:
+            cc1, cc2 = st.columns([5, 1])
+            with cc1:
+                st.markdown(
+                    f"{'✓' if r['enabled'] else '—'} **{_html.escape(r['name'])}**"
+                    f" · {_html.escape(str(r['condition']))}"
+                )
+            with cc2:
+                if st.button("Verwijder", key=f"wb_del_{r['id']}",
+                             use_container_width=True):
+                    storage.delete_indicator(r["id"])
+                    st.rerun()
 
 
 def _render_findings(result, ds: dict):
@@ -298,7 +420,7 @@ def page_triage():
     if cached is None:
         st.warning("Dataset is leeg.")
         return
-    _, _, result, _, alerts, effective_agg = cached
+    _, _, result, normbeelds, alerts, effective_agg = cached
 
     triage = anno.triage_counts(ds["id"], alerts)
     if triage["total"]:
@@ -307,6 +429,7 @@ def page_triage():
             f"nog onbehandeld."
         )
 
+    _render_watchboard(ds, normbeelds)
     _render_findings(result, ds)
     _render_agreement(result)
     _render_peer_deviations(ds["id"], effective_agg)

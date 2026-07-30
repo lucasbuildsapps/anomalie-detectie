@@ -167,6 +167,28 @@ notifications_t = Table(
     UniqueConstraint("dataset_id", "finding_key", name="uq_notif_dataset_key"),
 )
 
+# Watchboard-indicatoren: vooraf vastgelegd wát ertoe doet. Bewust
+# opgeslagen en niet in code, zodat een analist ze zelf kan beheren én er
+# achteraf een datum bij staat — "we hadden dit vooraf opgeschreven" is
+# alleen navolgbaar als het ergens vastligt.
+indicators_t = Table(
+    "indicators", _metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("dataset_id", Integer,
+           ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False),
+    Column("name", String(255), nullable=False),
+    Column("condition", String(32), nullable=False),
+    Column("location", Text),
+    Column("category", Text),
+    Column("threshold", Float),
+    Column("periods", Integer, nullable=False, server_default="1"),
+    Column("meaning", Text),
+    Column("enabled", Integer, nullable=False, server_default="1"),
+    Column("created_at", DateTime, nullable=False),
+    Column("created_by", String(128)),
+    Index("ix_indicator_dataset", "dataset_id"),
+)
+
 # Ingest-runs: één regel per connector-run (geautomatiseerde inwinning).
 # Basis voor bron-gezondheid ("is mijn data actueel?") en alerting.
 ingest_runs_t = Table(
@@ -417,6 +439,51 @@ def mark_notified(dataset_id: int, keys: list) -> None:
     with _engine().begin() as con:
         _insert_ignore_conflicts(con, rows, table=notifications_t,
                                  conflict_cols=("dataset_id", "finding_key"))
+
+
+def add_indicator(dataset_id: int, name: str, condition: str,
+                  location: str | None = None, category: str | None = None,
+                  threshold: float | None = None, periods: int = 1,
+                  meaning: str = "") -> int:
+    with _engine().begin() as con:
+        res = con.execute(insert(indicators_t).values(
+            dataset_id=dataset_id, name=name, condition=condition,
+            location=location or None, category=category or None,
+            threshold=threshold, periods=max(1, int(periods)),
+            meaning=meaning or "", enabled=1,
+            created_at=datetime.now(UTC).replace(tzinfo=None),
+            created_by=current_user(),
+        ))
+        new_id = int(res.inserted_primary_key[0])
+    record_audit("indicator_toegevoegd", "indicator", new_id,
+                 {"dataset_id": dataset_id, "name": name,
+                  "condition": condition})
+    return new_id
+
+
+def list_indicators(dataset_id: int | None = None) -> list[dict]:
+    stmt = select(indicators_t).order_by(indicators_t.c.name)
+    if dataset_id is not None:
+        stmt = stmt.where(indicators_t.c.dataset_id == dataset_id)
+    with _engine().connect() as con:
+        rows = con.execute(stmt).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def set_indicator_enabled(indicator_id: int, enabled: bool) -> None:
+    with _engine().begin() as con:
+        con.execute(indicators_t.update()
+                    .where(indicators_t.c.id == indicator_id)
+                    .values(enabled=1 if enabled else 0))
+    record_audit("indicator_gewijzigd", "indicator", indicator_id,
+                 {"enabled": bool(enabled)})
+
+
+def delete_indicator(indicator_id: int) -> None:
+    with _engine().begin() as con:
+        con.execute(delete(indicators_t).where(
+            indicators_t.c.id == indicator_id))
+    record_audit("indicator_verwijderd", "indicator", indicator_id)
 
 
 def record_ingest_run(source: str, started_at: datetime, status: str,

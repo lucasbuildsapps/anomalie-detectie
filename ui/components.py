@@ -307,14 +307,24 @@ def _render_empty_state():
 
 
 def _pctl_label(row) -> str:
-    """'extremer dan X% van de historie' voor een afwijkings-rij.
+    """Hoe uitzonderlijk is deze waarneming, in standaard-onzekerheidstaal.
+
+    Gebruikt de WEP-schaal (ICD 203 / NATO) zodat de analist de bevinding
+    letterlijk kan overnemen in een product. Bewust een uitspraak over de
+    **frequentie onder het normbeeld** — niet over de kans dát er iets aan
+    de hand is; dat laatste vraagt een prior die deze tool niet heeft.
 
     Cap op 99: '100% van de historie' is logisch onmogelijk (het punt zelf
     is deel van de historie) en ondermijnt het vertrouwen in de cijfers.
     """
+    from core.estimative import exceedance_probability, wep_phrase
+
     pctl = float(row.get("resid_pctl", 0.5))
-    extremer = pctl if row["status"] == "boven" else 1.0 - pctl
-    return f"extremer dan {min(extremer, 0.99) * 100:.0f}% van de historie"
+    status = row["status"]
+    p = exceedance_probability(pctl, status)
+    extremer = pctl if status == "boven" else 1.0 - pctl
+    return (f"{wep_phrase(p)} onder het normbeeld — extremer dan "
+            f"{min(extremer, 0.99) * 100:.0f}% van de historie")
 
 
 def _fmt_num(x: float) -> str:

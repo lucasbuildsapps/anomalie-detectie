@@ -487,6 +487,69 @@ detector droeg dus niets bij aan de stemming, zonder foutmelding. Na de
 fix vindt Z-score 6 van 6. Dit is precies waarvoor het harnas bestaat:
 zonder meting was die stilte nooit opgevallen.
 
+## 11d. Onzekerheidstaal (ICD 203 / NATO)
+
+Een analist schrijft zijn oordeel uiteindelijk op in een product dat aan
+analytische standaarden moet voldoen. Zegt de tool "afwijking" en de
+analist "waarschijnlijk", dan zit daar een vertaalslag tussen die niemand
+controleert. `core/estimative.py` laat de tool in dezelfde taal spreken.
+
+**Twee gescheiden schalen.** *Words of Estimative Probability* zegt hoe
+waarschijnlijk de gebeurtenis is (zeer onwaarschijnlijk < 10%,
+onwaarschijnlijk 10–40%, ongeveer even waarschijnlijk 40–60%,
+waarschijnlijk 60–90%, zeer waarschijnlijk > 90%). *Levels of Confidence
+in Assessment* zegt hoe stevig het oordeel staat, gegeven de kwaliteit
+van de informatie (hoog/gemiddeld/laag).
+
+**De regel die het meest wordt overtreden**: die twee mogen niet in
+dezelfde zin. "Waarschijnlijk een aanval, met hoge zekerheid" laat de
+lezer raden wát er onzeker is — de gebeurtenis of het oordeel erover.
+`format_judgment()` dwingt de scheiding af; `violates_separation()` en de
+tests bewaken hem.
+
+De LCA-criteria zijn vertaald naar wat deze tool meet: informatiekwaliteit
+(reekslengte, datadekking, versheid, Admiraliteits-betrouwbaarheid),
+bevestiging (effectief aantal zelfstandige detectoren, §8) en
+eenduidigheid (banddekking t.o.v. doel, regime-stabiliteit). Een verse
+regimewissel is daarbij een **plafond**, geen aftrekpost: alle andere
+kwaliteitssignalen gaan over het oude regime.
+
+**Belangrijke afbakening**: de WEP-term beschrijft de *frequentie onder
+het normbeeld* ("hoe vaak komt een waarde als deze voor in vergelijkbare
+perioden"), niet de kans dát er iets aan de hand is. Dat laatste vraagt
+een prior die deze tool niet heeft en niet moet verzinnen.
+
+## 11e. Watchboard: vooraf gedefinieerde indicatoren
+
+De rest van de tool werkt inductief — hier is de data, wat valt op? Dat
+heeft een bekende zwakte: achteraf is bij elke uitschieter wel een
+verhaal te bedenken, en niemand kan nagaan of dat verhaal vooraf zou zijn
+verzonnen.
+
+Warning intelligence werkt daarom óók deductief: leg vooraf vast welke
+waarneembare dingen ertoe zouden doen, en houd bij welke daarvan actief
+worden. Dat draait de bewijslast om. `core/indicators.py` implementeert
+dat: een indicator heeft een naam, een plaats (dataset/regio/categorie),
+een voorwaarde, een aantal perioden achtereen, en een betekenis in gewone
+taal. Aanmaakdatum en -naam staan in de audit-trail, zodat "we hadden dit
+vooraf opgeschreven" ook aantoonbaar is.
+
+Twee ontwerpkeuzes die de moeite waard zijn:
+
+- **Afwezigheid telt mee.** `stilte` is een volwaardige voorwaarde. Geen
+  activiteit waar die normaal wél is, is een klassiek waarschuwingssignaal
+  en precies wat een piek-detector mist. Alleen echte nullen tellen;
+  ontbrekende perioden zijn onbekend, niet stil.
+- **Een aanhoudende situatie mag de indicator niet doven.** `stijging_pct`
+  wordt daarom afgezet tegen een stabiel referentieniveau (mediaan van de
+  oudere historie), niet tegen de verwachting. Die past zich namelijk aan:
+  blijft het niveau maandenlang verhoogd, dan zakt de 'stijging' t.o.v.
+  de verwachting naar nul en gaat de indicator uit — precies omdát de
+  situatie aanhoudt. Dat is de omgekeerde wereld voor een watchboard.
+
+Een indicator die niet afgaat is zelf ook informatie: de dingen die
+vooraf belangrijk werden gevonden, gebeuren nu niet.
+
 ## 12. Bekende beperkingen (open)
 
 - De banddekking wordt gerapporteerd maar (nog) niet automatisch
