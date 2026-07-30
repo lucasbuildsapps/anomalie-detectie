@@ -122,6 +122,8 @@ def assess_confidence(
     corroborating_methods: int | None = None,
     effective_methods: float | None = None,
     regime_stable: bool | None = None,
+    period_detected: bool | None = None,
+    recent_deviation_rate: float | None = None,
 ) -> tuple[str, list[str]]:
     """Bepaal het vertrouwensniveau volgens de LCA-criteria.
 
@@ -147,6 +149,9 @@ def assess_confidence(
         elif n_periods < 30:
             score -= 1
             reasons.append(f"korte reeks ({n_periods} perioden)")
+
+    if period_detected is False:
+        reasons.append("geen herkenbaar periodiek patroon")
 
     if data_coverage is not None and data_coverage < 0.7:
         score -= 1
@@ -186,6 +191,23 @@ def assess_confidence(
                 f"{target_coverage * 100:.0f}% bedoeld is")
         elif gap <= 0.03:
             score += 1
+
+    # Het model past nú niet. Een breuk van een paar dagen oud is te kort
+    # om als regime herkend te worden, terwijl het normbeeld juist dán het
+    # minst klopt. Veel recente afwijkingen zijn daar het directe signaal
+    # van — of het een blip is of iets blijvends, kan de tool op dat moment
+    # niet weten, en dat niet-weten ís de reden voor minder vertrouwen.
+    if recent_deviation_rate is not None:
+        if recent_deviation_rate > 0.5:
+            score -= 2
+            reasons.append(
+                f"{recent_deviation_rate * 100:.0f}% van de recente perioden "
+                f"valt buiten de band")
+        elif recent_deviation_rate > 0.25:
+            score -= 1
+            reasons.append(
+                f"verhoogd aantal recente afwijkingen "
+                f"({recent_deviation_rate * 100:.0f}%)")
 
     level = "hoog" if score >= 2 else ("gemiddeld" if score >= 0 else "laag")
 

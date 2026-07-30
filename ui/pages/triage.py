@@ -18,7 +18,7 @@ from core import annotations as anno
 from core import storage
 from core.auto_pilot import build_findings, detector_agreement
 from i18n.nl import t
-from ui.cache import cached_analysis, cached_comovement
+from ui.cache import cached_analysis, cached_comovement, code_version
 from ui.components import (
     _render_annotation_widget,
     _render_empty_state,
@@ -293,7 +293,8 @@ def _render_peer_deviations(dataset_id: int, aggregation: str):
     zijn peers vlak blijven, dan is dat lokaal — meestal interessanter.
     """
     corr, devs = cached_comovement(
-        dataset_id, storage.dataset_data_hash(dataset_id), aggregation
+        dataset_id, storage.dataset_data_hash(dataset_id), aggregation,
+        code_version=code_version(),
     )
     if corr is None:
         return
@@ -415,7 +416,7 @@ def page_triage():
     cached = cached_analysis(
         ds["id"], storage.dataset_data_hash(ds["id"]),
         st.session_state.horizon_days, st.session_state.aggregation,
-        "auto", gap_policy,
+        "auto", gap_policy, code_version=code_version(),
     )
     if cached is None:
         st.warning("Dataset is leeg.")

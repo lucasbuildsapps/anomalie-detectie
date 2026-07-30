@@ -131,26 +131,52 @@ class TestWindowSelection:
 
 
 class TestConfidence:
+    """`_confidence` delegeert nu naar de LCA-beoordeling in
+    core/estimative.py en geeft (niveau, redenen) terug. Eén definitie
+    van 'vertrouwen', met de standaard-vocabulaire."""
+
     def test_long_stable_series_is_high(self):
-        assert _confidence(400, True) == "hoog"
+        level, _ = _confidence(400, True, coverage=0.98,
+                               target_coverage=0.98, periods_since_break=400)
+        assert level == "hoog"
 
-    def test_fresh_regime_downgrades_a_long_series(self):
-        """Kern van de verbetering: drie jaar historie met een breuk van
-        vorige maand is minder betrouwbaar dan de lengte suggereert."""
-        assert _confidence(400, True, periods_since_break=10) == "laag"
-        assert _confidence(400, True, periods_since_break=25) == "midden"
-        assert _confidence(400, True, periods_since_break=200) == "hoog"
+    def test_fresh_regime_caps_a_long_series(self):
+        """Alle andere kwaliteitssignalen gaan over het óude regime; dan
+        past geen hoog vertrouwen, hoe lang de reeks ook is."""
+        level, reasons = _confidence(400, True, periods_since_break=10,
+                                     coverage=0.98, target_coverage=0.98)
+        assert level != "hoog"
+        assert any("regimewissel" in r for r in reasons)
 
-    def test_miscalibrated_band_downgrades(self):
-        assert _confidence(400, True, coverage=0.60,
-                           target_coverage=0.96) == "midden"
+    def test_stable_regime_keeps_high(self):
+        level, _ = _confidence(400, True, periods_since_break=300,
+                               coverage=0.98, target_coverage=0.98)
+        assert level == "hoog"
 
-    def test_well_calibrated_band_keeps_level(self):
-        assert _confidence(400, True, coverage=0.95,
-                           target_coverage=0.96) == "hoog"
+    def test_miscalibrated_band_is_penalised(self):
+        level, reasons = _confidence(400, True, coverage=0.60,
+                                     target_coverage=0.98)
+        assert any("dekt" in r for r in reasons)
+        assert level != "hoog"
+
+    def test_many_recent_deviations_lower_confidence(self):
+        """Een breuk van een paar dagen oud telt niet als regime, maar het
+        normbeeld klopt dan juist het minst."""
+        level, reasons = _confidence(400, True, coverage=0.98,
+                                     target_coverage=0.98,
+                                     periods_since_break=400,
+                                     recent_deviation_rate=0.6)
+        assert level != "hoog"
+        assert any("buiten de band" in r for r in reasons)
 
     def test_short_series_stays_low(self):
-        assert _confidence(10, False) == "laag"
+        level, _ = _confidence(10, False)
+        assert level == "laag"
+
+    def test_reasons_are_always_present(self):
+        """Een vertrouwensniveau zonder grond is niet toetsbaar."""
+        _, reasons = _confidence(200, True)
+        assert reasons
 
 
 class TestEndToEnd:
@@ -170,7 +196,7 @@ class TestEndToEnd:
         vals = np.concatenate([rng.poisson(20, 300), rng.poisson(200, 12)])
         nb = compute_normbeeld(_frame(vals), location="A", horizon_days=14,
                                aggregation="daily")
-        assert nb.confidence in ("laag", "midden")
+        assert nb.confidence in ("laag", "gemiddeld")
 
     def test_calibration_holds_on_real_data(self):
         from pathlib import Path

@@ -25,6 +25,7 @@ from ui.cache import (
     cached_analysis,
     cached_detail_normbeeld,
     cached_timescale_advice,
+    code_version,
 )
 from ui.components import (
     _event_markers,
@@ -170,6 +171,7 @@ def page_normbeeld():
     cached = cached_analysis(
         ds["id"], data_hash, st.session_state.horizon_days,
         st.session_state.aggregation, methods_key, gap_policy,
+        code_version=code_version(),
     )
     if cached is None:
         st.warning("Dataset is leeg.")
@@ -379,6 +381,7 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
         location, cat_filter,
         st.session_state.horizon_days, methods_key, aggregation,
         _dataset_meta(dataset_id).get("gap_policy", "zero"),
+        code_version=code_version(),
     )
     if nb_view is None:
         st.warning(t("nb_no_data"))
@@ -527,6 +530,13 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
             f"Banddekking: {nb_view.band_coverage * 100:.0f}% van de historie "
             f"binnen de band (doel ≈ {expected_cov:.0f}%)"
         )
+    # Vertrouwen mét grond: een niveau zonder onderbouwing is niet
+    # toetsbaar, en ICD 203 vraagt expliciet om die uitleg.
+    if getattr(nb_view, "confidence_reasons", None):
+        trust_bits.append(
+            f"vertrouwen {nb_view.confidence} "
+            f"({'; '.join(nb_view.confidence_reasons[:3])})"
+        )
     if nb_view.band_model == "poisson":
         trust_bits.append("band: Poisson-interval (schaarse telling-data)")
     elif nb_view.band_model == "negbin":
@@ -598,7 +608,8 @@ def _render_timescale_advice(dataset_id: int, df_raw, current_agg: str):
     """Onderbouwd tijdschaal-advies: welke schaal is écht het best
     voorspelbaar, en waarom — inclusief de mogelijkheid het over te nemen."""
     advice = cached_timescale_advice(
-        dataset_id, storage.dataset_data_hash(dataset_id)
+        dataset_id, storage.dataset_data_hash(dataset_id),
+        code_version=code_version(),
     )
     if advice is None:
         return

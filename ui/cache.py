@@ -6,6 +6,7 @@ import streamlit as st
 
 from core import storage
 from core.auto_pilot import run_auto_pilot
+from core.fingerprint import analysis_fingerprint
 from core.normbeeld import (
     AGGREGATIONS,
     _suggest_best_aggregation,
@@ -17,7 +18,8 @@ from core.normbeeld import (
 
 
 @st.cache_data(show_spinner="Tijdschalen vergelijken...")
-def cached_timescale_advice(dataset_id: int, data_hash: str):
+def cached_timescale_advice(dataset_id: int, data_hash: str,
+                            code_version: str = ""):
     """Backtest per tijdschaal is duur; cachen op de data-hash."""
     df = storage.load_observations(dataset_id)
     if df.empty:
@@ -73,7 +75,7 @@ def _dataset_meta(dataset_id: int) -> dict:
 def cached_detail_normbeeld(
     dataset_id: int, data_hash: str, location: str,
     category, horizon: int, methods_key: str, aggregation: str,
-    gap_policy: str = "zero",
+    gap_policy: str = "zero", code_version: str = "",
 ):
     """Detail-normbeeld voor één locatie, met backtest-gestuurde
     methode-selectie als de gebruiker niets heeft gekozen. `category` mag
@@ -94,6 +96,7 @@ def cached_detail_normbeeld(
 def cached_analysis(
     dataset_id: int, data_hash: str, horizon: int,
     aggregation: str, methods_key: str, gap_policy: str = "zero",
+    code_version: str = "",
 ):
     df_raw = storage.load_observations(dataset_id)
     if df_raw.empty:
@@ -124,10 +127,22 @@ def _cmp_load(dataset_id: int, data_hash: str):
 
 
 @st.cache_data(show_spinner="Regio's vergelijken...")
-def cached_comovement(dataset_id: int, data_hash: str, aggregation: str):
+def cached_comovement(dataset_id: int, data_hash: str, aggregation: str,
+                      code_version: str = ""):
     """Peer-groep-analyse over alle regio's van een dataset."""
     from core.comparison import region_comovement
     df = storage.load_observations(dataset_id)
     if df.empty:
         return None, []
     return region_comovement(df, aggregation)
+
+
+def code_version() -> str:
+    """Hash van de analyse-code, bedoeld als laatste cache-sleutel.
+
+    Zonder deze sleutel blijft Streamlit een oud resultaat serveren nadat
+    de rekenmethode is aangepast: de cache-wrapper zelf verandert immers
+    niet. Dat is geen theoretisch risico — het is precies wat er gebeurde
+    na de correctie op de tolerantieband.
+    """
+    return analysis_fingerprint()

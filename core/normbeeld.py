@@ -139,7 +139,7 @@ class Normbeeld:
     expected_value: float
     lower_band: float
     upper_band: float
-    confidence: str                   # 'hoog' / 'midden' / 'laag'
+    confidence: str                   # 'hoog' / 'gemiddeld' / 'laag' (LCA)
     pattern_description: str
     historical: pd.DataFrame          # date, actual, expected, lower, upper, status
     forecast: pd.DataFrame            # date, expected, lower, upper (ensemble)
@@ -157,6 +157,7 @@ class Normbeeld:
     widening_source: str | None = None     # 'backtest' of 'default'
     band_model: str = "quantile"           # 'quantile' / 'poisson' / 'negbin'
     dispersion: float | None = None        # Pearson-dispersie (count-band)
+    confidence_reasons: list[str] = field(default_factory=list)
 
     @property
     def n_history_days(self) -> int:  # backward compat
@@ -320,52 +321,40 @@ def _confidence(n_periods: int, period_detected: bool,
                 periods_since_break: int | None = None,
                 coverage: float | None = None,
                 target_coverage: float | None = None,
-                recent_deviation_rate: float | None = None) -> str:
-    """Hoe betrouwbaar is dit normbeeld?
+                recent_deviation_rate: float | None = None,
+                data_coverage: float | None = None,
+                staleness_days: int | None = None,
+                source_reliability: str | None = None,
+                ) -> tuple[str, list[str]]:
+    """Vertrouwen in dit normbeeld, volgens de LCA-criteria.
 
-    Lengte alleen is misleidend. Een reeks van drie jaar die vorige maand
-    van regime wisselde is *minder* betrouwbaar dan een korte stabiele
-    reeks: het model kent het nieuwe regime nauwelijks. Daarom telt ook
-    mee hoe lang het huidige regime al loopt, en of de band feitelijk
-    dekt wat hij belooft.
+    Delegeert naar `core.estimative.assess_confidence`, zodat er één
+    definitie van 'vertrouwen' bestaat en die de standaard-vocabulaire
+    gebruikt (laag/gemiddeld/hoog). Er stonden hier eerder twee
+    implementaties náást elkaar, met zelfs verschillende woorden voor
+    hetzelfde niveau — een verschil dat vroeg of laat in een product
+    terechtkomt.
+
+    Returnt (niveau, redenen); de redenen horen bij het oordeel te worden
+    getoond. Een vertrouwensniveau zonder grond is niet toetsbaar.
     """
-    if n_periods >= 60 and period_detected:
-        level = "hoog"
-    elif n_periods >= 30:
-        level = "midden"
-    else:
-        level = "laag"
+    from core.estimative import assess_confidence
 
-    order = ["laag", "midden", "hoog"]
-
-    def downgrade(current: str, steps: int = 1) -> str:
-        return order[max(0, order.index(current) - steps)]
-
-    # Vers regime: het model heeft het nieuwe niveau nog nauwelijks gezien.
+    regime_stable = None
     if periods_since_break is not None:
-        if periods_since_break < 15:
-            level = downgrade(level, 2)
-        elif periods_since_break < 30:
-            level = downgrade(level)
+        regime_stable = periods_since_break >= 30
 
-    # Band die niet dekt wat hij belooft, verdient geen 'hoog'.
-    if coverage is not None and target_coverage is not None and (
-            abs(coverage - target_coverage) > 0.10):
-        level = downgrade(level)
-
-    # Het model past nú niet. Een breuk van de afgelopen dagen is te kort
-    # om als regime herkend te worden — precies de situatie waarin het
-    # normbeeld het minst te vertrouwen is. Veel recente afwijkingen zijn
-    # daar het directe signaal van, of het nu een blip is of het begin van
-    # iets nieuws: dat onderscheid kán de tool nog niet maken, en dat is
-    # zelf de reden voor minder vertrouwen.
-    if recent_deviation_rate is not None:
-        if recent_deviation_rate > 0.5:
-            level = downgrade(level, 2)
-        elif recent_deviation_rate > 0.25:
-            level = downgrade(level)
-
-    return level
+    return assess_confidence(
+        coverage=coverage,
+        target_coverage=target_coverage,
+        n_periods=n_periods,
+        data_coverage=data_coverage,
+        staleness_days=staleness_days,
+        source_reliability=source_reliability,
+        regime_stable=regime_stable,
+        period_detected=period_detected,
+        recent_deviation_rate=recent_deviation_rate,
+    )
 
 
 def _suggest_best_aggregation(df: pd.DataFrame) -> str:
@@ -1507,6 +1496,14 @@ def compute_normbeeld(
     recent_dev_rate = (n_recent_dev / len(recent_slice)
                        if len(recent_slice) else None)
 
+    confidence_level, confidence_reasons = _confidence(
+        len(series), period is not None,
+        periods_since_break=periods_since_break,
+        coverage=band_coverage,
+        target_coverage=(1.0 - 2.0 * band_alpha) if band_alpha else None,
+        recent_deviation_rate=recent_dev_rate,
+    )
+
     # Per-methode reeksen voor visualisatie (clip komt al uit _forecast_with)
     per_method_forecast: dict = {}
     per_method_historical: dict = {}
@@ -1528,13 +1525,8 @@ def compute_normbeeld(
         expected_value=expected_value,
         lower_band=lower_band,
         upper_band=upper_band,
-        confidence=_confidence(
-            len(series), period is not None,
-            periods_since_break=periods_since_break,
-            coverage=band_coverage,
-            target_coverage=(1.0 - 2.0 * band_alpha) if band_alpha else None,
-            recent_deviation_rate=recent_dev_rate,
-        ),
+        confidence=confidence_level,
+        confidence_reasons=confidence_reasons,
         pattern_description=_describe_pattern(
             series, period, expected_value, aggregation
         ),
