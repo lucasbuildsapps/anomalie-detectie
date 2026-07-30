@@ -607,6 +607,42 @@ def create_dataset(name: str, description: str, column_mapping: dict) -> int:
     return new_id
 
 
+def rename_dataset(dataset_id: int, new_name: str) -> None:
+    """Hernoem een dataset.
+
+    De naam is uniek in de database; een botsing geeft een nette fout in
+    plaats van een IntegrityError uit de diepte. De oude naam gaat mee in
+    de audit-trail, want een naamswijziging maakt oudere verwijzingen
+    (rapporten, meldingen) anders onnavolgbaar.
+    """
+    name = (new_name or "").strip()
+    if not name:
+        raise ValueError("Naam mag niet leeg zijn.")
+
+    with _engine().connect() as con:
+        row = con.execute(
+            select(datasets.c.name).where(datasets.c.id == dataset_id)
+        ).first()
+        clash = con.execute(
+            select(datasets.c.id)
+            .where(datasets.c.name == name, datasets.c.id != dataset_id)
+        ).first()
+    if row is None:
+        raise ValueError("Dataset bestaat niet.")
+    if clash is not None:
+        raise ValueError(f"Er bestaat al een dataset met de naam '{name}'.")
+
+    old_name = row[0]
+    if old_name == name:
+        return
+    with _engine().begin() as con:
+        con.execute(datasets.update()
+                    .where(datasets.c.id == dataset_id)
+                    .values(name=name))
+    record_audit("dataset_hernoemd", "dataset", dataset_id,
+                 {"van": old_name, "naar": name})
+
+
 def update_dataset_mapping(dataset_id: int, column_mapping: dict) -> None:
     """Werk de mapping/metadata van een dataset bij (bv. gap-policy of
     bron-betrouwbaarheid). Metadata leeft in dezelfde JSON als de mapping."""

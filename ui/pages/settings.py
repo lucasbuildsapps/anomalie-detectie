@@ -290,6 +290,27 @@ def _settings_datasets():
     for ds in datasets:
         with st.expander(ds["name"]):
             st.caption(f"Aangemaakt: {ds['created_at']}")
+
+            rc1, rc2 = st.columns([3, 1])
+            with rc1:
+                new_name = st.text_input(
+                    "Naam", value=ds["name"], key=f"rn_{ds['id']}",
+                    disabled=not may("edit_metadata"),
+                )
+            with rc2:
+                st.write("")
+                st.write("")
+                if st.button("Hernoemen", key=f"rnbtn_{ds['id']}",
+                             use_container_width=True,
+                             disabled=not may("edit_metadata")):
+                    try:
+                        storage.rename_dataset(ds["id"], new_name)
+                        st.cache_data.clear()
+                        st.success("Naam gewijzigd.")
+                        st.rerun()
+                    except ValueError as e:
+                        st.error(str(e))
+
             st.write(ds["description"] or "Geen omschrijving.")
             st.json(ds["column_mapping"], expanded=False)
             c1, c2 = st.columns(2)

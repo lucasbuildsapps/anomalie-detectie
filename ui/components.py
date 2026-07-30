@@ -386,3 +386,50 @@ def deny_notice(action: str) -> None:
         f"jij hebt **{ident.role}**. Vraag een beheerder om je groep aan "
         f"te passen."
     )
+
+
+#: De vaste route door de normbeeld-pagina. Expliciet, zodat de gebruiker
+#: ziet hoeveel stappen er zijn en waar hij is — in plaats van een pagina
+#: met losse keuzes waarvan de volgorde alleen impliciet bestaat.
+NORMBEELD_STEPS = (
+    ("Dataset", "welke gegevens"),
+    ("Tijdschaal", "per dag, week of maand"),
+    ("Regio", "welk gebied"),
+    ("Beeld", "normbeeld en afwijkingen"),
+)
+
+
+def render_flow(steps, current: int, values: dict | None = None) -> None:
+    """Toon de stappenbalk met de gemaakte keuzes erin.
+
+    `current` is de 0-gebaseerde index van de stap waar de gebruiker nu
+    staat; alles ervoor geldt als afgerond. `values` mag per stapnaam de
+    gekozen waarde bevatten, zodat de balk ook samenvat wát er is gekozen.
+    """
+    values = values or {}
+    html = ["<div class='flow-steps'>"]
+    for i, (naam, hint) in enumerate(steps):
+        cls = "done" if i < current else ("current" if i == current else "")
+        gekozen = values.get(naam)
+        label = _html.escape(str(gekozen)) if gekozen else _html.escape(hint)
+        html.append(
+            f"<div class='flow-step {cls}'>"
+            f"<span class='num'>{i + 1}</span>"
+            f"<span>{_html.escape(naam)}</span>"
+            f"<span class='val'>· {label}</span>"
+            f"</div>"
+        )
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+def explain(title: str, body: str, *, expanded: bool = False) -> None:
+    """Uitleg die standaard dichtgeklapt is.
+
+    De tool legt bewust veel uit — dat is de kern van de eerlijkheid —
+    maar niet iedereen heeft dat elke keer nodig. Ingeklapt blijft de
+    pagina leesbaar voor wie alleen het beeld wil zien, terwijl de
+    onderbouwing één klik weg blijft voor wie erop moet kunnen bouwen.
+    """
+    with st.expander(f"ⓘ  {title}", expanded=expanded):
+        st.markdown(body)

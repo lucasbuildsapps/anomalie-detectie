@@ -71,10 +71,34 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"],
 .stApp [data-testid="stCaptionContainer"] p,
 [data-testid="stWidgetLabel"] p {{ color: {p['text_muted']} !important; }}
 
-[data-baseweb="select"] > div, [data-baseweb="input"] > div,
+/* Invoerelementen. Streamlit rendert deze via BaseWeb met zijn eigen
+   themakleuren; die staan in .streamlit/config.toml en volgen onze
+   runtime-toggle niet. Daarom hier expliciet forceren — anders krijg je
+   witte velden op een donkere pagina. */
+[data-baseweb="select"] > div,
+[data-baseweb="select"] > div > div,
+[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+[data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
+[data-baseweb="input"] > div,
 [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea,
-[data-testid="stNumberInput"] input, [data-baseweb="popover"] {{
+[data-testid="stNumberInput"] input,
+[data-testid="stNumberInput"] div[data-baseweb="input"],
+[data-testid="stDateInput"] input,
+[data-baseweb="popover"], [data-baseweb="menu"], [data-baseweb="menu"] ul {{
     background: {p['surface']} !important;
+    color: {p['text']} !important;
+    border-color: {p['border']} !important;
+}}
+/* Tekst binnenin de widgets (BaseWeb nest die een paar niveaus diep). */
+[data-baseweb="select"] div, [data-baseweb="select"] span,
+[data-baseweb="menu"] li, [data-baseweb="menu"] span {{
+    color: {p['text']} !important;
+}}
+/* Pijltjes en wis-icoontjes zichtbaar houden. */
+[data-baseweb="select"] svg {{ fill: {p['text_muted']} !important; }}
+/* Plus/min bij number_input. */
+[data-testid="stNumberInput"] button {{
+    background: {p['surface_alt']} !important;
     color: {p['text']} !important;
     border-color: {p['border']} !important;
 }}
@@ -121,6 +145,51 @@ h1, h2, h3, h4, h5 {{
     margin: 1.25rem 0 0.5rem 0;
     padding-bottom: 4px;
     border-bottom: 1px solid {p['border_soft']};
+}}
+
+/* Stappenbalk: laat zien waar je bent in de analyse-flow. Zonder dit
+   is de pagina een lijst losse keuzes; met dit is het een route. */
+.flow-steps {{
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin: 0.2rem 0 0.9rem 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+}}
+.flow-step {{
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 12px;
+    border: 1px solid {p['border']};
+    background: {p['surface']};
+    color: {p['text_muted']};
+}}
+.flow-step .num {{
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 17px; height: 17px; border-radius: 50%;
+    background: {p['surface_alt']}; color: {p['text_muted']};
+    font-size: 0.66rem; font-weight: 600;
+}}
+.flow-step.done {{
+    border-color: {p['accent_dim']}; color: {p['text']};
+}}
+.flow-step.done .num {{
+    background: {p['accent']}; color: {p['accent_text']};
+}}
+.flow-step.current {{
+    border-color: {p['accent']}; color: {p['text']};
+    box-shadow: inset 0 -2px 0 {p['accent']};
+}}
+.flow-step.current .num {{
+    background: {p['accent']}; color: {p['accent_text']};
+}}
+.flow-step .val {{ color: {p['text_muted']}; }}
+.flow-step.done .val, .flow-step.current .val {{ color: {p['accent_dim']}; }}
+
+/* Uitleg-blokken: standaard ingeklapt, zodat de pagina rustig blijft
+   voor wie alleen het beeld wil zien. Wie de onderbouwing nodig heeft,
+   klikt hem open. */
+[data-testid="stExpander"] summary p {{
+    color: {p['text_muted']} !important;
+    font-size: 0.8rem;
 }}
 
 /* Metrics — strak, monospace, met een subtiele accentgloed in het donkere

@@ -1,9 +1,13 @@
 [theme]
-base = "light"
-primaryColor = "#1a4d8c"
-backgroundColor = "#fafbfc"
-secondaryBackgroundColor = "#f0f2f5"
-textColor = "#0a1929"
+# Moet overeenkomen met het donkere palet in ui/theme.py. Streamlit's
+# eigen widgets (selectbox, invoervelden) gebruiken DEZE kleuren, niet
+# onze CSS. Stond dit op "light" terwijl de pagina donker was, dan kreeg
+# je witte invoervelden op een donkere achtergrond — onleesbaar.
+base = "dark"
+primaryColor = "#3dd6d0"
+backgroundColor = "#080c14"
+secondaryBackgroundColor = "#0f1620"
+textColor = "#dce6f0"
 font = "sans serif"
 
 [browser]

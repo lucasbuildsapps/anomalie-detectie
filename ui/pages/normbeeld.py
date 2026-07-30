@@ -28,10 +28,12 @@ from ui.cache import (
     code_version,
 )
 from ui.components import (
+    NORMBEELD_STEPS,
     _event_markers,
     _render_empty_state,
     _render_markers_manager,
     _render_saved_views,
+    render_flow,
     render_topbar,
 )
 from ui.theme import P
@@ -162,6 +164,7 @@ def page_normbeeld():
 
     ds = by_id[chosen]
     ds_meta = ds["column_mapping"] or {}
+    _flow_values = {"Dataset": ds["name"]}
     gap_policy = ds_meta.get("gap_policy", "zero")
     methods_key = (
         "auto" if st.session_state.nb_methods_override is None
@@ -218,6 +221,7 @@ def page_normbeeld():
         st.session_state.aggregation = new_agg
         st.rerun()
 
+    _flow_values["Tijdschaal"] = AGGREGATIONS[effective_agg][2]
     _render_timescale_advice(ds["id"], df_raw, effective_agg)
 
     if not normbeelds:
@@ -243,6 +247,9 @@ def page_normbeeld():
     if selected != st.session_state.nb_selected_location:
         st.session_state.nb_selected_location = selected
         st.rerun()
+
+    _flow_values["Regio"] = selected
+    render_flow(NORMBEELD_STEPS, current=3, values=_flow_values)
 
     _render_normbeeld_detail(
         df_raw, normbeelds[selected], selected, ds["id"], unit, effective_agg,
@@ -320,7 +327,7 @@ def _render_normbeeld_detail(df_raw, nb, location: str, dataset_id: int,
             st.caption(f"Tip: voor deze reeks ligt **{rec_label}** voor de hand.")
 
     # Volledige uitleg van de voorspelling + het normbeeld
-    with st.expander("Hoe werkt de voorspelling en het normbeeld? (volledige uitleg)"):
+    with st.expander("ⓘ  Hoe werkt de voorspelling en het normbeeld?"):
         st.markdown(
             """
 **In het kort**: de tool leert wat normaal is per regio, voorspelt het
@@ -406,7 +413,7 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
     )
 
     # Scenario-verkenning (what-if op de voorspelling)
-    with st.expander("Scenario-verkenning (wat als de activiteit verandert?)"):
+    with st.expander("ⓘ  Scenario-verkenning — wat als de activiteit verandert?"):
         st.slider(
             "Verwachte activiteit aanpassen (%)",
             min_value=-50, max_value=100, value=0, step=10,
@@ -481,11 +488,9 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
 
     # Voorspelnauwkeurigheid (backtest) — eerlijkheid over hoe goed dit werkt
     if nb_view.backtest_scores:
-        st.markdown(
-            "<div class='section-label'>Voorspelnauwkeurigheid (backtest)</div>",
-            unsafe_allow_html=True,
-        )
-        st.caption(
+        bt_box = st.expander(
+            "ⓘ  Voorspelnauwkeurigheid — welke methode werkt hier het best?")
+        bt_box.caption(
             "Elke methode is getest door recente periodes achter te houden, "
             "te voorspellen en te vergelijken met de werkelijkheid. Lager = "
             "beter. Het normbeeld combineert de beste twee methodes."
@@ -502,9 +507,9 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
                 nb_view.backtest_scores.items(), key=lambda x: x[1].mase
             )
         ]
-        st.dataframe(pd.DataFrame(bt_rows), use_container_width=True,
-                     hide_index=True)
-        st.caption(
+        bt_box.dataframe(pd.DataFrame(bt_rows), use_container_width=True,
+                         hide_index=True)
+        bt_box.caption(
             "**MASE** is de maat waarop gekozen wordt: de fout gedeeld door "
             "die van een naïeve voorspelling. Onder 1 = beter dan naïef. "
             "Anders dan een percentage is MASE vergelijkbaar tussen regio's "
@@ -555,7 +560,9 @@ aandacht verdienen omdat ze afwijken van wat normaal is voor deze regio.
             "voorspelband verbreedt met de horizon (conservatieve default)"
         )
     if trust_bits:
-        st.caption(" · ".join(trust_bits))
+        with st.expander("ⓘ  Hoe betrouwbaar is dit beeld?"):
+            for bit in trust_bits:
+                st.markdown(f"- {bit}")
     return nb_view
 
 
@@ -599,7 +606,7 @@ def _render_situation_map(result, ds: dict, selected_location: str | None):
     for name, v in vizs.items():
         if "kaart" in name.lower():
             v.render(res, time_col="timestamp", value_col="value")
-    with st.expander("Activiteit per periode (heatmap)"):
+    with st.expander("ⓘ  Activiteit per periode (heatmap)"):
         for name, v in vizs.items():
             if "heatmap" in name.lower():
                 v.render(res, time_col="timestamp", value_col="value")
@@ -676,5 +683,10 @@ def _render_timescale_advice(dataset_id: int, df_raw, current_agg: str):
             key="ts_apply", type="primary",
         ):
             st.session_state.aggregation = advice.recommended
+            # Óók de widget-sleutel zetten. Een selectbox mét key leest bij
+            # een rerun zijn eigen session_state-waarde en negeert `index=`;
+            # zonder deze regel sprong de keuze meteen terug en leek de
+            # knop niets te doen.
+            st.session_state["nb_agg_pick"] = advice.recommended
             st.rerun()
 

@@ -74,11 +74,15 @@ def render_normbeeld_chart(
     fig = go.Figure()
 
     # --- Historische band (met scherpe rand-lijnen) ---
+    # Boven- en ondergrens zitten in één legendgroup: zonder dat verdween
+    # bij het uitklikken van de band alleen de vulling en bleef de
+    # bovengrens als losse stippellijn staan.
     fig.add_trace(go.Scatter(
         x=hist["date"], y=hist["upper"],
         mode="lines",
         line=dict(color=p["band_edge"], width=1, dash="dot"),
         name="Bovengrens normbeeld", showlegend=False,
+        legendgroup="nb_band",
         hovertemplate="bovengrens %{y:.1f}<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
@@ -87,6 +91,7 @@ def render_normbeeld_chart(
         line=dict(color=p["band_edge"], width=1, dash="dot"),
         fill="tonexty", fillcolor=p["band"],
         name="Normbeeld (band)",
+        legendgroup="nb_band",
         hovertemplate="ondergrens %{y:.1f}<extra></extra>",
     ))
 
@@ -124,12 +129,14 @@ def render_normbeeld_chart(
         x=fc["date"], y=fc["upper"],
         mode="lines", line=dict(color="rgba(0,0,0,0)", width=0),
         name="_fc_upper", showlegend=False, hoverinfo="skip",
+        legendgroup="fc_band",
     ))
     fig.add_trace(go.Scatter(
         x=fc["date"], y=fc["lower"],
         mode="lines", line=dict(color="rgba(0,0,0,0)", width=0),
         fill="tonexty", fillcolor=p["forecast_band"],
         name="Voorspelling (band)",
+        legendgroup="fc_band",
         hoverinfo="skip",
     ))
 
