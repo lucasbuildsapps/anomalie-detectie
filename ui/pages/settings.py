@@ -54,6 +54,7 @@ def _settings_bronnen():
     from connectors.base import get_connectors
     from core.ingest import run_connector
 
+    _render_notification_panel()
     st.markdown("**Automatische data-inwinning**")
     st.caption(
         "Elke bron is een plug-in in `connectors/`. Test hem hier, draai "
@@ -116,6 +117,51 @@ def _settings_bronnen():
                                         "error"]],
                     use_container_width=True, hide_index=True,
                 )
+
+
+def _render_notification_panel():
+    """Meldkanaal: status, testknop en uitleg over de onderdrukking."""
+    from core.notify import is_configured, send_test
+
+    st.markdown("**Waarschuwingen**")
+    if not is_configured():
+        st.info(
+            "Geen meldkanaal ingesteld — de tool waarschuwt alleen als je "
+            "hem opent. Zet `SENTINEL_WEBHOOK_URL` (Teams/Slack/Mattermost) "
+            "of `SENTINEL_SMTP_HOST` + `SENTINEL_MAIL_TO` om na elke "
+            "inwinning een melding te krijgen."
+        )
+        return
+
+    st.caption(
+        "Na elke geslaagde inwinning gaan **nieuwe** afwijkingen de deur "
+        "uit. Dezelfde afwijking wordt nooit twee keer gemeld, en er geldt "
+        "een maximum per run — een kanaal dat elke dag afgaat wordt "
+        "genegeerd, en dan denk je gewaarschuwd te worden terwijl dat niet "
+        "zo is."
+    )
+    if st.button("Testbericht sturen", key="notif_test",
+                 disabled=not may("manage_sources")):
+        with st.spinner("Versturen..."):
+            result = send_test()
+        if result.sent:
+            st.success(f"Verstuurd via: {', '.join(result.channels)}.")
+        else:
+            st.error(result.error or "Versturen mislukt.")
+
+    try:
+        rows = [a for a in storage.list_audit(200)
+                if a["action"] in ("melding_verstuurd", "melding_mislukt")]
+    except Exception:
+        rows = []
+    if rows:
+        st.dataframe(
+            pd.DataFrame(rows)[["ts", "action", "object_id", "detail"]]
+            .rename(columns={"ts": "Tijd (UTC)", "action": "Resultaat",
+                             "object_id": "Dataset", "detail": "Detail"}),
+            use_container_width=True, hide_index=True,
+        )
+    st.divider()
 
 
 def _render_source_health():

@@ -153,6 +153,20 @@ snapshots_t = Table(
     Index("ix_snap_dataset_ts", "dataset_id", "created_at"),
 )
 
+# Verstuurde meldingen: welke afwijking is al gemeld. Zonder dit stuurt
+# elke run dezelfde waarschuwing opnieuw, en dan wordt het kanaal binnen
+# twee weken genegeerd — gevaarlijker dan geen kanaal, want je denkt dat
+# je gewaarschuwd wordt.
+notifications_t = Table(
+    "notifications", _metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("dataset_id", Integer,
+           ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False),
+    Column("finding_key", String(64), nullable=False),
+    Column("sent_at", DateTime, nullable=False),
+    UniqueConstraint("dataset_id", "finding_key", name="uq_notif_dataset_key"),
+)
+
 # Ingest-runs: één regel per connector-run (geautomatiseerde inwinning).
 # Basis voor bron-gezondheid ("is mijn data actueel?") en alerting.
 ingest_runs_t = Table(
@@ -383,6 +397,28 @@ def get_snapshot(snapshot_id: int) -> dict | None:
     return out
 
 
+def notified_keys(dataset_id: int) -> set:
+    """Sleutels van afwijkingen die al gemeld zijn."""
+    with _engine().connect() as con:
+        rows = con.execute(
+            select(notifications_t.c.finding_key)
+            .where(notifications_t.c.dataset_id == dataset_id)
+        ).scalars().all()
+    return set(rows)
+
+
+def mark_notified(dataset_id: int, keys: list) -> None:
+    """Leg vast dat deze afwijkingen zijn gemeld (idempotent)."""
+    if not keys:
+        return
+    now = datetime.now(UTC).replace(tzinfo=None)
+    rows = [{"dataset_id": dataset_id, "finding_key": k, "sent_at": now}
+            for k in keys]
+    with _engine().begin() as con:
+        _insert_ignore_conflicts(con, rows, table=notifications_t,
+                                 conflict_cols=("dataset_id", "finding_key"))
+
+
 def record_ingest_run(source: str, started_at: datetime, status: str,
                       rows_offered: int | None = None,
                       rows_added: int | None = None,
@@ -567,23 +603,30 @@ def _to_naive_utc(ts) -> datetime:
     return t.to_pydatetime()
 
 
-def _insert_ignore_conflicts(con, rows: list[dict]) -> None:
-    """Batch-insert die bestaande (dataset_id, row_hash)-paren stil overslaat.
+def _insert_ignore_conflicts(con, rows: list[dict], table=None,
+                             conflict_cols: tuple = ("dataset_id", "row_hash"),
+                             ) -> None:
+    """Batch-insert die botsende rijen stil overslaat.
 
     Gebruikt de dialect-native ON CONFLICT DO NOTHING (SQLite én Postgres)
-    zodat dedupe in de database gebeurt in plaats van alle bestaande hashes
+    zodat dedupe in de database gebeurt in plaats van alle bestaande sleutels
     naar de client te halen (dat schaalde O(datasetgrootte) per import).
+
+    Standaard op `observations`/(dataset_id, row_hash); met `table` en
+    `conflict_cols` ook bruikbaar voor andere tabellen met dezelfde
+    behoefte, zoals verstuurde meldingen.
     """
+    target = observations if table is None else table
     dialect = con.dialect.name
     if dialect == "sqlite":
         from sqlalchemy.dialects.sqlite import insert as dialect_insert
     elif dialect == "postgresql":
         from sqlalchemy.dialects.postgresql import insert as dialect_insert
     else:  # onbekend dialect: val terug op gewone insert (kan IntegrityError geven)
-        con.execute(insert(observations), rows)
+        con.execute(insert(target), rows)
         return
-    stmt = dialect_insert(observations).on_conflict_do_nothing(
-        index_elements=["dataset_id", "row_hash"]
+    stmt = dialect_insert(target).on_conflict_do_nothing(
+        index_elements=list(conflict_cols)
     )
     con.execute(stmt, rows)
 

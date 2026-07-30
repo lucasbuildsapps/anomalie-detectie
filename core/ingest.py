@@ -113,8 +113,32 @@ def _snapshot_after_ingest(dataset_id: int, source: str) -> None:
             dataset_id, alerts, normbeelds, aggregation=agg, horizon=14,
             n_rows=len(df), label=f"na inwinning ({source})",
         )
+
+        # Waarschuwen is het sluitstuk: zonder melding blijft een piek op
+        # zaterdagavond liggen tot maandag. Losstaand van de snapshot in
+        # een eigen try, zodat een kapot meldkanaal de vastlegging niet
+        # meesleept.
+        if alerts:
+            _notify_after_ingest(dataset_id, alerts)
     except Exception:
         _logger.exception("snapshot na ingest mislukt",
+                          extra={"ctx": {"dataset_id": dataset_id}})
+
+
+def _notify_after_ingest(dataset_id: int, alerts: list) -> None:
+    try:
+        from core.notify import is_configured, notify_new_alerts
+        if not is_configured():
+            return
+        name = next((d["name"] for d in storage.list_datasets(include_hidden=True)
+                     if d["id"] == dataset_id), str(dataset_id))
+        result = notify_new_alerts(dataset_id, name, alerts)
+        _logger.info("melding-resultaat", extra={"ctx": {
+            "dataset_id": dataset_id, "verstuurd": result.sent,
+            "kanalen": result.channels, "nieuw": result.n_new,
+            "onderdrukt": result.n_suppressed}})
+    except Exception:
+        _logger.exception("melden na ingest mislukt",
                           extra={"ctx": {"dataset_id": dataset_id}})
 
 

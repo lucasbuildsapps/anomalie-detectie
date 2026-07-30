@@ -93,6 +93,44 @@ nooit stilzwijgend beheerdersrechten geeft. Tests in
 Controleren of het werkt: `GET /whoami` op de API toont wie je bent, welke
 rol je hebt en waar die identiteit vandaan komt.
 
+### Waarschuwingen (meldkanaal)
+
+Zonder meldkanaal waarschuwt de tool alleen wie hem opent — een piek op
+zaterdagavond blijft dan liggen tot maandag. Zet één van beide:
+
+```bash
+# Teams / Slack / Mattermost (inkomende webhook)
+SENTINEL_WEBHOOK_URL=https://...
+
+# of e-mail
+SENTINEL_SMTP_HOST=smtp.jouwdomein.nl
+SENTINEL_SMTP_PORT=587
+SENTINEL_SMTP_USER=...
+SENTINEL_SMTP_PASSWORD=...
+SENTINEL_MAIL_FROM=sentinel@jouwdomein.nl
+SENTINEL_MAIL_TO=analist@jouwdomein.nl,wacht@jouwdomein.nl
+```
+
+Optioneel: `SENTINEL_ALERT_MIN=boven` (alleen stijgingen) en
+`SENTINEL_ALERT_MAX_PER_RUN=25`.
+
+Na elke geslaagde inwinning gaan **nieuwe** afwijkingen de deur uit.
+Bewust ingebouwde terughoudendheid, want een kanaal dat elke dag afgaat
+wordt genegeerd — en dan denk je gewaarschuwd te worden terwijl dat niet
+zo is:
+
+- de **eerste** run van een dataset meldt niets en legt alleen een
+  nulmeting vast (anders krijg je bij het aanzetten van een bron meteen
+  maanden historie over je heen);
+- dezelfde afwijking gaat nooit twee keer de deur uit;
+- er geldt een maximum per run;
+- een mislukte verzending markeert niets als gemeld, dus de melding
+  volgt alsnog zodra het kanaal weer werkt — en de mislukking staat in
+  de audit-trail.
+
+Testen kan zonder te wachten: Instellingen → Bronnen → *Testbericht
+sturen*.
+
 ### Automatische data-inwinning
 
 De `worker`-service draait connectors uit `connectors/` op hun eigen
