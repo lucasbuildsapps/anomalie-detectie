@@ -64,20 +64,15 @@ def _settings_bronnen():
     )
     with st.expander("ⓘ  In het kort: wat heb ik nodig per bron?"):
         st.markdown(
-            "| bron | sleutel nodig | wat je krijgt |
-"
-            "|---|---|---|
-"
-            "| **GDELT** | nee | nieuwsvolume per gebied — activiteits-"
-            "indicator, geen gebeurtenissen-telling |
-"
-            "| **NASA FIRMS** | ja, direct per e-mail | satelliet-"
-            "warmtedetecties met coördinaten; ziet óók landbouw en "
-            "industrie |
-"
-            "| **ACLED** | ja, na registratie | gevalideerde conflict-"
-            "gebeurtenissen met type en dodental |
-"
+            "| bron | sleutel nodig | wat je krijgt |\n"
+            "|---|---|---|\n"
+            "| **GDELT** | nee | nieuwsvolume per gebied — "
+            "activiteits-indicator, geen gebeurtenissen-telling |\n"
+            "| **NASA FIRMS** | ja, direct per e-mail | "
+            "satelliet-warmtedetecties met coördinaten; ziet óók landbouw "
+            "en industrie |\n"
+            "| **ACLED** | ja, na registratie | gevalideerde "
+            "conflict-gebeurtenissen met type en dodental |\n"
         )
         st.markdown(
             "Twee dingen die vaak misgaan: een sleutel moet **zowel** in "

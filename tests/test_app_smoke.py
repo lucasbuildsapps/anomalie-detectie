@@ -39,20 +39,43 @@ def test_empty_state_shows_welcome():
     assert not at.exception
 
 
+def _assert_page_healthy(at, what: str):
+    """Geen crash én geen router-foutmelding.
+
+    Alleen op `at.exception` controleren is niet genoeg: de router vangt
+    een kapotte pagina op en toont een nette melding. Daardoor slaagde
+    een smoketest ooit terwijl de instellingenpagina een syntaxfout had —
+    de vangrail verborg precies wat de test moest vinden.
+    """
+    assert not at.exception, f"{what} crasht: {at.exception}"
+    fouten = [e.value for e in at.error if "Er ging iets mis" in e.value]
+    assert not fouten, f"{what} toont een foutmelding: {fouten}"
+
+
 def test_all_pages_render():
     from i18n.nl import t
     for page_key in ("nav_normbeeld", "nav_triage", "nav_compare"):
         at = AppTest.from_file(APP, default_timeout=60)
         at.session_state["active_page"] = t(page_key)
         at.run()
-        assert not at.exception, f"pagina {page_key} crasht: {at.exception}"
+        _assert_page_healthy(at, f"pagina {page_key}")
 
 
 def test_settings_overlay_renders():
     at = AppTest.from_file(APP, default_timeout=60)
     at.session_state["show_settings"] = True
     at.run()
-    assert not at.exception, f"instellingen crasht: {at.exception}"
+    _assert_page_healthy(at, "instellingen")
+
+
+def test_every_page_module_imports_cleanly():
+    """Directe importcontrole, los van de router. Een pagina met een
+    syntaxfout hoort hier meteen op te vallen."""
+    import importlib
+
+    for module in ("ui.pages.normbeeld", "ui.pages.triage",
+                   "ui.pages.compare", "ui.pages.settings"):
+        importlib.import_module(module)
 
 
 def test_broken_page_does_not_kill_the_app(monkeypatch):
