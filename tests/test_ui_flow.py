@@ -63,6 +63,80 @@ class TestFlowStepper:
         from ui.components import NORMBEELD_STEPS
         assert all(hint for _, hint in NORMBEELD_STEPS)
 
+    def test_flow_reports_who_made_each_choice(self, monkeypatch):
+        """Het herhalen van de keuzes is geen informatie — die staan al op
+        het scherm. Wat de gebruiker niét ziet is of hij iets zélf heeft
+        ingesteld of dat de tool het invulde."""
+        import ui.components as comp
+
+        rendered = []
+        monkeypatch.setattr(comp.st, "markdown",
+                            lambda html, **k: rendered.append(html))
+        monkeypatch.setattr(comp.st, "caption",
+                            lambda text, **k: rendered.append(text))
+        comp.render_flow(
+            comp.NORMBEELD_STEPS, current=3,
+            values={"Dataset": "Demo", "Tijdschaal": "dagen"},
+            sources={"Dataset": "jij", "Tijdschaal": "auto"},
+        )
+        html = " ".join(rendered)
+        assert "eigen keuze" in html
+        assert "automatisch" in html
+
+    def test_flow_warns_when_the_tool_filled_things_in(self, monkeypatch):
+        import ui.components as comp
+
+        rendered = []
+        monkeypatch.setattr(comp.st, "markdown",
+                            lambda html, **k: rendered.append(html))
+        monkeypatch.setattr(comp.st, "caption",
+                            lambda text, **k: rendered.append(text))
+        comp.render_flow(comp.NORMBEELD_STEPS, current=3,
+                         sources={"Tijdschaal": "auto", "Regio": "auto"})
+        assert any("aanname" in r for r in rendered)
+
+    def test_flow_stays_silent_when_everything_is_deliberate(self, monkeypatch):
+        import ui.components as comp
+
+        captions = []
+        monkeypatch.setattr(comp.st, "markdown", lambda html, **k: None)
+        monkeypatch.setattr(comp.st, "caption",
+                            lambda text, **k: captions.append(text))
+        comp.render_flow(comp.NORMBEELD_STEPS, current=3,
+                         sources={s[0]: "jij" for s in comp.NORMBEELD_STEPS})
+        assert not captions
+
+    def test_notes_are_shown(self, monkeypatch):
+        import ui.components as comp
+
+        rendered = []
+        monkeypatch.setattr(comp.st, "markdown",
+                            lambda html, **k: rendered.append(html))
+        monkeypatch.setattr(comp.st, "caption", lambda text, **k: None)
+        comp.render_flow(comp.NORMBEELD_STEPS, current=3,
+                         notes={"Dataset": "data 75d oud"})
+        assert "75d oud" in " ".join(rendered)
+
+
+class TestInfoMarkers:
+    """Uitleg moet consequent aan de ⓘ herkenbaar zijn; anders zoekt de
+    gebruiker naar informatie die er wel is."""
+
+    def _source(self, name: str) -> str:
+        import pathlib
+        root = pathlib.Path(__file__).resolve().parent.parent
+        return (root / "ui" / "pages" / name).read_text(encoding="utf-8")
+
+    def test_normbeeld_explanations_are_marked(self):
+        src = self._source("normbeeld.py")
+        assert src.count("ⓘ") >= 6
+
+    def test_timescale_advice_is_marked(self):
+        assert "ⓘ  Welke tijdschaal" in self._source("normbeeld.py")
+
+    def test_assumptions_panel_is_marked(self):
+        assert "ⓘ  Aannames onder dit beeld" in self._source("normbeeld.py")
+
 
 class TestDarkThemeConsistency:
     """Streamlit's eigen widgets gebruiken de kleuren uit config.toml, niet

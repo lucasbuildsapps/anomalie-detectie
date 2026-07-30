@@ -71,34 +71,48 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"],
 .stApp [data-testid="stCaptionContainer"] p,
 [data-testid="stWidgetLabel"] p {{ color: {p['text_muted']} !important; }}
 
-/* Invoerelementen. Streamlit rendert deze via BaseWeb met zijn eigen
-   themakleuren; die staan in .streamlit/config.toml en volgen onze
-   runtime-toggle niet. Daarom hier expliciet forceren — anders krijg je
-   witte velden op een donkere pagina. */
+/* Invoerelementen. Streamlit rendert die via BaseWeb met de kleuren uit
+   .streamlit/config.toml — die staat vast op donker en volgt onze
+   runtime-toggle niet. In het lichte thema moeten we dus overal
+   overschrijven, en wel op élk nestniveau: BaseWeb legt de achtergrond
+   een paar divs diep, en een selector met `>` mist die. Vandaar de
+   descendant-selectors. */
+[data-testid="stSelectbox"] div[data-baseweb="select"],
+[data-testid="stSelectbox"] div[data-baseweb="select"] div,
+[data-testid="stMultiSelect"] div[data-baseweb="select"],
+[data-testid="stMultiSelect"] div[data-baseweb="select"] div,
 [data-baseweb="select"] > div,
-[data-baseweb="select"] > div > div,
-[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
-[data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
-[data-baseweb="input"] > div,
+[data-baseweb="input"], [data-baseweb="input"] > div,
+[data-baseweb="base-input"],
 [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea,
 [data-testid="stNumberInput"] input,
 [data-testid="stNumberInput"] div[data-baseweb="input"],
 [data-testid="stDateInput"] input,
-[data-baseweb="popover"], [data-baseweb="menu"], [data-baseweb="menu"] ul {{
-    background: {p['surface']} !important;
+[data-baseweb="popover"], [data-baseweb="popover"] div,
+[data-baseweb="menu"], [data-baseweb="menu"] ul, [data-baseweb="menu"] li {{
+    background-color: {p['surface']} !important;
     color: {p['text']} !important;
     border-color: {p['border']} !important;
 }}
 /* Tekst binnenin de widgets (BaseWeb nest die een paar niveaus diep). */
 [data-baseweb="select"] div, [data-baseweb="select"] span,
-[data-baseweb="menu"] li, [data-baseweb="menu"] span {{
+[data-baseweb="select"] input,
+[data-baseweb="menu"] li, [data-baseweb="menu"] span,
+[data-testid="stNumberInput"] input {{
     color: {p['text']} !important;
 }}
+/* Actieve/gehoverde optie in de uitklaplijst moet wél opvallen. */
+[data-baseweb="menu"] li:hover,
+[data-baseweb="menu"] li[aria-selected="true"] {{
+    background-color: {p['surface_alt']} !important;
+}}
 /* Pijltjes en wis-icoontjes zichtbaar houden. */
-[data-baseweb="select"] svg {{ fill: {p['text_muted']} !important; }}
+[data-baseweb="select"] svg, [data-testid="stNumberInput"] svg {{
+    fill: {p['text_muted']} !important;
+}}
 /* Plus/min bij number_input. */
 [data-testid="stNumberInput"] button {{
-    background: {p['surface_alt']} !important;
+    background-color: {p['surface_alt']} !important;
     color: {p['text']} !important;
     border-color: {p['border']} !important;
 }}
@@ -181,15 +195,39 @@ h1, h2, h3, h4, h5 {{
 .flow-step.current .num {{
     background: {p['accent']}; color: {p['accent_text']};
 }}
+.flow-step .nm {{ font-weight: 600; }}
 .flow-step .val {{ color: {p['text_muted']}; }}
 .flow-step.done .val, .flow-step.current .val {{ color: {p['accent_dim']}; }}
+/* Herkomst van de keuze: het verschil tussen 'ingesteld' en 'ingevuld'. */
+.flow-step .src {{
+    font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 1px 6px; border-radius: 2px;
+}}
+.flow-step .src.auto {{
+    background: {p['surface_alt']}; color: {p['text_muted']};
+    border: 1px solid {p['border']};
+}}
+.flow-step .src.eigen {{
+    background: {p['accent']}; color: {p['accent_text']};
+}}
+.flow-step .note {{ color: {p['mid']}; font-size: 0.66rem; }}
 
 /* Uitleg-blokken: standaard ingeklapt, zodat de pagina rustig blijft
    voor wie alleen het beeld wil zien. Wie de onderbouwing nodig heeft,
-   klikt hem open. */
+   klikt hem open. Uitleg is herkenbaar aan de ⓘ en staat in de gedempte
+   kleur; actie-blokken (bv. 'Indicator toevoegen') blijven normaal, zodat
+   het verschil tussen lezen en doen zichtbaar is. */
 [data-testid="stExpander"] summary p {{
-    color: {p['text_muted']} !important;
-    font-size: 0.8rem;
+    font-size: 0.82rem;
+}}
+[data-testid="stExpander"] summary p:has(+ *),
+[data-testid="stExpander"] summary p {{
+    color: {p['text']};
+}}
+/* De ⓘ zelf: accentkleur en iets groter, zodat hij als icoon leest. */
+[data-testid="stExpander"] summary p:first-letter {{
+    color: {p['accent']};
+    font-size: 1.05rem;
 }}
 
 /* Metrics — strak, monospace, met een subtiele accentgloed in het donkere

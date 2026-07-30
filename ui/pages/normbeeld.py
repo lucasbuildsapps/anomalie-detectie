@@ -139,10 +139,14 @@ def page_normbeeld():
     if st.session_state.active_dataset_id not in ids:
         st.session_state.active_dataset_id = ids[0]
 
+    # De balk staat bovenaan zodat hij oriënteert; hij wordt pas gevuld
+    # als de analyse klaar is, dus we reserveren hier de plek.
+    flow_slot = st.container()
+
     c1, c2 = st.columns([3, 1])
     with c1:
         chosen = st.selectbox(
-            t("ds_dataset"), ids,
+            "1 · " + t("ds_dataset"), ids,
             format_func=lambda i: by_id[i]["name"],
             index=ids.index(st.session_state.active_dataset_id),
             key="nb_ds_select",
@@ -165,6 +169,8 @@ def page_normbeeld():
     ds = by_id[chosen]
     ds_meta = ds["column_mapping"] or {}
     _flow_values = {"Dataset": ds["name"]}
+    _flow_sources = {"Dataset": "jij" if len(ids) > 1 else "auto"}
+    _flow_notes = {}
     gap_policy = ds_meta.get("gap_policy", "zero")
     methods_key = (
         "auto" if st.session_state.nb_methods_override is None
@@ -211,7 +217,7 @@ def page_normbeeld():
         "monthly": t("agg_monthly"),
     }
     new_agg = st.selectbox(
-        t("agg_label"), agg_options,
+        "2 · " + t("agg_label"), agg_options,
         format_func=lambda k: agg_labels[k],
         index=agg_options.index(st.session_state.aggregation)
         if st.session_state.aggregation in agg_options else 0,
@@ -222,6 +228,10 @@ def page_normbeeld():
         st.rerun()
 
     _flow_values["Tijdschaal"] = AGGREGATIONS[effective_agg][2]
+    _flow_sources["Tijdschaal"] = (
+        "auto" if st.session_state.aggregation == "auto" else "jij")
+    if q.get("staleness_days") and q["staleness_days"] > 30:
+        _flow_notes["Dataset"] = f"data {q['staleness_days']}d oud"
     _render_timescale_advice(ds["id"], df_raw, effective_agg)
 
     if not normbeelds:
@@ -236,7 +246,7 @@ def page_normbeeld():
     if st.session_state.nb_selected_location not in locs_sorted:
         st.session_state.nb_selected_location = locs_sorted[0]
     selected = st.selectbox(
-        t("nb_region"),
+        "3 · " + t("nb_region"),
         locs_sorted,
         index=locs_sorted.index(st.session_state.nb_selected_location),
         format_func=lambda loc: (
@@ -249,7 +259,13 @@ def page_normbeeld():
         st.rerun()
 
     _flow_values["Regio"] = selected
-    render_flow(NORMBEELD_STEPS, current=3, values=_flow_values)
+    _flow_sources["Regio"] = (
+        "auto" if st.session_state.get("nb_detail_pick") is None else "jij")
+    _flow_values["Beeld"] = (
+        f"{len(normbeelds)} regio's · {len(alerts)} recente afwijking(en)")
+    with flow_slot:
+        render_flow(NORMBEELD_STEPS, current=3, values=_flow_values,
+                    sources=_flow_sources, notes=_flow_notes)
 
     _render_normbeeld_detail(
         df_raw, normbeelds[selected], selected, ds["id"], unit, effective_agg,
@@ -630,8 +646,8 @@ def _render_assumptions(nb_view, ds_meta: dict, result=None):
         source_reliability=ds_meta.get("source_reliability"),
     )
     crit = critical_only(items)
-    titel = (f"Aannames onder dit beeld ({len(crit)} met wezenlijk effect)"
-             if crit else f"Aannames onder dit beeld ({len(items)})")
+    titel = (f"ⓘ  Aannames onder dit beeld ({len(crit)} met wezenlijk effect)"
+             if crit else f"ⓘ  Aannames onder dit beeld ({len(items)})")
     with st.expander(titel, expanded=False):
         st.caption(summarise(items))
         for a in items:
@@ -655,7 +671,7 @@ def _render_timescale_advice(dataset_id: int, df_raw, current_agg: str):
         return
 
     with st.expander(
-        f"Welke tijdschaal past bij deze data? "
+        f"ⓘ  Welke tijdschaal past bij deze data? "
         f"(gemeten advies: {AGGREGATIONS[advice.recommended][1]})",
         expanded=advice.recommended != current_agg,
     ):

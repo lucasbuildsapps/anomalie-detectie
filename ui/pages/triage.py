@@ -81,8 +81,8 @@ def _render_evaluation(dataset_id: int):
 
     incidents = incidents_from_annotations(dataset_id)
     with st.expander(
-        f"Welke detector werkt op deze data? ({len(incidents)} bevestigde "
-        f"incidenten als ijkpunt)"
+        f"ⓘ  Welke detector werkt op deze data? ({len(incidents)} "
+        f"bevestigde incidenten als ijkpunt)"
     ):
         if len(incidents) < 3:
             st.caption(
@@ -375,7 +375,7 @@ def _render_peer_deviations(dataset_id: int, aggregation: str):
                 unsafe_allow_html=True,
             )
 
-    with st.expander("Samenhang tussen regio's (correlatiematrix)"):
+    with st.expander("ⓘ  Samenhang tussen regio's (correlatiematrix)"):
         st.caption(
             "Hoe sterk bewegen regio's samen, over de hele historie "
             "(genormaliseerd, zodat een grote regio de matrix niet "
@@ -401,7 +401,7 @@ def _render_agreement(result):
         verdict = ("De algoritmes zeggen grotendeels hetzelfde — behandel "
                    "een meerderheid als één waarneming.")
     with st.expander(
-        f"Hoe zelfstandig zijn deze stemmen? "
+        f"ⓘ  Hoe zelfstandig zijn deze stemmen? "
         f"({n_eff:.1f} van {n} tellen echt afzonderlijk)"
     ):
         st.markdown(f"**{verdict}**")

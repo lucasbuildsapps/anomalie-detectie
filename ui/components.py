@@ -399,28 +399,58 @@ NORMBEELD_STEPS = (
 )
 
 
-def render_flow(steps, current: int, values: dict | None = None) -> None:
-    """Toon de stappenbalk met de gemaakte keuzes erin.
+def render_flow(steps, current: int, values: dict | None = None,
+                sources: dict | None = None, notes: dict | None = None) -> None:
+    """Stappenbalk die méér doet dan de keuzes herhalen.
 
-    `current` is de 0-gebaseerde index van de stap waar de gebruiker nu
-    staat; alles ervoor geldt als afgerond. `values` mag per stapnaam de
-    gekozen waarde bevatten, zodat de balk ook samenvat wát er is gekozen.
+    Het herhalen van wat er twee regels lager al staat is geen informatie.
+    Wat de gebruiker níét kan zien, is **wie** de keuze heeft gemaakt: is
+    dit bewust ingesteld, of heeft de tool iets ingevuld? Dat onderscheid
+    bepaalt hoe hard je op het resultaat mag leunen, en het is precies wat
+    het aannameregister ook expliciet maakt (ICD 203).
+
+    `sources` mag per stap 'auto' of 'jij' bevatten; `notes` een korte
+    waarschuwing (bv. verouderde data) die bij die stap hoort.
     """
-    values = values or {}
+    values, sources, notes = values or {}, sources or {}, notes or {}
     html = ["<div class='flow-steps'>"]
     for i, (naam, hint) in enumerate(steps):
         cls = "done" if i < current else ("current" if i == current else "")
         gekozen = values.get(naam)
         label = _html.escape(str(gekozen)) if gekozen else _html.escape(hint)
+
+        herkomst = sources.get(naam)
+        bron_html = ""
+        if herkomst == "auto":
+            bron_html = "<span class='src auto'>automatisch</span>"
+        elif herkomst == "jij":
+            bron_html = "<span class='src eigen'>eigen keuze</span>"
+
+        note = notes.get(naam)
+        note_html = (f"<span class='note'>{_html.escape(str(note))}</span>"
+                     if note else "")
+
         html.append(
             f"<div class='flow-step {cls}'>"
             f"<span class='num'>{i + 1}</span>"
-            f"<span>{_html.escape(naam)}</span>"
-            f"<span class='val'>· {label}</span>"
+            f"<span class='nm'>{_html.escape(naam)}</span>"
+            f"<span class='val'>{label}</span>"
+            f"{bron_html}{note_html}"
             f"</div>"
         )
     html.append("</div>")
     st.markdown("".join(html), unsafe_allow_html=True)
+
+    auto = [n for n, (naam, _) in zip(
+        [sources.get(s[0]) for s in steps], steps, strict=False)
+        if n == "auto"]
+    if auto:
+        st.caption(
+            f"{len(auto)} van de {len(steps)} keuzes is door de tool "
+            f"ingevuld, niet door jou. Dat is prima om mee te beginnen, "
+            f"maar het is wél een aanname — zie 'Aannames onder dit beeld' "
+            f"onder de grafiek."
+        )
 
 
 def explain(title: str, body: str, *, expanded: bool = False) -> None:
