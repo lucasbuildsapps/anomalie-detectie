@@ -316,12 +316,56 @@ def _describe_pattern(
     return " ".join(parts)
 
 
-def _confidence(n_periods: int, period_detected: bool) -> str:
+def _confidence(n_periods: int, period_detected: bool,
+                periods_since_break: int | None = None,
+                coverage: float | None = None,
+                target_coverage: float | None = None,
+                recent_deviation_rate: float | None = None) -> str:
+    """Hoe betrouwbaar is dit normbeeld?
+
+    Lengte alleen is misleidend. Een reeks van drie jaar die vorige maand
+    van regime wisselde is *minder* betrouwbaar dan een korte stabiele
+    reeks: het model kent het nieuwe regime nauwelijks. Daarom telt ook
+    mee hoe lang het huidige regime al loopt, en of de band feitelijk
+    dekt wat hij belooft.
+    """
     if n_periods >= 60 and period_detected:
-        return "hoog"
-    if n_periods >= 30:
-        return "midden"
-    return "laag"
+        level = "hoog"
+    elif n_periods >= 30:
+        level = "midden"
+    else:
+        level = "laag"
+
+    order = ["laag", "midden", "hoog"]
+
+    def downgrade(current: str, steps: int = 1) -> str:
+        return order[max(0, order.index(current) - steps)]
+
+    # Vers regime: het model heeft het nieuwe niveau nog nauwelijks gezien.
+    if periods_since_break is not None:
+        if periods_since_break < 15:
+            level = downgrade(level, 2)
+        elif periods_since_break < 30:
+            level = downgrade(level)
+
+    # Band die niet dekt wat hij belooft, verdient geen 'hoog'.
+    if coverage is not None and target_coverage is not None and (
+            abs(coverage - target_coverage) > 0.10):
+        level = downgrade(level)
+
+    # Het model past nú niet. Een breuk van de afgelopen dagen is te kort
+    # om als regime herkend te worden — precies de situatie waarin het
+    # normbeeld het minst te vertrouwen is. Veel recente afwijkingen zijn
+    # daar het directe signaal van, of het nu een blip is of het begin van
+    # iets nieuws: dat onderscheid kán de tool nog niet maken, en dat is
+    # zelf de reden voor minder vertrouwen.
+    if recent_deviation_rate is not None:
+        if recent_deviation_rate > 0.5:
+            level = downgrade(level, 2)
+        elif recent_deviation_rate > 0.25:
+            level = downgrade(level)
+
+    return level
 
 
 def _suggest_best_aggregation(df: pd.DataFrame) -> str:
@@ -864,8 +908,74 @@ LOCAL_SPREAD_WINDOW = 90
 LOCAL_SPREAD_MIN_PERIODS = 20
 
 
+def _segment_ids(series: pd.Series, min_segment: int = 30) -> np.ndarray:
+    """Deel de reeks op in regimes, gescheiden door niveau-breuken.
+
+    Waarom: de lopende spreidingsschatting middelt over ~90 perioden. Bij
+    een scherpe breuk (staakt-het-vuren, start van een campagne) mengt hij
+    dan maandenlang het oude en het nieuwe regime, en zijn afwijkingen in
+    die overgang systematisch verkeerd beoordeeld. Door per segment te
+    schatten telt na een breuk alleen het nieuwe regime mee.
+
+    Segmenten korter dan `min_segment` worden samengevoegd met het
+    voorgaande: van een handvol punten valt geen spreiding te schatten.
+    """
+    n = len(series)
+    ids = np.zeros(n, dtype=int)
+    if n < 2 * min_segment:
+        return ids
+    try:
+        # Lazy import: comparison.py leunt op dit bestand.
+        from core.comparison import detect_change_points
+        points = detect_change_points(series, max_points=6,
+                                      min_separation=max(8, min_segment // 2))
+    except Exception:
+        return ids
+
+    index = pd.Index(series.index)
+    cuts = []
+    for p in points:
+        pos = index.get_indexer([pd.Timestamp(p["date"])], method="nearest")[0]
+        if min_segment <= pos <= n - min_segment:
+            cuts.append(int(pos))
+    if not cuts:
+        return ids
+
+    seg = 0
+    last = 0
+    for cut in sorted(set(cuts)):
+        if cut - last < min_segment:
+            continue
+        seg += 1
+        ids[cut:] = seg
+        last = cut
+    return ids
+
+
+def _rolling_within_segments(values: np.ndarray, segments: np.ndarray,
+                             window: int, how: str = "mean") -> pd.Series:
+    """Lopende statistiek die niet over een regimegrens heen kijkt.
+
+    De waarde op t rust op data strikt vóór t (shift) én uitsluitend op
+    het huidige segment. Vlak na een breuk is er weinig historie; dan is
+    de schatting terecht onzeker in plaats van stilletjes geleend van het
+    vorige regime.
+    """
+    s = pd.Series(values).shift(1)
+    grouped = s.groupby(pd.Series(segments))
+    roll = grouped.rolling(window, min_periods=max(5, LOCAL_SPREAD_MIN_PERIODS // 2))
+    out = (roll.mean() if how == "mean" else roll.median())
+    out = out.reset_index(level=0, drop=True).sort_index()
+    # Randen binnen een segment: vul met het eerste bruikbare getal van
+    # datzelfde segment, niet met dat van het vorige regime.
+    out = out.groupby(pd.Series(segments)).transform(
+        lambda g: g.bfill().ffill())
+    return out
+
+
 def _local_dispersion(y: np.ndarray, mu: np.ndarray,
-                      window: int = LOCAL_SPREAD_WINDOW) -> np.ndarray:
+                      window: int = LOCAL_SPREAD_WINDOW,
+                      segments: np.ndarray | None = None) -> np.ndarray:
     """Pearson-dispersie per periode, geschat op een lopend venster.
 
     Waarom lokaal en niet één getal voor de hele reeks: bij een reeks die
@@ -879,38 +989,131 @@ def _local_dispersion(y: np.ndarray, mu: np.ndarray,
     """
     safe_mu = np.clip(np.asarray(mu, dtype=float), 0.1, None)
     pearson = (np.asarray(y, dtype=float) - safe_mu) ** 2 / safe_mu
-    # shift(1): de spreiding op t wordt geschat op data strikt vóór t.
-    # Zonder die shift zit de piek in zijn eigen venster, blaast hij de
-    # dispersie op en verdwijnt hij in een band die hij zelf verbreedde —
-    # dezelfde leakage als eerder in de rolling-detector.
-    s = pd.Series(pearson).shift(1)
-    phi = s.rolling(window, min_periods=LOCAL_SPREAD_MIN_PERIODS).mean()
-    # Aan het begin is er nog geen venster; val terug op de eerste
-    # bruikbare schatting in plaats van op het globale (te hoge) getal.
-    phi = phi.bfill().ffill()
+    if segments is None:
+        segments = np.zeros(len(safe_mu), dtype=int)
+    # De schatting kijkt alleen naar het verleden (shift binnen
+    # _rolling_within_segments) én niet over een regimegrens heen.
+    phi = _rolling_within_segments(pearson, segments, window, how="mean")
     if phi.isna().all():
         phi = pd.Series(np.full(len(safe_mu), float(np.mean(pearson))))
+    phi = phi.bfill().ffill().fillna(1.0)
     return np.clip(phi.values.astype(float), 1.0, None)
 
 
 def _local_residual_scale(resid: np.ndarray,
-                          window: int = LOCAL_SPREAD_WINDOW) -> np.ndarray:
+                          window: int = LOCAL_SPREAD_WINDOW,
+                          segments: np.ndarray | None = None) -> np.ndarray:
     """Lopende spreidingsmaat van de residuen (MAD-achtig, robuust).
 
     Continue variant van `_local_dispersion`: geeft per periode een
     schaalfactor waarmee de quantile-band meebeweegt met het regime.
     """
-    # shift(1) om dezelfde reden als in _local_dispersion: een uitschieter
-    # mag zijn eigen band niet verbreden.
-    s = pd.Series(np.abs(np.asarray(resid, dtype=float))).shift(1)
-    scale = s.rolling(window, min_periods=LOCAL_SPREAD_MIN_PERIODS).median()
-    scale = scale.bfill().ffill()
-    global_scale = float(np.median(np.abs(resid))) if len(resid) else 1.0
-    scale = scale.fillna(global_scale if global_scale > 0 else 1.0)
+    abs_resid = np.abs(np.asarray(resid, dtype=float))
+    if segments is None:
+        segments = np.zeros(len(abs_resid), dtype=int)
+    scale = _rolling_within_segments(abs_resid, segments, window,
+                                     how="median")
+    global_scale = float(np.median(abs_resid)) if len(abs_resid) else 1.0
+    scale = scale.bfill().ffill().fillna(
+        global_scale if global_scale > 0 else 1.0)
     vals = scale.values.astype(float)
     # Nooit nul: anders wordt elke afwijking oneindig significant.
     floor = max(global_scale * 0.1, 1e-6)
     return np.clip(vals, floor, None)
+
+
+def _seasonal_spread_factors(resid: np.ndarray, period: int | None,
+                             min_per_phase: int = 8) -> np.ndarray:
+    """Spreidings-correctie per seizoensfase (bv. dag van de week).
+
+    Het seizoen zit al in de verwáchting, maar niet in de spreiding. Als
+    het weekend structureel rustiger én regelmatiger is, wordt een
+    weekendafwijking nu ondergedetecteerd en een doordeweekse afwijking
+    overgedetecteerd.
+
+    Geeft per periode een factor rond 1, genormaliseerd op het gemiddelde
+    zodat de totale kalibratie niet verschuift. Bij te weinig punten per
+    fase (of geen periode) zijn alle factoren 1.
+    """
+    n = len(resid)
+    ones = np.ones(n)
+    if not period or period < 2 or n < period * min_per_phase:
+        return ones
+
+    phase = np.arange(n) % int(period)
+    abs_resid = np.abs(np.asarray(resid, dtype=float))
+    overall = float(np.median(abs_resid))
+    if overall <= 0:
+        return ones
+
+    factors = ones.copy()
+    for ph in range(int(period)):
+        mask = phase == ph
+        if mask.sum() < min_per_phase:
+            continue
+        level = float(np.median(abs_resid[mask]))
+        # Begrensd: een fase mag de band hooguit halveren of verdubbelen,
+        # anders bepaalt een toevallig rustige fase het hele beeld.
+        factors[mask] = np.clip(level / overall, 0.5, 2.0)
+
+    mean_factor = float(np.mean(factors))
+    return factors / mean_factor if mean_factor > 0 else ones
+
+
+def _pick_spread_window(series: pd.Series, expected: np.ndarray,
+                        alpha: float, segments: np.ndarray,
+                        season_period: int | None = None,
+                        candidates: tuple[int, ...] = (30, 60, 90, 180),
+                        ) -> int:
+    """Kies het spreidings-venster op gemeten kalibratie in plaats van
+    een vast getal.
+
+    Criterium: de empirische banddekking moet zo dicht mogelijk bij het
+    doel (1 − 2·alpha) liggen. Een snel bewegende reeks heeft een korter
+    venster nodig dan een trage; dat vooraf op 90 vastzetten was een
+    aanname, geen meting. Bij gelijke dekking wint het kortere venster,
+    want dat volgt het regime sneller.
+    """
+    y = series.values.astype(float)
+    mu = np.asarray(expected, dtype=float)
+    target = 1.0 - 2.0 * alpha
+    usable = [w for w in candidates if len(y) >= w + LOCAL_SPREAD_MIN_PERIODS]
+    if not usable:
+        return LOCAL_SPREAD_WINDOW
+
+    # Beoordeel met hetzelfde bandmechanisme dat straks gebruikt wordt.
+    # Anders wordt het venster geoptimaliseerd voor een band die deze
+    # reeks helemaal niet krijgt — dat gaf op telling-data een dekking
+    # van 0,95 waar 0,98 het doel was.
+    is_count = _is_count_series(series)
+    season = _seasonal_spread_factors(y - mu, season_period)
+
+    best, best_gap = usable[0], float("inf")
+    for w in usable:
+        try:
+            if is_count:
+                lower, upper, _, _ = _count_band(
+                    series, mu, alpha, window=w, segments=segments,
+                    season_factor=season,
+                )
+            else:
+                scale = _local_residual_scale(y - mu, window=w,
+                                              segments=segments)
+                ref = float(np.median(scale))
+                if ref <= 0:
+                    continue
+                factor = (scale / ref) * season
+                q_lo, q_hi, _ = _quantile_band(series, mu)
+                lower = mu + q_lo * factor
+                upper = mu + q_hi * factor
+            coverage = float(np.mean((y >= lower) & (y <= upper)))
+        except Exception:
+            continue
+        gap = abs(coverage - target)
+        # Strikt kleiner: bij gelijkspel houdt het kortere venster stand.
+        if gap < best_gap - 1e-9:
+            best, best_gap = w, gap
+    return best
 
 
 def _is_count_series(series: pd.Series) -> bool:
@@ -940,6 +1143,9 @@ def _count_band(
     series: pd.Series, expected_hist: np.ndarray, alpha: float,
     observed_mask: pd.Series | None = None,
     phi_fixed: float | None = None,
+    window: int = LOCAL_SPREAD_WINDOW,
+    segments: np.ndarray | None = None,
+    season_factor: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, str, float]:
     """Discrete band voor telling-data: Poisson, of negatief-binomiaal bij
     overdispersie (variantie > gemiddelde, zoals bij geclusterde aanvallen).
@@ -977,7 +1183,11 @@ def _count_band(
         # Lokale dispersie: de spreiding beweegt mee met het regime. Eén
         # getal voor de hele reeks liet de band van de drukste periode los
         # op de rustigste jaren — zie _local_dispersion.
-        phi_t = _local_dispersion(y, mu)
+        phi_t = _local_dispersion(y, mu, window=window, segments=segments)
+        if season_factor is not None and len(season_factor) == len(phi_t):
+            # Variantie schaalt met phi; een fase-factor op de spreiding
+            # werkt dus kwadratisch door in de dispersie.
+            phi_t = np.clip(phi_t * np.asarray(season_factor) ** 2, 1.0, None)
         if observed_mask is not None:
             mask_bool = np.asarray(observed_mask, dtype=bool)
             if mask_bool.sum() >= 5 and len(mask_bool) == len(phi_t):
@@ -1138,11 +1348,26 @@ def compute_normbeeld(
     obs_mask = observed if gap_policy == "mask" else None
     q_lo, q_hi, band_alpha = _quantile_band(series, expected_hist,
                                             observed_mask=obs_mask)
+
+    # Regimes bepalen vóór alle spreidingsschattingen: na een niveaubreuk
+    # mag het oude regime de band niet meer meebepalen.
+    segments = _segment_ids(series)
+    # Venstergrootte niet vastprikken maar kiezen op gemeten kalibratie.
+    spread_window = _pick_spread_window(series, expected_hist, band_alpha,
+                                        segments, season_period=use_period)
+    # Seizoensfase-correctie op de spreiding (het seizoen zat al in de
+    # verwachting, nog niet in de bandbreedte).
+    resid_hist = (series.values.astype(float)
+                  - np.asarray(expected_hist, dtype=float))
+    season_factor = _seasonal_spread_factors(resid_hist, use_period)
+
     band_model = "quantile"
     dispersion = None
     if _is_count_series(series):
         cb_lo, cb_hi, band_model, dispersion = _count_band(
             series, expected_hist, band_alpha, observed_mask=obs_mask,
+            window=spread_window, segments=segments,
+            season_factor=season_factor,
         )
         hist_lower = cb_lo
         hist_upper = cb_hi
@@ -1151,12 +1376,12 @@ def compute_normbeeld(
         # lopende spreiding, zodat een rustige periode een smallere band
         # krijgt dan een onstuimige. Zonder dit kreeg 2022 de bandbreedte
         # van 2026.
-        resid_hist = series.values.astype(float) - np.asarray(expected_hist,
-                                                              dtype=float)
-        local_scale = _local_residual_scale(resid_hist)
+        local_scale = _local_residual_scale(resid_hist, window=spread_window,
+                                            segments=segments)
         ref_scale = float(np.median(local_scale))
         factor = (local_scale / ref_scale) if ref_scale > 0 else np.ones_like(
             local_scale)
+        factor = factor * season_factor
         # Invariant: upper >= lower, óók na flooring van alleen de ondergrens
         # (anders kan een pathologische fit de band ondersteboven zetten).
         hist_lower = _floor(expected_hist + q_lo * factor)
@@ -1242,6 +1467,15 @@ def compute_normbeeld(
         hist.loc[mask_idx, "actual"] = np.nan
         hist.loc[mask_idx, "resid_pctl"] = np.nan
 
+    # Hoe lang loopt het huidige regime al? Een lange reeks die net van
+    # regime wisselde is minder betrouwbaar dan een korte stabiele reeks.
+    periods_since_break = None
+    if len(segments):
+        last_seg = segments[-1]
+        periods_since_break = int(np.sum(segments == last_seg))
+        if periods_since_break == len(segments):
+            periods_since_break = None   # geen breuk gevonden
+
     # Empirische banddekking: welk deel van de (geobserveerde) historie viel
     # binnen de band? Hoort dicht bij 1 - 2*alpha te liggen; een veel lagere
     # waarde betekent dat de band te smal is voor deze reeks.
@@ -1264,9 +1498,14 @@ def compute_normbeeld(
     # 48 uur / 14 dagen / 8 weken / 6 maanden), niet blind 14 periodes.
     recent_periods = {"hourly": 48, "daily": 14, "weekly": 8,
                       "monthly": 6}.get(aggregation, 14)
+    recent_slice = hist.tail(recent_periods)
     n_recent_dev = int(
-        hist.tail(recent_periods)["status"].isin(["boven", "onder"]).sum()
+        recent_slice["status"].isin(["boven", "onder"]).sum()
     )
+    # Aandeel recente perioden dat buiten de band valt: directe maat voor
+    # "beschrijft het normbeeld nog wat er nu gebeurt?".
+    recent_dev_rate = (n_recent_dev / len(recent_slice)
+                       if len(recent_slice) else None)
 
     # Per-methode reeksen voor visualisatie (clip komt al uit _forecast_with)
     per_method_forecast: dict = {}
@@ -1289,7 +1528,13 @@ def compute_normbeeld(
         expected_value=expected_value,
         lower_band=lower_band,
         upper_band=upper_band,
-        confidence=_confidence(len(series), period is not None),
+        confidence=_confidence(
+            len(series), period is not None,
+            periods_since_break=periods_since_break,
+            coverage=band_coverage,
+            target_coverage=(1.0 - 2.0 * band_alpha) if band_alpha else None,
+            recent_deviation_rate=recent_dev_rate,
+        ),
         pattern_description=_describe_pattern(
             series, period, expected_value, aggregation
         ),

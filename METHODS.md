@@ -234,6 +234,60 @@ smaller geworden zonder de kalibratie te verliezen. Bewaakt in
 (φ ≈ 50). Dat is eerlijk — geen artefact meer, maar een eigenschap van het
 verschijnsel.
 
+### 6a-bis. Verfijningen van de lokale spreiding
+
+Vier aanscherpingen op §6a, alle gericht op dezelfde vraag: is "normaal"
+hier per periode goed bepaald?
+
+**1. Spreiding per regime** (`_segment_ids`, `_rolling_within_segments`).
+Een lopend venster van ~90 perioden mengt na een scherpe breuk maandenlang
+het oude en het nieuwe regime. De reeks wordt daarom eerst in regimes
+verdeeld (change-points, §10); de spreidingsschatting kijkt nooit over een
+regimegrens heen. Vlak na een breuk is er weinig historie — dan is de
+schatting terecht onzeker in plaats van stilzwijgend geleend van het
+vorige regime. Segmenten korter dan 30 perioden worden niet als regime
+geteld: daar valt niets uit te schatten.
+
+**2. Spreiding per seizoensfase** (`_seasonal_spread_factors`). Het
+seizoen zat al in de verwáchting, maar niet in de bandbreedte. Zijn
+weekenden structureel rustiger én regelmatiger, dan werd een
+weekendafwijking ondergedetecteerd en een doordeweekse overgedetecteerd.
+De factoren zijn genormaliseerd op gemiddeld 1 (herverdeling, geen
+verschuiving van de totale kalibratie) en begrensd op [0,5 – 2,0], zodat
+één toevallig rustige fase het beeld niet overneemt.
+
+**3. Venstergrootte gemeten in plaats van aangenomen**
+(`_pick_spread_window`). De 90 perioden waren een gok. Nu worden
+kandidaten (30/60/90/180) doorgerekend en wint het venster waarvan de
+empirische dekking het dichtst bij het doel (1 − 2·α) ligt; bij gelijke
+dekking het kortere, want dat volgt het regime sneller. De evaluatie
+gebruikt hetzelfde bandmechanisme dat de reeks daadwerkelijk krijgt —
+een eerdere versie beoordeelde telling-reeksen met de quantile-formule
+en koos daardoor systematisch mis (dekking 0,95 bij een doel van 0,98).
+
+**4. Vertrouwen weegt regime-stabiliteit mee** (`_confidence`).
+Reekslengte alleen is misleidend: drie jaar historie met een breuk van
+vorige maand is minder betrouwbaar dan een korte stabiele reeks. Het
+oordeel daalt nu bij een vers regime (< 15 of < 30 perioden sinds de
+breuk), bij een band die zijn eigen doel meer dan 10 procentpunt mist, en
+bij veel recente afwijkingen (> 25% of > 50% van de recente perioden).
+Dat laatste vangt precies wat de change-point-detectie nog niet kan zien:
+een breuk van een paar dagen oud is te kort om als regime te herkennen,
+terwijl het normbeeld juist dán het minst te vertrouwen is. Of het een
+blip of een nieuw regime is, kan de tool op dat moment niet weten — en
+dat niet-weten ís de reden voor minder vertrouwen.
+
+**Gemeten effect** (demo-dataset, dagbasis, doel 0,98):
+
+| regio | dekking vóór | dekking na |
+|---|---|---|
+| Ukraine | 0,951 | 0,962 |
+| Mykolaiv oblast | 0,979 | 0,979 |
+| Kyiv oblast | 0,988 | 0,988 |
+| south | — | 0,976 |
+
+Bewaakt in `tests/test_band_refinements.py`.
+
 ### 6b. Discrete band voor schaarse telling-data (Poisson / negatief-binomiaal)
 
 Voor reeksen van **niet-negatieve gehele aantallen met mediaan < 5**
