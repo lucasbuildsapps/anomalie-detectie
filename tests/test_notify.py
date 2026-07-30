@@ -303,3 +303,38 @@ class TestFirstRunBaseline:
         notify_new_alerts(dataset, "meldset", _alerts(4))
         actions = [a["action"] for a in storage.list_audit(20)]
         assert "melding_nulmeting" in actions
+
+
+class TestScheduledJobWiring:
+    """De geplande inwinning draait in een aparte omgeving. Elke env-var
+    die core/notify.py leest moet daar doorgegeven worden, anders
+    waarschuwt de nachtelijke run niemand — en dat merk je niet.
+    """
+
+    def _workflow(self) -> str:
+        import pathlib
+        root = pathlib.Path(__file__).resolve().parent.parent
+        return (root / ".github" / "workflows" / "ingest.yml").read_text(
+            encoding="utf-8")
+
+    def test_every_notify_variable_is_passed_through(self):
+        import pathlib
+        import re
+        root = pathlib.Path(__file__).resolve().parent.parent
+        source = (root / "core" / "notify.py").read_text(encoding="utf-8")
+        used = set(re.findall(r'environ(?:\.get)?\(?\["?(SENTINEL_[A-Z_]+)"?',
+                              source))
+        used |= set(re.findall(r'os\.environ\.get\("(SENTINEL_[A-Z_]+)"',
+                               source))
+        workflow = self._workflow()
+        missing = [v for v in sorted(used) if v not in workflow]
+        assert not missing, (
+            f"niet doorgegeven aan de geplande run: {missing}")
+
+    def test_connector_keys_are_passed_through(self):
+        workflow = self._workflow()
+        for var in ("ACLED_API_KEY", "ACLED_EMAIL", "FIRMS_MAP_KEY"):
+            assert var in workflow, f"{var} ontbreekt in de workflow"
+
+    def test_job_runs_as_analyst_not_admin(self):
+        assert "SENTINEL_ROLE: analyst" in self._workflow()

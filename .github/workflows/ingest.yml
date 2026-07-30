@@ -43,8 +43,22 @@ jobs:
       - name: Run connectors
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Bron-sleutels (optioneel; ontbrekende bronnen slaan zichzelf over)
           ACLED_API_KEY: ${{ secrets.ACLED_API_KEY }}
           ACLED_EMAIL: ${{ secrets.ACLED_EMAIL }}
+          FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+          # Meldkanaal. Zonder deze regels waarschuwt de geplande run niets
+          # en niemand — en dat is precies de storing die je niet opmerkt.
+          SENTINEL_WEBHOOK_URL: ${{ secrets.SENTINEL_WEBHOOK_URL }}
+          SENTINEL_SMTP_HOST: ${{ secrets.SENTINEL_SMTP_HOST }}
+          SENTINEL_SMTP_PORT: ${{ secrets.SENTINEL_SMTP_PORT }}
+          SENTINEL_SMTP_USER: ${{ secrets.SENTINEL_SMTP_USER }}
+          SENTINEL_SMTP_PASSWORD: ${{ secrets.SENTINEL_SMTP_PASSWORD }}
+          SENTINEL_MAIL_FROM: ${{ secrets.SENTINEL_MAIL_FROM }}
+          SENTINEL_MAIL_TO: ${{ secrets.SENTINEL_MAIL_TO }}
+          SENTINEL_ALERT_MIN: ${{ vars.SENTINEL_ALERT_MIN }}
+          SENTINEL_ALERT_MAX_PER_RUN: ${{ vars.SENTINEL_ALERT_MAX_PER_RUN }}
           SENTINEL_USER: github-actions-ingest
+          SENTINEL_ROLE: analyst
           SENTINEL_LOG_LEVEL: INFO
         run: python -c "from core.ingest import run_all; print(run_all())"
