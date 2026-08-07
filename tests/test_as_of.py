@@ -6,6 +6,7 @@ checks the happy path would reproduce that mistake at a different level.
 """
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -135,7 +136,7 @@ def test_empty_view_is_not_faithful_and_says_so():
 # --- immutability ---------------------------------------------------------
 def test_view_is_immutable():
     view = AsOfView(BASE, _loader_from(_frame([(0, 0, False)])))
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         view.as_of = BASE + timedelta(days=100)
 
 

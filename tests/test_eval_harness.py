@@ -19,6 +19,7 @@ from sentinel.eval import (
     run_suite,
 )
 
+
 # --- detectors used purely to exercise the harness ------------------------
 def never(series: pd.Series) -> pd.Series:
     return pd.Series(False, index=series.index)

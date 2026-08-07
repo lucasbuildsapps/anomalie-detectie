@@ -123,12 +123,14 @@ class PowerCurve:
     @property
     def net_recalls(self) -> list[float]:
         return [max(0.0, r - c) for r, c in zip(self.recalls,
-                                                self.chance_rates)]
+                                                self.chance_rates,
+                                                strict=True)]
 
     @property
     def floor(self) -> float:
         """Smallest magnitude whose *attributable* recall meets `threshold`."""
-        for magnitude, net in zip(self.magnitudes, self.net_recalls):
+        for magnitude, net in zip(self.magnitudes, self.net_recalls,
+                                  strict=True):
             if net >= self.threshold:
                 return magnitude
         return float("nan")
