@@ -74,19 +74,34 @@ def test_baseline_is_non_negative_integer_counts():
     assert np.allclose(values, np.round(values))
 
 
-def test_negative_controls_inject_nothing():
+def test_negative_controls_must_be_silent():
+    """Noise and a collection gap: flagging either is unambiguously wrong."""
     gen = ScenarioGenerator()
-    for kind in ("noise", "missing_data", "source_change"):
+    for kind in ("noise", "missing_data"):
         scenario = gen.build(kind)
         assert scenario.truth == []
         assert scenario.is_negative_control
+        assert not scenario.is_ambiguous
+
+
+def test_source_change_is_ambiguous_not_a_silence_control():
+    """It injects nothing real, yet is numerically identical to a real shift.
+
+    Demanding silence can only be satisfied by a detector too blunt to see
+    real shifts of that size — which is exactly how v1's Z-score "passed"
+    it while missing the identical real event.
+    """
+    scenario = ScenarioGenerator().build("source_change")
+    assert scenario.injects_nothing
+    assert scenario.is_ambiguous
+    assert not scenario.is_negative_control
 
 
 def test_positive_scenarios_all_carry_truth():
     gen = ScenarioGenerator()
     for kind in SCENARIO_KINDS:
         scenario = gen.build(kind)
-        if not scenario.is_negative_control:
+        if not scenario.injects_nothing:
             assert scenario.truth, f"{kind} must declare what was injected"
 
 
@@ -162,11 +177,26 @@ def test_always_firing_detector_fails_every_control():
 
 
 def test_oracle_detector_scores_perfectly_on_its_own_scenario():
-    """Sanity bound: if the oracle cannot pass, the harness is broken."""
+    """Sanity bound: if the oracle cannot pass, the harness is broken.
+
+    Ambiguous scenarios are excluded: the oracle flags exactly the injected
+    truth, and a source change injects nothing, so silence is what it
+    produces — correct for an oracle, but not what the product should do.
+    """
     for kind in SCENARIO_KINDS:
         scenario = ScenarioGenerator().build(kind)
+        if scenario.is_ambiguous:
+            continue
         score = run_scenario(oracle(scenario), scenario)
         assert score.passed, f"oracle failed on {kind}"
+
+
+def test_ambiguous_scenario_outcomes_are_three_valued():
+    """Firing is PENDING, silence is FAIL — never PASS either way."""
+    scenario = ScenarioGenerator().build("source_change")
+    assert run_scenario(always, scenario).outcome == "PENDING"
+    assert run_scenario(never, scenario).outcome == "FAIL"
+    assert not run_scenario(always, scenario).passed
 
 
 def test_flags_on_unobserved_periods_are_ignored():

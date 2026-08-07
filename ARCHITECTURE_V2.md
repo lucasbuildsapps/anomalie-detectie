@@ -499,6 +499,55 @@ drempel.
 
 Reproduceerbaar via `python scripts/baseline_detection_power.py`.
 
+### 6.3-ter Gemeten resultaat van de dubbele baseline
+
+Fase 3b is gebouwd en gemeten op dezelfde scenario's als de v1-nulmeting.
+Detectiedrempels zijn kans-gekalibreerd (§6.3-bis); vals alarm is episodes
+per rustige reeks van een jaar.
+
+| Detector | vals alarm | `sustained` | `gradual` | `adaptation_failure` |
+|---|---|---|---|---|
+| Z-score (MAD) | 0,15 | 1,5 | 2,0 | **3,0** |
+| Rolling mean ± N·std | 7,45 | geen | confounded | geen |
+| STL residual | 17,90 | confounded | confounded | confounded |
+| **v2 dubbele baseline** | **0,30** | **1,5** | **2,0** | **1,5** |
+
+Waar het om gaat is de laatste kolom. `adaptation_failure` injecteert een
+escalatie van 150 perioden maar scoort **alleen de laatste 30**: de vraag is
+niet of het begin wordt opgemerkt, maar of het systeem maanden later nog
+weet dat het niveau verhoogd is. Daar halveert de dubbele baseline de
+drempel van de beste v1-detector (3,0 → 1,5), tegen 0,30 vals alarm per
+rustig jaar.
+
+Daarnaast vindt v2 `drop`, `regime_change` en `silence` — die Z-score alle
+drie mist. De prijs is 0,30 tegen 0,15 vals alarm; dat is de bewuste keuze,
+en beide getallen staan in het rapport zodat de afweging zichtbaar blijft.
+
+Twee correcties die tijdens het bouwen nodig bleken, allebei echte fouten:
+
+1. De lopende spreidingsschatter gebruikte de MAD-constante (1,4826) op een
+   *gemiddelde* absolute afwijking, waar 1,2533 hoort. Dat maakte elke band
+   ~18% te breed en onderdrukte detectie.
+2. De CUSUM had geen begrenzing per periode, waardoor één piek tientallen
+   eenheden injecteerde en wekenlang boven de beslisgrens bleef. Een losse
+   uitschieter las daardoor als aanhoudende escalatie — precies de verwarring
+   die de twee toestanden moeten scheiden.
+
+### 6.3-quater `source_change`: waarom die niet PASS of FAIL is
+
+De eerste versie van het harnas behandelde `source_change` als negatieve
+controle die stilte vereist. Dat was fout, en de meting liet zien waarom:
+Z-score "haalde" die controle uitsluitend door te bot te zijn om een
+verschuiving van 1,6× te zien — hij mist de identieke *echte* verschuiving
+ook. Een controle die alleen door blindheid te halen is, meet blindheid.
+
+Een bronwissel is numeriek niet te onderscheiden van een echte
+niveauverschuiving; geen detector die alleen de reeks ziet kan dat. Wat het
+product wél verschuldigd is, is de alternatieve verklaring bij het alarm — en
+dat vereist herkomst die de detector niet heeft. Daarom een derde uitkomst:
+**PENDING**. Vuren is goed, stilte is fout, en of de kanttekening klopt is
+pas toetsbaar als de bewijslaag er is.
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per

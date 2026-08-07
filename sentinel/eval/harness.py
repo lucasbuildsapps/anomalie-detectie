@@ -41,19 +41,40 @@ class ScenarioScore:
     magnitude: float
     match: MatchResult
     is_negative_control: bool
+    is_ambiguous: bool = False
+
+    @property
+    def outcome(self) -> str:
+        """PASS, FAIL, or PENDING.
+
+        PENDING exists for scenarios that are numerically indistinguishable
+        from a real event. There, firing is the correct behaviour and the
+        open question is whether the alert carries the right caveat — which
+        this harness cannot see. Recording that as PASS would overstate what
+        was checked; recording it as FAIL would reward blindness.
+        """
+        if self.is_ambiguous:
+            return "PENDING" if self.match.n_predicted else "FAIL"
+        if self.is_negative_control:
+            return "PASS" if self.match.false_alarms == 0 else "FAIL"
+        return "PASS" if self.match.hits > 0 else "FAIL"
 
     @property
     def passed(self) -> bool:
-        """For controls: silence. For real events: found it."""
-        if self.is_negative_control:
-            return self.match.false_alarms == 0
-        return self.match.hits > 0
+        return self.outcome == "PASS"
 
     def summary(self) -> str:
-        verdict = "PASS" if self.passed else "FAIL"
-        label = (f"{self.scenario_kind} (control)" if self.is_negative_control
-                 else f"{self.scenario_kind} x{self.magnitude:g}")
-        return f"[{verdict}] {label}: {self.match.summary()}"
+        if self.is_ambiguous:
+            label = f"{self.scenario_kind} (ambiguous)"
+        elif self.is_negative_control:
+            label = f"{self.scenario_kind} (control)"
+        else:
+            label = f"{self.scenario_kind} x{self.magnitude:g}"
+        note = ""
+        if self.outcome == "PENDING":
+            note = ("  <- fired, as it should; caveat requirement untestable "
+                    "until the evidence layer lands")
+        return f"[{self.outcome}] {label}: {self.match.summary()}{note}"
 
 
 def _apply(detector: Detector, scenario: Scenario) -> pd.Series:
@@ -85,6 +106,7 @@ def run_scenario(detector: Detector, scenario: Scenario,
         magnitude=scenario.magnitude,
         match=match,
         is_negative_control=scenario.is_negative_control,
+        is_ambiguous=scenario.is_ambiguous,
     )
 
 

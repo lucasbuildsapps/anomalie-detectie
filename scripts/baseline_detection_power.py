@@ -31,6 +31,15 @@ from sentinel.eval import (  # noqa: E402
 )
 
 DETECTORS = ("Z-score (MAD)", "Rolling mean ± N·std", "STL residual")
+#: The v2 dual baseline, measured on identical scenarios so the comparison
+#: is like for like.
+V2_LABEL = "v2 dual baseline"
+
+
+def v2_detector():
+    from sentinel.core.baseline import divergence_detector
+
+    return divergence_detector(reference_periods=180)
 
 
 def as_callable(name: str):
@@ -46,11 +55,16 @@ def as_callable(name: str):
     return run
 
 
+def _all_detectors() -> dict:
+    out = {name: as_callable(name) for name in DETECTORS}
+    out[V2_LABEL] = v2_detector()
+    return out
+
+
 def scenario_table() -> pd.DataFrame:
     generator = ScenarioGenerator()
     rows = []
-    for name in DETECTORS:
-        detector = as_callable(name)
+    for name, detector in _all_detectors().items():
         for kind in SCENARIO_KINDS:
             scenario = generator.build(kind)
             score = run_scenario(detector, scenario)
@@ -62,23 +76,23 @@ def scenario_table() -> pd.DataFrame:
                 "of": score.match.n_truth,
                 "false_alarms": score.match.false_alarms,
                 "delay": score.match.median_lead_time,
-                "verdict": "PASS" if score.passed else "FAIL",
+                "verdict": score.outcome,
             })
     return pd.DataFrame(rows)
 
 
 def power_table() -> pd.DataFrame:
     rows = []
-    for name in DETECTORS:
-        detector = as_callable(name)
-        for kind in ("sustained_increase", "gradual_escalation"):
-            curve = power_curve(detector, kind=kind, n_repeats=5)
+    for name, detector in _all_detectors().items():
+        for kind in ("sustained_increase", "gradual_escalation",
+                     "adaptation_failure"):
+            curve = power_curve(detector, kind=kind, n_repeats=8)
             rows.append({
                 "detector": name,
                 "scenario": kind,
                 **{f"x{m:g}": f"{r:.1f}/{c:.1f}"
                    for m, r, c in zip(curve.magnitudes, curve.recalls,
-                                      curve.chance_rates)},
+                                      curve.chance_rates, strict=True)},
                 "floor": "confounded" if curve.is_confounded
                          else f"{curve.floor:g}",
             })
@@ -99,9 +113,9 @@ def main() -> None:
     print("\n" + "=" * 78)
     print("FALSE ALARMS ON PURE NOISE (episodes per quiet series, 20 draws)")
     print("=" * 78)
-    for name in DETECTORS:
-        rate = false_alarm_rate(as_callable(name), n_repeats=20)
-        print(f"  {name:24s} {rate:6.1f}")
+    for name, detector in _all_detectors().items():
+        rate = false_alarm_rate(detector, n_repeats=20)
+        print(f"  {name:24s} {rate:6.2f}")
 
     print("\n" + "=" * 78)
     print("DETECTION POWER — recall vs. effect size")

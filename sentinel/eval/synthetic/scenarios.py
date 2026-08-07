@@ -15,11 +15,21 @@ caught it?* — which no amount of analyst feedback can answer.
 
 What is deliberately included
 -----------------------------
-Three of the nine scenarios inject **nothing detectable**: pure noise, a data
-gap, and a source change. A harness with only positive cases rewards a
-detector for firing constantly. These negative controls are how the "quiet
-environment produces quiet output" requirement becomes measurable rather
-than aspirational.
+Three scenarios inject **nothing real**: pure noise, a data gap, and a source
+change. A harness with only positive cases rewards a detector for firing
+constantly, so these are how "a quiet environment produces quiet output"
+becomes measurable rather than aspirational.
+
+The three are not equivalent, and treating them alike was a mistake in the
+first version of this file. Noise and a collection gap **must** produce
+silence: flagging either is unambiguously wrong. A source change must not,
+because it is numerically identical to a real level shift — the same series
+with a real cause would be a miss. Demanding silence there can only be
+satisfied by a detector too blunt to see real shifts of that size, which is
+exactly what v1's Z-score did: it "passed" this control while missing the
+identical real event. So a source change is scored PENDING: firing is
+correct, and the requirement that an alternative explanation be attached
+cannot be checked until provenance reaches the judgement layer.
 
 All generators are seeded. Two runs with the same seed produce identical
 series, so a change in a score is a change in the code, never in the dice.
@@ -43,6 +53,7 @@ SCENARIO_KINDS = (
     "drop",               # isolated collapse
     "sustained_increase",  # step up, held
     "gradual_escalation",  # slow ramp  <- v1's documented blind spot
+    "adaptation_failure",  # long escalation, scored only at the far end
     "regime_change",      # permanent level shift
     "silence",            # activity stops where it normally is not zero
     "noise",              # negative control: nothing happens
@@ -50,7 +61,15 @@ SCENARIO_KINDS = (
     "source_change",      # negative control: reporting artefact, not an event
 )
 
-_NEGATIVE_CONTROLS = frozenset({"noise", "missing_data", "source_change"})
+#: Must produce silence. Anything flagged here is unambiguously a false alarm.
+_NEGATIVE_CONTROLS = frozenset({"noise", "missing_data"})
+
+#: Numerically indistinguishable from a real event, by construction. Silence
+#: here is not a virtue: the same series with a real cause would be a miss.
+#: What the product owes the analyst is the alternative explanation attached
+#: to the alert, which needs provenance the detector does not see. Scored as
+#: PENDING rather than PASS or FAIL until the evidence layer exists.
+_AMBIGUOUS = frozenset({"source_change"})
 
 
 @dataclass(frozen=True)
@@ -68,6 +87,16 @@ class Scenario:
     @property
     def is_negative_control(self) -> bool:
         return self.kind in _NEGATIVE_CONTROLS
+
+    @property
+    def is_ambiguous(self) -> bool:
+        """Firing is correct; the caveat is what matters and is untestable
+        until provenance reaches the judgement layer."""
+        return self.kind in _AMBIGUOUS
+
+    @property
+    def injects_nothing(self) -> bool:
+        return not self.truth
 
     @property
     def magnitude(self) -> float:
@@ -171,6 +200,33 @@ class ScenarioGenerator:
             [Episode(series.index[onset], series.index[-1],
                      "gradual_escalation", magnitude)],
             {"magnitude": magnitude, "duration": duration, "onset": onset},
+        )
+
+    def adaptation_failure(self, magnitude: float = 3.0, duration: int = 150,
+                           score_last: int = 30) -> Scenario:
+        """A long escalation, scored **only at the far end**.
+
+        Every other scenario rewards catching an onset. This one asks the
+        question that actually matters for warning: months into a raised
+        tempo, does the system still know it is raised?
+
+        The injection runs for `duration` periods, but the truth episode
+        covers only the final `score_last`. A detector that fires at the
+        onset and then falls silent — which is exactly what a purely adaptive
+        baseline does, and what v1 did — scores zero here while scoring
+        perfectly on `sustained_increase`. That gap is the whole point of the
+        scenario, and it is the reason the fixed reference baseline exists.
+        """
+        series = self.baseline()
+        onset = len(series) - duration
+        series.iloc[onset:] = np.round(series.iloc[onset:] * magnitude)
+        scored_from = len(series) - score_last
+        return Scenario(
+            "adaptation_failure", series,
+            [Episode(series.index[scored_from], series.index[-1],
+                     "adaptation_failure", magnitude)],
+            {"magnitude": magnitude, "duration": duration,
+             "onset": onset, "score_last": score_last},
         )
 
     def regime_change(self, magnitude: float = 2.5, at_fraction: float = 0.5,
