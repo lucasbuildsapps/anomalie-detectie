@@ -261,7 +261,11 @@ def _try_load_demo_dataset() -> bool:
             "wapen-type en aantal lanceringen.",
             mapping,
         )
-        n = storage.insert_observations(ds_id, normalized)
+        # Bulk-import van historie: wanneer deze rijen destijds beschikbaar
+        # waren weten we niet, dus wordt aankomst gelijkgesteld aan het
+        # gebeurtenismoment en als schatting gemarkeerd (zie storage).
+        n = storage.insert_observations(ds_id, normalized,
+                                        arrival="event_time")
         st.session_state.active_dataset_id = ds_id
         st.cache_data.clear()
         msg = f"Demo geladen ({n} rijen)."

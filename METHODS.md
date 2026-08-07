@@ -599,6 +599,28 @@ Poisson/negatief-binomiaal band (§6b) in plaats van residual-quantiles;
 de backtest-foutmaat is vervangen door MASE (§5), waarmee ook het
 tijdschaal-advies mogelijk werd; detector-correlatie wordt gemeten (§8).
 
+### Causale verwerking — v2 in aanbouw
+
+De hier beschreven methoden rekenen op de volledige reeks en zijn op drie
+plaatsen niet causaal: de gecentreerde smoothing van de verwachting
+(§4), de segmentatie die change-points over de hele reeks zoekt en
+terugwerkend toepast (§6a), en de kalibratie die het spreidingsvenster
+kiest op dezelfde dekking die daarna als bewijs van kalibratie wordt
+gerapporteerd (§6a-bis). Elk daarvan maakt een backtest optimistisch met
+een onbekende marge.
+
+De structurele oplossing staat in **ARCHITECTURE_V2.md §2.1**: elke
+productie-uitvoer leest via `sentinel.core.time.AsOfView`, die per
+constructie geen data kan teruggeven die op dat moment onbekend was. Twee
+filters, `timestamp <= as_of` én `ingested_at <= as_of` — dat tweede is
+nieuw en vereist de kolom uit migratie 0007. Zonder "wanneer wisten wij
+dit" is niet te reconstrueren wat de tool op een gegeven dag had kunnen
+zeggen.
+
+Gedekt door `tests/test_as_of.py`, `tests/test_ingested_at.py` en
+`tests/test_causal_boundary.py`; die laatste bewaakt dat niets onder
+`sentinel/core/` de opslaglaag rechtstreeks leest.
+
 ## 13. Reproduceerbaarheid
 
 - Alle stochastische onderdelen (permutatietest, Isolation Forest)

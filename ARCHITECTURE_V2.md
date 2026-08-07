@@ -628,9 +628,16 @@ duurdere versie van het huidige probleem.
 
 In volgorde. De eerste drie zijn de kritieke pad.
 
-1. **`core/time/as_of.py`** — `AsOfView`, `PointInTimeStore`. Plus migratie die
+1. ~~**`core/time/as_of.py`** — `AsOfView`, `PointInTimeStore`. Plus migratie die
    `ingested_at` toevoegt en backfilled (voor bestaande rijen: `event_time`,
-   gemarkeerd als geschat). Alles hangt hieraan.
+   gemarkeerd als geschat). Alles hangt hieraan.~~ **Gedaan** — zie
+   `sentinel/core/time/as_of.py`, migratie `0007_ingested_at.py`,
+   `storage.load_observations_as_of()`, en de drie testbestanden in §12.
+   Aanvulling die tijdens het bouwen nodig bleek: een **aankomst-beleid** bij
+   import (`arrival="now"` voor connector-inwinning, `"event_time"` voor
+   bulk-historie). Zonder dat onderscheid krijgt een historische CSV-import de
+   importdatum als aankomsttijd en levert elke replay over die historie nul
+   rijen op.
 2. **`core/contracts/`** — de dataclasses uit §3 met validatie. Het contract
    vóór de implementatie, zodat entiteit- en count-paden niet uit elkaar lopen.
 3. **`eval/synthetic/injectors.py`** — de negen scenario's. Bewust vóór de

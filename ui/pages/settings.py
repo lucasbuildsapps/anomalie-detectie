@@ -347,7 +347,8 @@ def _settings_datasets():
                     try:
                         full_df = read_table(upd)
                         normalized, stats = apply_mapping(full_df, ds["column_mapping"])
-                        n = storage.insert_observations(ds["id"], normalized)
+                        n = storage.insert_observations(ds["id"], normalized,
+                                                       arrival="event_time")
                         msg = f"{n} nieuwe rijen toegevoegd."
                         if stats["dropped_total"] > 0:
                             msg += f" ({stats['dropped_total']} rijen overgeslagen — ongeldige timestamps)"
@@ -542,7 +543,8 @@ def _inline_mapping_form(full_df: pd.DataFrame, filename: str):
                 return
 
             dataset_id = storage.create_dataset(name.strip(), desc, mapping)
-            n = storage.insert_observations(dataset_id, normalized)
+            n = storage.insert_observations(dataset_id, normalized,
+                                            arrival="event_time")
             msg = t("msg_saved", n=n)
             if stats["dropped_total"] > 0:
                 msg += (
@@ -642,7 +644,8 @@ def _render_data_editor(ds: dict):
             combined = pd.concat([hidden, edited], ignore_index=True)
             storage.clear_observations(ds["id"])
             if not combined.empty:
-                storage.insert_observations(ds["id"], combined)
+                storage.insert_observations(ds["id"], combined,
+                                            arrival="event_time")
             st.cache_data.clear()
             st.success("Opgeslagen.")
             st.rerun()
