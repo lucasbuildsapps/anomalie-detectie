@@ -471,6 +471,34 @@ rijen als 100 markeringen telde en precisie betekenisloos werd. In v2:
 - Meerdere episodes voor één incident = één treffer + duplicaten apart geteld.
 - Precisie = episodes-met-incident / totaal-episodes.
 
+### 6.3-bis Kans-kalibratie: waarom recall alleen misleidt
+
+Tijdens het bouwen bleek het harnas zelf een fout te bevatten die precies de
+denkfout reproduceerde die het moest ontmaskeren. Een detector die vaak
+afgaat, overlapt het geïnjecteerde venster vanzelf. Ongecorrigeerd levert dat
+een perfecte detectiedrempel op voor een detector die alleen maar luid is.
+
+Daarom wordt elk punt op de curve **twee keer** gemeten: op de geïnjecteerde
+reeks, en op dezelfde basisreeks zónder injectie (identieke seed). Het
+verschil is toewijsbare detectie. Ligt de kans-treffer boven de drempel, dan
+is er geen drempel te noemen en heet de meting `confounded`.
+
+Het effect op de v1-meting is niet subtiel — het draait de conclusie om:
+
+| Detector | vals alarm / rustige reeks | naïeve drempel | gekalibreerd |
+|---|---|---|---|
+| Z-score (MAD) | 0,1 | 1,25 | **1,25 (echt)** |
+| Rolling mean ± N·std | 7,5 | 1,25 | geen drempel |
+| STL residual | 17,9 | 1,25 | **confounded** |
+
+STL leek vóór kalibratie de beste detector (drempel 1,25 op álles). Na
+kalibratie blijkt het de enige zonder meetbaar detectievermogen: op
+`gradual_escalation` markeert hij hetzelfde venster in 100% van de gevallen
+óók zonder injectie. Z-score is omgekeerd de enige met een citeerbare
+drempel.
+
+Reproduceerbaar via `python scripts/baseline_detection_power.py`.
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per
@@ -640,9 +668,14 @@ In volgorde. De eerste drie zijn de kritieke pad.
    rijen op.
 2. **`core/contracts/`** — de dataclasses uit §3 met validatie. Het contract
    vóór de implementatie, zodat entiteit- en count-paden niet uit elkaar lopen.
-3. **`eval/synthetic/injectors.py`** — de negen scenario's. Bewust vóór de
+3. ~~**`eval/synthetic/injectors.py`** — de negen scenario's. Bewust vóór de
    nieuwe detectie: zonder meetlat is elke verbetering een bewering. Dit is ook
-   het goedkoopste onderdeel van het hele plan.
+   het goedkoopste onderdeel van het hele plan.~~ **Gedaan** — zie
+   `sentinel/eval/` (scenario's, episode-scoring, harnas) en
+   `scripts/baseline_detection_power.py` voor de v1-nulmeting. De keuze om
+   dit vóór de nieuwe detectie te bouwen betaalde zich meteen terug: de
+   kans-kalibratie uit §6.3-bis draaide de conclusie over de bestaande
+   detectoren om, en dat was niet zichtbaar geweest ná een herbouw.
 4. **`core/baseline/causal.py`** — trailing smoothing, online segmentatie,
    dubbele baseline. Vervangt het hart van `normbeeld.py`.
 5. **`core/detect/level.py` + `sustained.py`** — de eerste twee toetstypen.
