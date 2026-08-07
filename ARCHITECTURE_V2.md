@@ -328,6 +328,19 @@ toets. Het verdict is drieledig:
 | `niet_actief` | De toets is uitgevoerd en niet overschreden — **een positief resultaat**, mét detectievermogen |
 | `onvoldoende_data` | De toets kon niet uitgevoerd worden; expliciet onderscheiden van "niets aan de hand" |
 
+**Gebouwd** in `sentinel/core/detect/`. Eén gevolg is scherper dan verwacht
+en verdient te blijven staan: omdat `Signal` weigert als `niet_actief` te
+bestaan zonder detectievermogen, kán het systeem niet melden dat er niets
+speelt zolang niet gemeten is wát het zou vangen. Is dat vermogen er niet,
+dan luidt het eerlijke antwoord `onvoldoende_data` — *ik kan niet zeggen dat
+het rustig is, want ik weet niet hoe hard iets zou moeten zijn voordat ik het
+hoor.* v1 kon dat niet uitdrukken; die had altijd iets te melden, en het
+quotum garandeerde dat.
+
+`entity_behaviour` valt tot de entiteit-laag bestaat in diezelfde categorie:
+een niet-gebouwde capaciteit meldt zich als onvoldoende data, niet als een
+schone uitslag.
+
 Dat derde niveau is essentieel. In v1 zijn "we hebben gekeken en er is niets"
 en "we konden niet kijken" niet van elkaar te onderscheiden, en dat is precies
 het verschil waar warning-fouten in zitten.
@@ -406,6 +419,28 @@ Twee harde regels:
   selectie en rapportage over gescheiden folds.
 - **Reekslengte is geen vertrouwen.** Lengte mag hooguit een plafond zetten,
   nooit een pluspunt zijn.
+
+### 5.0 Gebouwd: vier pijlers, en wat er níét in mag
+
+`sentinel/core/confidence/` is geïmplementeerd. Vier pijlers (datakwaliteit,
+kalibratie, historische prestatie, corroboratie) die elk in [-1, +1] scoren
+of zich **onthouden** als hun invoer ontbreekt.
+
+Die onthouding is het punt. v1 behandelde een ontbrekende invoer als
+neutraal, waardoor een oordeel dat op vrijwel niets rustte omhoog kon
+kruipen. Hier geldt: minder dan drie sprekende pijlers ⇒ hoog vertrouwen is
+niet beschikbaar, hoe goed die twee er ook uitzien.
+
+Twee regels die tijdens het bouwen scherper bleken te moeten:
+
+- **Hoog vertrouwen is conjunctief, geen gemiddelde.** ICD 203 reserveert
+  "hoog" voor goede kwaliteit én corroboratie én eenduidigheid. Een
+  gemiddelde laat één sterke pijler een zwakke witwassen — drie perfecte
+  criteria droegen in de eerste versie data die drie maanden oud was. Elke
+  ongunstige bevinding zet nu een plafond op gemiddeld.
+- **Reekslengte is geen invoer.** Niet als veld, en een test bewaakt dat het
+  er nooit bij komt. Lengte zegt hoevéél data er is, niet of het oordeel
+  deugt.
 
 ### 5.1 Detectievermogen — de sleutel tot een geloofwaardig nulresultaat
 
