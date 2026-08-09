@@ -79,11 +79,27 @@ class DetectionPower:
             )
 
     @property
+    def is_deterministic(self) -> bool:
+        """A rule that either holds or does not, with nothing to measure.
+
+        Marked by `n_repeats == 0`: no trials were run because none were
+        needed. Distinct from an unmeasured configuration, which reports no
+        power at all and blocks a null result entirely.
+        """
+        return self.n_repeats == 0
+
+    @property
     def is_quotable(self) -> bool:
         """Whether this number may be shown to an analyst."""
         return not self.confounded and math.isfinite(self.floor_magnitude)
 
     def describe(self) -> str:
+        if self.is_deterministic:
+            # An effect size is meaningless here, and phrasing one would
+            # imply a measurement that never happened.
+            return (f"This is a fixed rule ({self.scenario_kind}): it either "
+                    f"holds or it does not, so there is no effect size below "
+                    f"which it would be missed.")
         if self.confounded:
             return (f"Detection power for {self.scenario_kind} is not "
                     f"measurable: this configuration flags comparable windows "
@@ -363,10 +379,23 @@ class RegionStatus:
                      if s.verdict is Verdict.INSUFFICIENT_DATA)
 
     @property
+    def tested(self) -> tuple[Signal, ...]:
+        """Indicators that actually produced a verdict."""
+        return tuple(s for s in self.signals if s.verdict is Verdict.NOT_ACTIVE)
+
+    @property
     def is_quiet(self) -> bool:
-        """Genuinely quiet: monitored, tested, and nothing found."""
+        """Genuinely quiet: monitored, actually tested, and nothing found.
+
+        Requires at least one indicator to have been *tested*, not merely the
+        absence of active ones. A region whose every indicator returned
+        insufficient data has produced no evidence of calm — reading it as
+        quiet is the "we could not look" / "nothing is happening" confusion
+        that the three-valued verdict exists to prevent, resurfacing one
+        level up.
+        """
         return (self.monitoring.can_produce_verdicts
-                and bool(self.signals)
+                and bool(self.tested)
                 and not self.active)
 
     def headline(self) -> str:
@@ -385,8 +414,13 @@ class RegionStatus:
             return (f"{self.name}: {len(self.active)} of {len(self.signals)} "
                     f"indicators active — {names}{more}.")
         unavailable = len(self.unavailable)
+        if not self.tested:
+            # Nothing was testable. Leading with "no significant activity"
+            # here would report a blind spot as a clean result.
+            return (f"{self.name}: nothing could be tested — "
+                    f"{unavailable} of {len(self.signals)} indicators "
+                    f"returned insufficient data. This is not a quiet result.")
         tail = (f" {unavailable} could not be tested."
                 if unavailable else "")
         return (f"{self.name}: no significant activity. "
-                f"{len(self.signals) - unavailable} indicators tested and "
-                f"quiet.{tail}")
+                f"{len(self.tested)} indicators tested and quiet.{tail}")

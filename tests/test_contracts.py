@@ -615,6 +615,28 @@ def test_untested_indicators_are_reported_separately_from_quiet_ones():
     assert "1 could not be tested" in region.headline()
 
 
+def test_region_where_nothing_could_be_tested_is_not_quiet():
+    """The "we could not look" / "nothing is happening" confusion, one level up.
+
+    Absence of active signals is not evidence of calm when no indicator
+    produced a verdict at all.
+    """
+    signals = tuple(
+        Signal(f"i{i}", T0, Verdict.INSUFFICIENT_DATA, _confidence(),
+               insufficient_reason="feed down")
+        for i in range(3)
+    )
+    region = RegionStatus(region_key="r", name="R",
+                          monitoring=MonitoringStatus.MONITORED,
+                          signals=signals)
+    assert not region.is_quiet
+    assert region.tested == ()
+    headline = region.headline()
+    assert "nothing could be tested" in headline
+    assert "not a quiet result" in headline
+    assert "no significant activity" not in headline
+
+
 def test_active_region_leads_with_what_is_active():
     signals = (
         Signal("tempo", T0, Verdict.ACTIVE, _confidence(), effect_size=2.0,
