@@ -82,6 +82,15 @@ INDICATORS = (
                  "separately, so one indicator answers one question."),
         test_type=IndicatorTest.LEVEL_DEVIATION,
         status=IndicatorStatus.ACTIVE,
+        # 3.5 buys a clean null at the cost of spike sensitivity. Measured:
+        # at 3.5 the noise control is silent (0.3 false alarms per quiet year)
+        # and a spike must reach 5x to be caught 80% of the time; at 3.0 the
+        # floor improves to 3x but the noise control fires (1.2/year).
+        # The alert budget would tolerate 3.0 comfortably — the null-result
+        # requirement is what decides it, and for a warning system the
+        # mission-critical case is sustained escalation (unaffected here,
+        # floor 1.5x) rather than single-period surges. Revisit if an analyst
+        # would rather trade a quiet null for spike sensitivity.
         test_config={"threshold": 3.5, "aggregation": "daily"},
     ),
     Indicator(

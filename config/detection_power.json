@@ -1,0 +1,16 @@
+{
+  "{\"config\": {\"aggregation\": \"daily\", \"threshold\": 3.5}, \"test\": \"level_deviation\"}": {
+    "scenario_kind": "spike",
+    "floor_magnitude": 5.0,
+    "threshold": 0.8,
+    "n_repeats": 8,
+    "confounded": false
+  },
+  "{\"config\": {\"aggregation\": \"daily\"}, \"test\": \"sustained_divergence\"}": {
+    "scenario_kind": "adaptation_failure",
+    "floor_magnitude": 1.5,
+    "threshold": 0.8,
+    "n_repeats": 8,
+    "confounded": false
+  }
+}

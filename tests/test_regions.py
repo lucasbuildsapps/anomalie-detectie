@@ -22,7 +22,11 @@ from sentinel.core.contracts import (
     MonitoringStatus,
     Verdict,
 )
-from sentinel.core.detect.power import DetectionPowerCatalog, scenario_for
+from sentinel.core.detect.power import (
+    DetectionPowerCatalog,
+    production_detector,
+    scenario_for,
+)
 from sentinel.regions import (
     REGIONS,
     GeoScope,
@@ -289,3 +293,99 @@ def test_loading_a_missing_catalogue_is_empty_not_an_error(tmp_path):
 def test_catalogue_does_not_measure_on_demand_by_default():
     """A live evaluation must not block for minutes on a measurement."""
     assert DetectionPowerCatalog().measure_missing is False
+
+
+# =========================================================================
+# the measured detector must be the shipped detector
+# =========================================================================
+def test_production_detector_exists_for_measurable_tests():
+    """v1 scored five raw detectors while shipping a tuned ensemble over a
+    different aggregation, so its numbers described a system nobody used."""
+    for test_type in (IndicatorTest.LEVEL_DEVIATION,
+                      IndicatorTest.SUSTAINED_DIVERGENCE):
+        indicator = Indicator(
+            key="a", region_key="euro_atlantic", name="A", question="q?",
+            meaning="m", test_type=test_type,
+            reference_period=REFERENCE if
+            test_type is IndicatorTest.SUSTAINED_DIVERGENCE else None,
+            status=IndicatorStatus.ACTIVE)
+        detector = production_detector(indicator)
+        flags = detector(_series())
+        assert flags.dtype == bool
+        assert len(flags) == len(_series())
+
+
+def test_production_detector_honours_the_indicator_threshold():
+    """The measurement must move when the shipped configuration moves."""
+    common = dict(region_key="euro_atlantic", question="q?", meaning="m",
+                  test_type=IndicatorTest.LEVEL_DEVIATION,
+                  status=IndicatorStatus.ACTIVE)
+    series = _series()
+    series.iloc[-1] = series.iloc[-1] * 2.0
+    strict = production_detector(Indicator(key="s", name="S",
+                                           test_config={"threshold": 20.0},
+                                           **common))
+    loose = production_detector(Indicator(key="l", name="L",
+                                          test_config={"threshold": 0.5},
+                                          **common))
+    assert strict(series).sum() < loose(series).sum()
+
+
+def test_production_detector_refuses_unmeasurable_tests():
+    indicator = Indicator(
+        key="e", region_key="nld_eez", name="E", question="q?", meaning="m",
+        test_type=IndicatorTest.ENTITY_BEHAVIOUR, entity_kind="vessel",
+        status=IndicatorStatus.ACTIVE)
+    with pytest.raises(ValueError, match="cannot be measured"):
+        production_detector(indicator)
+
+
+def test_production_detector_excludes_warmup_periods():
+    """Warm-up is untested, not quiet; counting it would skew the floor."""
+    indicator = Indicator(
+        key="a", region_key="euro_atlantic", name="A", question="q?",
+        meaning="m", test_type=IndicatorTest.LEVEL_DEVIATION,
+        status=IndicatorStatus.ACTIVE)
+    flags = production_detector(indicator)(_series())
+    assert not flags.iloc[:21].any()
+
+
+def test_committed_catalogue_covers_every_active_measurable_indicator():
+    """A shipped indicator without measured power cannot report a null result.
+
+    This is the check that keeps the committed catalogue in step with the
+    region definitions: change a threshold and this fails until
+    scripts/precompute_power.py is re-run.
+    """
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "config" / \
+        "detection_power.json"
+    catalog = DetectionPowerCatalog.load(path)
+    missing = [
+        indicator.key
+        for region in REGIONS
+        for indicator in region.active_indicators
+        if indicator.test_type in (IndicatorTest.LEVEL_DEVIATION,
+                                   IndicatorTest.SUSTAINED_DIVERGENCE)
+        and catalog.power_for(indicator) is None
+    ]
+    assert not missing, (
+        f"no measured detection power for {missing}; "
+        f"run scripts/precompute_power.py"
+    )
+
+
+def test_committed_catalogue_produces_real_null_results():
+    """End to end: the committed numbers reach the analyst-facing sentence."""
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "config" / \
+        "detection_power.json"
+    status = evaluate_region(get_region("euro_atlantic"),
+                             _provider(_series()), AS_OF,
+                             DetectionPowerCatalog.load(path))
+    assert status.is_quiet
+    sustained = next(s for s in status.signals
+                     if s.indicator_key == "strike_tempo_sustained")
+    assert "1.5x or larger" in sustained.null_statement()

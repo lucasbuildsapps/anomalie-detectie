@@ -35,7 +35,7 @@ import pandas as pd
 
 from sentinel.core.contracts import DetectionPower, Indicator, IndicatorTest
 
-__all__ = ["DetectionPowerCatalog", "scenario_for"]
+__all__ = ["DetectionPowerCatalog", "production_detector", "scenario_for"]
 
 #: Which scenario honestly measures each test type.
 _SCENARIO_FOR_TEST = {
@@ -188,3 +188,55 @@ class DetectionPowerCatalog:
         if not path.exists():
             return cls(**kwargs)
         return cls.from_json(path.read_text(), **kwargs)
+
+
+def production_detector(indicator: Indicator,
+                        baseline_config=None,
+                        reference_periods: int = 180,
+                        ) -> Callable[[pd.Series], pd.Series]:
+    """A `series -> bool series` detector matching how this indicator ships.
+
+    This function is the whole reason the measured floor means anything. v1's
+    evaluation scored five raw detectors at default parameters while the
+    product ran a tuned ensemble over a different aggregation — so the numbers
+    described a system nobody used. Here the detector is built from the same
+    baseline fitting, the same thresholds, and the same divergence logic that
+    `evaluate_indicator` runs.
+
+    One documented approximation: production takes its reference window from
+    the indicator's declared calendar dates, while synthetic scenarios have no
+    real calendar. The window is therefore taken positionally, as the opening
+    `reference_periods` of the series. The *shape* of the test is identical;
+    only the window's provenance differs, and taking it from the start
+    preserves the property that matters — the reference must not contain
+    whatever is currently happening.
+    """
+    from sentinel.core.baseline import (
+        BaselineConfig,
+        divergence_detector,
+        fit_adaptive,
+    )
+
+    config = baseline_config or BaselineConfig()
+
+    if indicator.test_type is IndicatorTest.SUSTAINED_DIVERGENCE:
+        return divergence_detector(reference_periods=reference_periods,
+                                   baseline_config=config)
+
+    if indicator.test_type is IndicatorTest.LEVEL_DEVIATION:
+        threshold = float(indicator.test_config.get("threshold", 3.5))
+
+        def detect(series: pd.Series) -> pd.Series:
+            fit = fit_adaptive(series, config)
+            deviation = fit.deviation(series).abs()
+            flags = (deviation > threshold).fillna(False)
+            # Warm-up periods are untested, not quiet: excluding them keeps
+            # the measurement consistent with what production would report.
+            return (flags & fit.is_usable).astype(bool)
+
+        return detect
+
+    raise ValueError(
+        f"no production detector for {indicator.test_type.value}; "
+        f"detection power for it cannot be measured"
+    )
