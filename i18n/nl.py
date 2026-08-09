@@ -7,6 +7,8 @@ STRINGS = {
     "nav_normbeeld": "Normbeeld",
     "nav_data": "Data & afwijkingen",
     "nav_compare": "Vergelijken",
+    # v2-oppervlak; bewust Engels, zie ui/pages/regions.py.
+    "nav_regions": "Regions",
     "btn_settings": "Instellingen",
 
     "theme_label": "Weergave",
