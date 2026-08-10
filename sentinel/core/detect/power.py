@@ -26,10 +26,11 @@ job:
 - `entity_behaviour` is not scored on a series at all — it is judged per
   entity against peers — so it is measured by `sentinel.eval.entity_power` on
   a synthetic fleet, and only for the behaviour that harness actually injects
-  (`loiter`). An indicator watching for AIS gaps or identity conflicts gets
-  **no** floor from a loiter measurement, and quoting one at it would be the
-  precise dishonesty the null-result rule exists to prevent. Those return
-  None, which the detect layer reads as insufficient data.
+  (`loiter` and `ais_gap`), each against its own rule. An indicator watching
+  for identity conflicts gets **no** floor from a loiter measurement, and
+  quoting one at it would be the precise dishonesty the null-result rule
+  exists to prevent. That one returns None, which the detect layer reads as
+  insufficient data.
 """
 from __future__ import annotations
 
@@ -70,7 +71,7 @@ def _config_key(indicator: Indicator) -> str:
                  "cusum_threshold", "min_sustained_periods",
                  # entity behaviour: what is watched and how strictly
                  "event_types", "peer_baseline", "min_duration_minutes",
-                 "min_gap_minutes")
+                 "min_gap_minutes", "use_rarity")
     }
     return json.dumps(
         {"test": indicator.test_type.value, "config": relevant},
@@ -155,12 +156,36 @@ class DetectionPowerCatalog:
     def _measure_entity(self, indicator: Indicator) -> DetectionPower | None:
         """Measure an entity indicator on the synthetic fleet, or decline.
 
-        The fleet harness injects loitering. An indicator that watches for AIS
-        gaps or identity conflicts is therefore unmeasured, and declining is
-        the honest answer — a loiter floor attached to a gap indicator would
-        let a null result claim coverage nobody measured.
+        The fleet harness injects loitering, dark periods and spoofed
+        identifiers, and each is measured against its own rule — a gap is
+        judged on duration alone, because rarity there would report receiver
+        coverage rather than conduct.
+
+        A behaviour the harness does not inject gets **no** floor. Lending it
+        one from a different behaviour would let a null result claim coverage
+        nobody measured, which is the failure the null-result requirement
+        exists to prevent.
         """
         watched = set(indicator.test_config.get("event_types", ()))
+
+        if "identity_conflict" in watched or "identity_inconsistency" in watched:
+            from sentinel.eval.entity_power import identity_detection_power
+
+            power = identity_detection_power(
+                threshold=self.threshold,
+                n_repeats=max(self.n_repeats // 3, 1))
+            self.entries[_config_key(indicator)] = power
+            return power
+
+        if "ais_gap" in watched and "loiter" not in watched:
+            from sentinel.eval.entity_power import gap_detection_power
+
+            power = gap_detection_power(
+                threshold=self.threshold,
+                n_repeats=max(self.n_repeats // 3, 1))
+            self.entries[_config_key(indicator)] = power
+            return power
+
         if "loiter" not in watched:
             return None
 

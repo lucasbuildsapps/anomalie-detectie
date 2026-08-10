@@ -78,11 +78,36 @@ class PeerConfig:
     #: Peer *events* needed before a magnitude percentile means anything.
     #: Deliberately not a precondition for rarity — see the module docstring.
     min_peer_events: int = 10
-    #: Magnitude at or above this percentile of peers counts as extreme.
+    #: Magnitude at or above this percentile of peers is *eligible* to be
+    #: called extreme. Necessary but not sufficient — see `peer_z_threshold`.
     extreme_percentile: float = 0.95
+    #: Robust departure from the peer median, in MAD-scaled units, required
+    #: before a magnitude counts as extreme.
+    #:
+    #: This exists because a percentile alone is a quantile cut, not a test:
+    #: ~5% of any population sits at or above its own 95th percentile whether
+    #: or not anything is wrong. Measured on a fleet with realistic AIS
+    #: dropouts and *nothing injected*, the rank rule flagged 0-3 vessels
+    #: every run. That is the same defect as v1's
+    #: `IsolationForest(contamination=0.05)`, which this architecture removed
+    #: for marking 5% by construction — it had simply survived here, hidden
+    #: while the only measured behaviour (loitering) was too rare for
+    #: magnitude to be assessable at all.
+    peer_z_threshold: float = 3.5
     #: A behaviour seen in at most this fraction of peer entities is rare
     #: for the class, and therefore notable in itself.
     rare_participation: float = 0.10
+    #: Whether rarity is a meaningful question for this behaviour at all.
+    #:
+    #: It answers "do vessels of this class *choose* to do this", which is
+    #: exactly right for loitering and meaningless for an AIS reception gap.
+    #: A dropout happens *to* a vessel — it is a property of coverage, not of
+    #: conduct — so flagging one because only 8% of its class happened to be
+    #: in a coverage hole reports the shape of the receiver network as vessel
+    #: behaviour. Measured on a fleet with sparse dropouts: rarity flags
+    #: ordinary vessels there and magnitude does not, which is the whole
+    #: difference between the two questions.
+    use_rarity: bool = True
 
     def __post_init__(self) -> None:
         if not self.group_by:
@@ -133,6 +158,52 @@ def _percentile_rank(peers: np.ndarray, value: float) -> float:
     return (below + 0.5 * equal) / peers.size
 
 
+#: MAD -> standard-deviation equivalent for a normal distribution.
+_MAD_TO_SIGMA = 1.4826
+
+
+def _robust_z(peers: np.ndarray, value: float) -> float | None:
+    """How far `value` sits from the peer median, in MAD-scaled units.
+
+    Robust rather than mean/std because the thing being measured is an
+    outlier: one extreme peer would inflate a standard deviation enough to
+    hide the next one.
+
+    Computed on the **log** scale when every value is positive, which is the
+    case for every magnitude the entity layer produces (durations, distances).
+    Those are right-skewed — AIS reception gaps are mostly short with an
+    occasional long one — and on the raw scale a genuine member of that tail
+    sits several MADs from the median, so the test flags the shape of the
+    distribution rather than anything unusual. Measured on a fleet with
+    lognormal dropouts and nothing injected, the raw-scale test flagged twelve
+    ordinary vessels over six runs; on the log scale that is what a
+    distribution like this is supposed to look like.
+
+    Returns None when the spread is not measurable. A peer group whose
+    magnitudes are all identical has no scale to compare against, and dividing
+    by a zero MAD would report every tiny departure as infinitely extreme —
+    turning the guard against quantile cuts into a worse false-positive source
+    than the rule it replaced.
+    """
+    if peers.size < 2:
+        return None
+
+    if peers.min() > 0.0 and value > 0.0:
+        peers = np.log(peers)
+        value = float(np.log(value))
+
+    median = float(np.median(peers))
+    mad = float(np.median(np.abs(peers - median)))
+    if mad <= 0.0:
+        # Fall back to a scale that survives ties: the mean absolute
+        # deviation. If that is zero too, every peer is identical and no
+        # departure is measurable.
+        mad = float(np.mean(np.abs(peers - median))) / _MAD_TO_SIGMA
+        if mad <= 0.0:
+            return None
+    return (value - median) / (mad * _MAD_TO_SIGMA)
+
+
 @dataclass(frozen=True)
 class PeerAssessment:
     """How one event compares with its peers."""
@@ -150,6 +221,9 @@ class PeerAssessment:
     #: None when there were too few peer events to say.
     magnitude_percentile: float | None
     config: PeerConfig
+    #: Robust departure from the peer median, in MAD-scaled units. None when
+    #: the peer spread is not measurable.
+    peer_z: float | None = None
 
     @property
     def rarity_assessable(self) -> bool:
@@ -162,15 +236,29 @@ class PeerAssessment:
 
     @property
     def is_rare_for_class(self) -> bool:
-        """Few peers do this at all, so doing it is itself notable."""
-        return (self.rarity_assessable
+        """Few peers do this at all, so doing it is itself notable.
+
+        Always False when the behaviour is not one a vessel chooses; see
+        `PeerConfig.use_rarity`.
+        """
+        return (self.config.use_rarity
+                and self.rarity_assessable
                 and self.participation <= self.config.rare_participation)
 
     @property
     def is_extreme_magnitude(self) -> bool:
-        """Peers do this, but not to this degree."""
+        """Peers do this, but not to this degree.
+
+        Two conditions, and the second is the one doing the work. A high rank
+        says only "someone has to be at the top"; the robust departure says
+        the value is far from what peers actually do. On a homogeneous
+        population nothing fires, which is the property a rank test cannot
+        have.
+        """
         return (self.magnitude_assessable
-                and self.magnitude_percentile >= self.config.extreme_percentile)
+                and self.magnitude_percentile >= self.config.extreme_percentile
+                and self.peer_z is not None
+                and self.peer_z >= self.config.peer_z_threshold)
 
     @property
     def is_unusual(self) -> bool:
@@ -323,10 +411,12 @@ class PeerBaseline:
         n_with = int(peer_events["entity_key"].nunique()) if n_events else 0
 
         percentile: float | None = None
+        peer_z: float | None = None
         if n_events:
             magnitudes = peer_events["magnitude"].dropna().to_numpy(dtype=float)
             if magnitudes.size and event.magnitude is not None:
                 percentile = _percentile_rank(magnitudes, float(event.magnitude))
+                peer_z = _robust_z(magnitudes, float(event.magnitude))
 
         return PeerAssessment(
             group=wanted,
@@ -337,4 +427,5 @@ class PeerBaseline:
             participation=float(n_with / n_observed) if n_observed else 0.0,
             magnitude_percentile=percentile,
             config=self.config,
+            peer_z=peer_z,
         )

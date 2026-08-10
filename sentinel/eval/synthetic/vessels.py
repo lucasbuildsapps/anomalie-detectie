@@ -133,6 +133,25 @@ class VesselTrackGenerator:
         produces perfectly smooth tracks makes every detector look good."""
         return rng.normal(0.0, metres / 111_000.0, n)
 
+    def punch_gap(self, frame: pd.DataFrame, minutes: float,
+                  at_fraction: float = 0.5) -> pd.DataFrame:
+        """Remove reports so the track carries a silence of `minutes`.
+
+        Deleting rows rather than marking them is the point: a receiver that
+        heard nothing produces no row, and a detector that relies on a
+        "missing" flag would be testing something the real feed never sends.
+        """
+        if minutes <= 0 or len(frame) < 3:
+            return frame
+        n_drop = int(round(minutes / self.interval_minutes)) - 1
+        if n_drop < 1:
+            return frame
+        start = max(1, min(int(len(frame) * at_fraction),
+                           len(frame) - n_drop - 1))
+        keep = np.ones(len(frame), dtype=bool)
+        keep[start:start + n_drop] = False
+        return frame[keep].reset_index(drop=True)
+
     # -- controls --------------------------------------------------------
     def transit(self, vessel_class: str = "cargo") -> VesselScenario:
         """A straight passage at steady speed. Nothing to find."""
@@ -330,7 +349,11 @@ class Fleet:
 def build_fleet(seed: int = 42, n_fishing: int = 40, n_cargo: int = 60,
                 n_targets: int = 2, hours: float = 30.0,
                 target_loiter_hours: float = 4.0,
-                n_contaminating: int = 0) -> Fleet:
+                n_contaminating: int = 0,
+                target_gap_minutes: float = 0.0,
+                spoof_jump_km: float = 0.0,
+                background_gap_minutes: float = 60.0,
+                background_gap_rate: float = 0.7) -> Fleet:
     """A day's traffic: trawlers that loiter by trade, cargo that does not,
     and a couple of cargo vessels that stop where they should not.
 
@@ -341,18 +364,42 @@ def build_fleet(seed: int = 42, n_fishing: int = 40, n_cargo: int = 60,
     """
     frames: list[pd.DataFrame] = []
     targets: list[str] = []
+    gap_rng = np.random.default_rng(seed + 9000)
+
+    def _with_background_gap(frame, generator):
+        """Ordinary reception dropouts, on a share of the fleet.
+
+        Without these every gap is rare by construction and the peer baseline
+        flags any silence at all — which would make the AIS-gap floor a
+        measurement of a world that does not exist. Real AIS is patchy, so the
+        question is never "did it go quiet" but "for longer than its class
+        normally does".
+        """
+        if background_gap_minutes <= 0 or gap_rng.random() > background_gap_rate:
+            return frame
+        # Heavy-tailed, not uniform. Reception dropouts are mostly short with
+        # an occasional long one — a terrestrial receiver going down, a vessel
+        # crossing a coverage hole. An earlier version drew them uniformly,
+        # which produced only three distinct durations after quantisation to
+        # the reporting interval; against a distribution that tight, any extra
+        # step reads as extreme and ordinary vessels get flagged. A detector
+        # tested on that is tested against a world where all outages are the
+        # same length.
+        minutes = background_gap_minutes * float(gap_rng.lognormal(0.0, 0.6))
+        return generator.punch_gap(frame, minutes,
+                                   at_fraction=float(gap_rng.uniform(0.2, 0.7)))
 
     for i in range(n_fishing):
         generator = VesselTrackGenerator(seed=seed + 1000 + i, hours=hours)
         frame = generator.fishing().positions.copy()
         frame["entity_key"] = f"fish-{i:03d}"
-        frames.append(frame)
+        frames.append(_with_background_gap(frame, generator))
 
     for i in range(n_cargo):
         generator = VesselTrackGenerator(seed=seed + 2000 + i, hours=hours)
         frame = generator.transit().positions.copy()
         frame["entity_key"] = f"cargo-{i:03d}"
-        frames.append(frame)
+        frames.append(_with_background_gap(frame, generator))
 
     # Cargo vessels that also loiter, but are not targets. As their number
     # rises, loitering stops being rare for the class and the peer baseline
@@ -366,12 +413,28 @@ def build_fleet(seed: int = 42, n_fishing: int = 40, n_cargo: int = 60,
         frame["entity_key"] = f"cargo-also-{i:03d}"
         frames.append(frame)
 
+    # A second hull broadcasting a target's identifier. Injected by splicing
+    # a displaced position into the middle of the track rather than by adding
+    # a separate vessel: that is what the receiver actually sees — one
+    # identifier, reports that cannot belong to one hull.
+    def _spoof(frame: pd.DataFrame) -> pd.DataFrame:
+        if spoof_jump_km <= 0 or len(frame) < 4:
+            return frame
+        out = frame.copy().reset_index(drop=True)
+        at = len(out) // 2
+        out.loc[at, "lat"] = float(out.loc[at, "lat"]) + spoof_jump_km / 111.0
+        return out
+
     for i in range(n_targets):
         generator = VesselTrackGenerator(seed=seed + 3000 + i, hours=hours)
         frame = generator.loiter_near_cable(
             hours_loitering=target_loiter_hours).positions.copy()
         key = f"cargo-target-{i:02d}"
         frame["entity_key"] = key
+        if target_gap_minutes > 0:
+            frame = generator.punch_gap(frame, target_gap_minutes,
+                                        at_fraction=0.75)
+        frame = _spoof(frame)
         targets.append(key)
         frames.append(frame)
 

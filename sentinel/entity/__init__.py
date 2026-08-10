@@ -18,6 +18,7 @@ from sentinel.entity.geo import (
     haversine,
     speed_knots,
 )
+from sentinel.entity.identity import detect_identity_conflicts
 from sentinel.entity.peers import (
     PeerAssessment,
     PeerBaseline,
@@ -33,6 +34,7 @@ __all__ = [
     "bearing",
     "cross_track_distance",
     "detect_ais_gaps",
+    "detect_identity_conflicts",
     "detect_loiter",
     "detect_route_deviation",
     "elapsed_seconds",

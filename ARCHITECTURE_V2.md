@@ -867,6 +867,121 @@ Dat was geen conservatieve marge maar een meetfout in de veilige richting: het
 systeem beweerde blinder te zijn dan het is. Een test bewaakt nu dat de
 verscheepte catalogus geen onopgeloste vloer bevat.
 
+### 6.3-duodecies Netwerkconnectors — en wat "getest" hier betekent
+
+Geen van de gedeclareerde bronnen is bereikbaar vanuit de omgeving waarin dit
+geschreven is: de proxy weigert `CONNECT` naar `web.ais.dk`,
+`api.acleddata.com` én `aisstream.io`. Dat stuurt het ontwerp in plaats van de
+afwezigheid te verontschuldigen.
+
+**Transport is een naad, geen laag.** `transport.py` is een tiental regels
+`urlopen` achter een injecteerbaar protocol. Alles wat bepaalt wat de data
+*betekent* — kolomafbeelding, tijdformaat, sentinelwaarden, filtering,
+aankomsttijd — zit in de connector en wordt tegen fixtures getest. Een
+connector die ophalen, parsen en opslaan in één functie doet is alleen te
+testen door de bron te bellen, wat in de praktijk betekent: niet.
+
+**De DMA-parser heeft nooit een echt bestand gezien.** De kolomafbeelding komt
+uit de gepubliceerde formaatbeschrijving. Dat is een echt risico, en het wordt
+gedragen in plaats van verstopt: matchen gebeurt op genormaliseerde
+kolomnaam, en een ontbrekende verplichte kolom levert een `SchemaError` die
+noemt wat gewenst was en wat er stond. Er is bewust géén positionele
+terugval — een verschoven kolomvolgorde zou dan als geldige data gelezen
+worden. De eerste echte run is dus een leesbare fout als het formaat verschoven
+is, geen stille rommel.
+
+**Waarom DMA eerst.** Van de gedeclareerde bronnen is het de enige zonder
+API-sleutel en met herdistributie toegestaan, en de enige die iets deblokkeert:
+de entiteitsengine, de peer-baselines, de populatienoemer en een gemeten
+loitervloer draaien allemaal al — op een synthetische vloot. Wat ontbreekt zijn
+echte tracks.
+
+**Aankomsttijd is de publicatiedatum van het archief**, niet het zendmoment.
+Het bestand van de 3e verschijnt op de 4e, dus dan had de tool het kunnen
+weten. Het zendmoment vastleggen zou directe toegang claimen en elke replay die
+er doorheen loopt vleien.
+
+Bewust niet gebouwd, met reden: **aisstream.io** (sleutel-gated live socket,
+geen historie, niet fixture-testbaar, en de verkeerde volgorde — DMA-historie
+valideert de methodiek, aisstream neemt alleen vooruit op), **ACLED**
+(registratie plus een herdistributieverbod, wat een inzetbesluit is en geen
+programmeertaak) en **Kystverket** (zelfde vorm als DMA; pas toevoegen als de
+DMA-afbeelding tegen een echt bestand bevestigd is, anders schrijven we
+dezelfde onbevestigde aanname twee keer op).
+
+### 6.3-terdecies De AIS-gat-vloer, en een kwantielsnede die was blijven staan
+
+De gat-indicator had geen gemeten vloer en meldde daarom altijd onvoldoende
+data. Het harnas injecteert nu donkere periodes en meet die vloer: **720
+minuten**, geoordeeld op duur tegen peers.
+
+Onderweg kwam een echt defect boven water dat niets met gaten te maken had.
+`is_extreme_magnitude` vuurde op `magnitude_percentile >= 0.95`. Een percentiel
+markeert per constructie ~5% van élke populatie, of er nu iets mis is of niet —
+exact het bezwaar waarmee §1 `IsolationForest(contamination=...)` schrapte:
+*"markeert 5% per constructie; een kwantielsnede, geen toets."* Het had in de
+peer-baseline overleefd, onzichtbaar zolang het enige gemeten gedrag
+(loiteren) te zeldzaam was om magnitude überhaupt beoordeelbaar te maken. Op
+een vloot met realistische AIS-uitval en **niets geïnjecteerd** markeerde de
+rangregel 0–3 vaartuigen per run.
+
+De toets is nu een robuuste afwijking van de peer-mediaan, op **log-schaal**
+omdat duren rechtsscheef zijn: op de ruwe schaal ligt een echt lid van die
+staart een paar MAD's van de mediaan en meet je de vorm van de verdeling in
+plaats van iets ongewoons.
+
+**Zeldzaamheid is niet altijd de juiste vraag.** Die beantwoordt "kiest deze
+klasse hiervoor" — precies goed voor loiteren, betekenisloos voor een
+AIS-uitval. Een dropout overkomt een schip; hem markeren omdat maar 8% van zijn
+klasse toevallig in een dekkingsgat zat, rapporteert de vorm van het
+ontvangernetwerk als gedrag. `PeerConfig.use_rarity` staat daarom uit voor de
+gat-indicator, en die instelling staat in `test_config` omdat de vloer eronder
+onder precies die instelling is gemeten.
+
+Twee kleinere correcties, allebei van hetzelfde type: een vloer wordt pas
+gerapporteerd als de meting hem *oplost* (bij 480 minuten was de recall 0,83
+tegen drempel 0,80 met n=16 — binnen de ruis), en "te weinig herhalingen" wordt
+niet langer gemeld als "confounded detector". Dat zijn verschillende storingen,
+en de tweede zou iemand een detector laten herstellen die niets mankeert.
+
+### 6.3-quaterdecies Identiteitsconflicten — fysica, geen papierwerk
+
+De laatste van de vier NLD EEZ-indicatoren zonder primitief. Een MMSI is een
+*claim*, geen feit, en er kunnen twee dingen mee misgaan die niet even veel
+waard zijn om te bouwen:
+
+**Statische velden** — dezelfde identificatie met een andere naam, IMO of
+roepnaam dan eerder. Makkelijk te detecteren en meestal *legitiem*: omvlaggen
+en hernoemen gebeurt voortdurend, dus zo'n detector besteedt zijn leven aan het
+melden van papierwerk. Bewust niet gebouwd.
+
+**Kinematische onmogelijkheid** — dezelfde identificatie gemeld op twee plekken
+waar geen enkele romp tussen kan zijn gevaren. Dat is niet weg te verklaren met
+papieren: óf de positie klopt niet, óf de identiteit. En het vraagt niets meer
+dan `lat`, `lon` en `timestamp` — precies wat de positie-opslag bevat.
+
+De drempel is bewust ver boven elk echt schip (100 knopen). De vraag is niet
+"voer dit schip te hard" maar "is dit fysiek één schip"; hem bij een
+plausibel maximum leggen zou een harde onmogelijkheid veranderen in een zacht
+oordeel over vaarprestaties. Een snelle veerboot haalt 40 knopen; een
+GPS-fout haalt er 400.
+
+**De vloer is een afstand, en dat is een eigenschap van de feed.** 40 km bij
+een rapportagecadans van tien minuten, want een verplaatsing wordt pas een
+impliciete snelheid als je door het rapportage-interval deelt. Op een uurlijkse
+satellietfeed is zes keer zo veel afstand nodig. De kilometers zonder de
+cadans citeren zou het getal op de detector laten lijken terwijl het vooral de
+feed beschrijft.
+
+Wat het event zegt: *één identificatie is gebruikt door wat meer dan één
+vaartuig moet zijn*. Niet wie de indringer is, niet dat iemand iets van plan
+was — een decodeerfout geeft dezelfde signatuur, en die alternatieve verklaring
+reist mee.
+
+Daarmee heeft elk van de vier NLD EEZ-indicatoren een gemeten én opgeloste
+vloer, elk tegen zijn eigen regel. De regio blijft DATA_ONLY: de machinerie
+staat er, de AIS-feed niet.
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per
@@ -898,7 +1013,9 @@ sentinel/
   ingest/
     base.py           Connector-protocol, run_ingest, normalisatie
     chronology.py     gecureerde incidentchronologie (gebouwd)
-    connectors/       aisstream, dma_ais, kystverket, acled  (nog leeg)
+    transport.py      Fetcher-naad (het enige niet-offline-testbare deel)
+    dma_ais.py        DMA dagarchieven -> positions (gebouwd)
+    (aisstream, kystverket, acled: bewust nog niet — zie §6.3-duodecies)
   regions/
     base.py           RegionModule-descriptor
     euro_atlantic/    volledig

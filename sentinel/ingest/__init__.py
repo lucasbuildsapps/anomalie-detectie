@@ -9,11 +9,27 @@ from sentinel.ingest.base import (
     IngestResult,
     normalise,
     run_ingest,
+    run_position_ingest,
 )
 from sentinel.ingest.chronology import CHRONOLOGY_SOURCE, ChronologyConnector
+from sentinel.ingest.dma_ais import (
+    DMA_SOURCE,
+    DmaAisConnector,
+    SchemaError,
+    parse_dma_csv,
+)
+from sentinel.ingest.transport import Fetcher, FetchError, UrllibFetcher
 
 __all__ = [
     "CHRONOLOGY_SOURCE",
+    "DMA_SOURCE",
+    "DmaAisConnector",
+    "FetchError",
+    "Fetcher",
+    "SchemaError",
+    "UrllibFetcher",
+    "parse_dma_csv",
+    "run_position_ingest",
     "ChronologyConnector",
     "Connector",
     "IngestResult",
