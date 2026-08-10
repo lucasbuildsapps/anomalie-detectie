@@ -8,7 +8,12 @@ and not yet built.
 """
 from sentinel.regions import euro_atlantic, nld_eez, pending
 from sentinel.regions.base import GeoScope, RegionModule
-from sentinel.regions.evaluate import SeriesProvider, evaluate_region
+from sentinel.regions.evaluate import (
+    EventProvider,
+    PopulationProvider,
+    SeriesProvider,
+    evaluate_region,
+)
 
 #: Display order: watched first, then declared-but-not-yet-watched.
 REGIONS: tuple[RegionModule, ...] = (
@@ -43,7 +48,9 @@ def watched_regions() -> tuple[RegionModule, ...]:
 
 __all__ = [
     "REGIONS",
+    "EventProvider",
     "GeoScope",
+    "PopulationProvider",
     "RegionModule",
     "SeriesProvider",
     "evaluate_region",

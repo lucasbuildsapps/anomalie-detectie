@@ -30,6 +30,7 @@ gap is measured rather than assumed away.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -82,6 +83,28 @@ class EntityPowerResult:
     fishing_false_positives: int
     threshold: float
     n_repeats: int
+    #: Mean recall observed at the reported duration floor. Kept so the floor
+    #: can say whether it was actually resolved instead of assuming it was.
+    floor_recall: float = 1.0
+
+    @property
+    def floor_is_resolved(self) -> bool:
+        """Whether the floor is clear of sampling noise.
+
+        The series harness asks the same question via
+        `PowerCurve.floor_is_uncertain`; this is the entity equivalent, and it
+        exists because the catalogue was reporting `resolved: true` for a
+        measurement that had never checked.
+
+        The `p == 1` case needs care: the usual standard error collapses to
+        zero when every run succeeds, which would declare a floor resolved on
+        three lucky draws. The rule of three (`3/n`) is used instead, so a
+        perfect score still has to come from enough runs to mean something.
+        """
+        p = float(self.floor_recall)
+        n = max(int(self.n_repeats), 1)
+        se = 3.0 / n if p >= 1.0 else math.sqrt(max(p * (1.0 - p), 0.0) / n)
+        return (p - self.threshold) >= se
 
     @property
     def is_quotable(self) -> bool:
@@ -97,6 +120,7 @@ class EntityPowerResult:
             threshold=self.threshold,
             n_repeats=self.n_repeats,
             confounded=not self.is_quotable,
+            resolved=self.floor_is_resolved,
             unit="hours",
             caveat=(
                 f"This holds only while the behaviour stays rarer than "
@@ -121,17 +145,24 @@ class EntityPowerResult:
 def measure_duration_floor(
     durations: tuple[float, ...] = (0.5, 1.0, 1.5, 2.0, 4.0, 8.0),
     threshold: float = 0.8, n_repeats: int = 3,
-    peer_config: PeerConfig | None = None) -> float:
-    """Shortest loiter reliably detected, in hours. NaN if none is."""
+    peer_config: PeerConfig | None = None) -> tuple[float, float]:
+    """Shortest loiter reliably detected, and the recall observed there.
+
+    Returns `(hours, recall)`; `(nan, 0.0)` when no duration qualified. The
+    recall comes back with the floor because a floor whose recall sits on the
+    decision threshold is not a resolved measurement, and the caller cannot
+    tell without it.
+    """
     for hours in durations:
         recalls = [
             _recall(target_loiter_hours=hours, seed=42 + i,
                     peer_config=peer_config)[0]
             for i in range(n_repeats)
         ]
-        if float(np.mean(recalls)) >= threshold:
-            return hours
-    return float("nan")
+        mean = float(np.mean(recalls))
+        if mean >= threshold:
+            return hours, mean
+    return float("nan"), 0.0
 
 
 def measure_prevalence_cliff(
@@ -165,10 +196,11 @@ def measure(threshold: float = 0.8, n_repeats: int = 3,
             peer_config: PeerConfig | None = None) -> EntityPowerResult:
     """Both floors together, with the false-alarm check alongside."""
     _, fishing = _recall(peer_config=peer_config)
+    floor_hours, floor_recall = measure_duration_floor(
+        threshold=threshold, n_repeats=n_repeats, peer_config=peer_config)
     return EntityPowerResult(
-        duration_floor_hours=measure_duration_floor(
-            threshold=threshold, n_repeats=n_repeats,
-            peer_config=peer_config),
+        duration_floor_hours=floor_hours,
+        floor_recall=floor_recall,
         prevalence_cliff=measure_prevalence_cliff(
             threshold=threshold, peer_config=peer_config),
         fishing_false_positives=fishing,

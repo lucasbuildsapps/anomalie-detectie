@@ -86,6 +86,12 @@ class DetectionPower:
     #: measurements are in real units such as hours, and rendering those as
     #: "1x" would be quietly wrong.
     unit: str = "x"
+    #: False when the measurement did not resolve the floor: the deciding
+    #: magnitude sat within sampling noise of the recall threshold, so more
+    #: repeats could move it. Quoting such a floor as exact overstates what
+    #: was measured — the spike configuration read 5x at 8 repeats and 3x at
+    #: 24 before this was surfaced.
+    resolved: bool = True
     #: A condition the floor depends on. Some capabilities fail along a
     #: dimension the floor does not express — entity behaviour stops being
     #: detectable once it stops being rare — and an unqualified floor would
@@ -149,6 +155,9 @@ class DetectionPower:
         text = (f"{self.scenario_label} of {size} or larger would have "
                 f"been detected {self.threshold:.0%} of the time.")
         text = text[0].upper() + text[1:]
+        if not self.resolved:
+            text += (f" This floor is not resolved at {self.n_repeats} runs; "
+                     f"treat it as approximate.")
         if self.caveat:
             text += f" {self.caveat}"
         return text

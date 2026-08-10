@@ -231,3 +231,14 @@ def test_the_report_never_reports_a_bare_null(dataset):
     for signal in status.tested:
         text = compose(signal, by_key[signal.indicator_key]).format()
         assert "would have been detected" in text or "fixed rule" in text
+
+
+def test_the_watchboard_supplies_an_event_provider():
+    """Without one, every entity indicator on the page reports insufficient
+    data regardless of what was derived — the gap this wiring closed."""
+    source = __import__("pathlib").Path("ui/pages/regions.py").read_text()
+    assert "entity_providers" in source
+    assert "event_provider=" in source
+    assert "population_provider=" in source, (
+        "without a population the entity test can only judge magnitude, and "
+        "reports insufficient data rather than a verdict")

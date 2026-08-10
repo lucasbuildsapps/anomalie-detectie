@@ -31,7 +31,7 @@ from sentinel.core.contracts import ConfidenceInputs, MonitoringStatus, Verdict
 from sentinel.core.detect.power import DetectionPowerCatalog
 from sentinel.core.time import PointInTimeStore
 from sentinel.regions import REGIONS, evaluate_region
-from sentinel.regions.providers import storage_provider
+from sentinel.regions.providers import entity_providers, storage_provider
 from sentinel.report import compose, compose_region
 from ui.components import render_topbar
 from ui.theme import P
@@ -141,11 +141,19 @@ def _render_region(region, dataset_id: int | None, as_of: datetime,
     # showing the caveat while the confidence pillar stays unaware would let
     # a finding read as better-grounded than its own provenance says it is.
     provenance = store.view(as_of).provenance(dataset_id)
+
+    # Entity indicators read derived events plus the observed population.
+    # Built as a pair so their windows cannot diverge: a numerator scoped
+    # differently from its denominator makes every behaviour look rare.
+    events, population = entity_providers(dataset_id, region, store.view)
     status = evaluate_region(
         region, provider, as_of, catalog,
         inputs=ConfidenceInputs(
             reconstruction_faithful=(provenance.is_faithful
-                                     if provenance.n_rows else None)))
+                                     if provenance.n_rows else None)),
+        event_provider=events,
+        population_provider=population,
+    )
 
     st.markdown(f"### {_html.escape(status.headline())}")
 

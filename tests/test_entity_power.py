@@ -25,8 +25,9 @@ from sentinel.eval.entity_power import (
 def test_duration_floor_is_the_primitive_minimum():
     """Below the primitive's own minimum no event is emitted at all, so
     nothing downstream can judge anything. The floor is that threshold."""
-    floor = measure_duration_floor(n_repeats=2)
+    floor, recall = measure_duration_floor(n_repeats=2)
     assert floor == pytest.approx(1.0)
+    assert recall >= 0.8, "the floor must be the duration that actually met it"
 
 
 def test_short_loiters_are_not_detected():
@@ -114,3 +115,34 @@ def test_describe_reads_as_a_sentence():
     text = measure(n_repeats=1).describe()
     assert text[0].isupper()
     assert text.rstrip().endswith(".")
+
+
+# =========================================================================
+# the floor has to know whether it was resolved
+# =========================================================================
+def test_a_perfect_score_from_few_runs_is_not_a_resolved_floor():
+    """The usual standard error collapses to zero at p=1, which would declare
+    a floor resolved on three lucky draws. The rule of three prevents that."""
+    lucky = EntityPowerResult(duration_floor_hours=1.0, prevalence_cliff=0.09,
+                              fishing_false_positives=0, threshold=0.8,
+                              n_repeats=3, floor_recall=1.0)
+    assert not lucky.floor_is_resolved
+    assert not lucky.to_detection_power().resolved
+
+
+def test_a_perfect_score_from_enough_runs_is_resolved():
+    solid = EntityPowerResult(duration_floor_hours=1.0, prevalence_cliff=0.09,
+                              fishing_false_positives=0, threshold=0.8,
+                              n_repeats=48, floor_recall=1.0)
+    assert solid.floor_is_resolved
+    assert solid.to_detection_power().resolved
+
+
+def test_a_recall_on_the_decision_boundary_is_not_resolved():
+    borderline = EntityPowerResult(
+        duration_floor_hours=1.0, prevalence_cliff=0.09,
+        fishing_false_positives=0, threshold=0.8, n_repeats=8,
+        floor_recall=0.82)
+    assert not borderline.floor_is_resolved
+    assert "treat it as approximate" in \
+        borderline.to_detection_power().describe()

@@ -170,7 +170,10 @@ seizoen. Zonder die scheiding sluipt het quotum via de achterdeur terug binnen.
 
 ## 3. Gemeenschappelijk datamodel
 
-PostgreSQL + PostGIS; `position` als TimescaleDB-hypertable.
+PostgreSQL of SQLite via dezelfde SQLAlchemy-definities. **Niet** PostGIS en
+**niet** TimescaleDB — dat was het oorspronkelijke plan en het is bewust niet
+gebouwd; de afweging en de concrete trigger om alsnog over te stappen staan in
+§6.3-decies.
 
 ### 3.1 Kern-entiteiten
 
@@ -734,6 +737,136 @@ Waar de twee harnassen elkaar tegenspreken — goed detectievermogen in
 simulatie, niets dat afgaat vóór een echte escalatie — is die tegenspraak de
 bevinding, en wijst zij naar de scenariogenerator, niet naar de detector.
 
+### 6.3-nonies De entiteitslaag aangesloten — eis 7 afgemaakt
+
+Niet-onderhandelbare eis 7 zegt: entiteit-regio's en count-regio's delen
+hetzelfde datamodel en dezelfde indicator-machinerie. De machinerie was
+gedeeld; de opslag niet. `sentinel/entity/` produceerde `Event`-objecten die in
+het geheugen leefden en nergens werden weggeschreven, en `evaluate_region` gaf
+nooit events of peers door aan een context. Elke entiteitsindicator meldde dus
+*onvoldoende data*, ongeacht wat de data zei. Gebouwd, gemeten, en
+onbereikbaar.
+
+Wat er nu ligt:
+
+- **`entity_events`** — een eigen tabel met dezelfde point-in-time kolommen als
+  `observations`. Bewust niet `events_t`: die is een analisten-annotatie
+  (datum + label) zonder herkomst, entiteit of aankomsttijd.
+- **`AsOfView.events()`** — dezelfde causale garantie als `observations()`, en
+  hier weegt hij zwaarder: een afgeleid event draagt het moment waarop de
+  *detector draaide*. Een loiter van de 3e die pas op de 9e is berekend moet
+  onzichtbaar blijven voor een replay van de 5e, anders krijgt het systeem
+  krediet voor vooruitziendheid die het niet had.
+- **`evaluate_region(..., event_provider=...)`** — een aparte assemblagestap,
+  géén aparte engine. Hij eindigt in dezelfde `evaluate_indicator`-aanroep als
+  elke count-indicator; alleen de invoer verschilt.
+
+**De noemer die ontbreekt, en waarom dat expliciet is.** Zeldzaamheid heeft een
+noemer nodig van *elk waargenomen vaartuig*, inclusief de stille meerderheid
+die niets deed. Entity-events bevatten alleen vaartuigen die wél iets deden.
+Zonder aparte populatie is participatie dus `1.0` per constructie, kan alleen
+magnitude nog vlaggen, en is zeldzaamheid — het primaire signaal — nooit
+getoetst. `evaluate_region` accepteert daarom een `population_provider`;
+niemand levert er nu een, want dat vereist positie-opslag.
+
+Tot die er is faalt de toets **dicht**: `PeerBaseline` draagt
+`rarity_testable`, en de entiteitstoets meldt bij een lege uitslag
+onvoldoende data in plaats van rust — "de vraag waar we voornamelijk op
+leunen is niet gesteld" is geen stil resultaat.
+
+### 6.3-decies Positie-opslag — en waarom er géén PostGIS in zit
+
+De `positions`-tabel heeft twee taken. De zichtbare: een plek waar een
+AIS-feed kan landen. De dragende: de **waargenomen populatie** — elk vaartuig
+dat iets uitzond, inclusief de stille meerderheid die niets deed. Daarmee is
+zeldzaamheid weer toetsbaar en kan een entiteitsindicator een echt oordeel
+vellen in plaats van magnitude-only onvoldoende data.
+
+**Afwijking van het plan, bewust.** §10 noemde "PostGIS plus een
+gepartitioneerde positietabel". Geen van beide is gebouwd:
+
+- Niets in deze codebase doet een echte ruimtelijke query. `entity/geo.py`
+  rekent haversine en cross-track zonder geometrie-stack, en de noemer
+  hierboven is een `SELECT DISTINCT`. Een harde PostGIS-afhankelijkheid zou de
+  SQLite-testweg breken waar de hele suite op draait, in ruil voor niets dat
+  vandaag gebruikt wordt.
+- Partitioneren beantwoordt een volumeprobleem, en er ís geen volume — er is
+  geen feed. Een lege tabel partitioneren is gokken naar een belasting die
+  niemand gemeten heeft.
+
+Waar PostGIS wél gaat lonen, en dat is concreet: zodra een indicator "binnen
+deze corridor" vraagt in plaats van "binnen deze box". Kabelcorridors zijn
+lijnen met een buffer, en `loiter_near_infrastructure` is precies die vraag.
+Dat staat in `sentinel/regions/README.md` als de trigger, niet als een vaag
+later.
+
+**De koppeling die niet uit elkaar kan lopen.** Participatie is *entiteiten
+die het deden / entiteiten waargenomen*. Scoop de teller op 30 dagen en laat
+de noemer op alles staan, en élk gedrag lijkt zeldzaam — een schip dat drie
+jaar geleden voor het laatst iets uitzond telt nog steeds als waargenomen. Dat
+drukt participatie onder de zeldzaamheidsdrempel en levert vals-positieven op
+in precies de richting waartegen de peer-baseline moet beschermen.
+
+`entity_providers()` geeft daarom beide providers in één aanroep terug, met één
+`window_days` die op allebei of op geen van beide slaat. De mismatch is niet
+uit te drukken in plaats van makkelijk te maken — dezelfde aanpak als bij
+`AsOfView`: de fout structureel onmogelijk maken in plaats van er discipline
+op te vragen.
+
+### 6.3-undecies Het alert-budget — en waarom het geen quotum is
+
+Besluit #6 legde 5–15 alarmen per week per regio vast als kalibratiedoel dat het
+verwijderde quotum vervangt. Het verschil is het hele punt van
+`sentinel/eval/budget.py`.
+
+v1's `run_auto_pilot()` versoepelde de gevoeligheid tijdens de run tot er iets
+te tonen was. Dat garandeert bevindingen, en het garandeert ze het luidst in de
+weken waarin het minst gebeurt. Hier gebeurt het omgekeerde: het budget wordt
+**vooraf en offline** gemeten en zet dan een drempel vast. Tijdens de run is er
+geen rangschikking, geen top-N en geen onderdrukking. Gebeuren er dertig
+dingen, dan ziet de analist dertig alarmen.
+
+**De ondergrens is geen doel.** Dat is precies de val waar het quotum in liep:
+"5–15" leest als een bereik om in te landen, en de voor de hand liggende manier
+om 5 te halen is versoepelen tot ruis het verschil aanvult. De twee grenzen
+doen hier verschillend werk:
+
+- **De bovengrens bindt.** Een configuratie die op *rustige data* alleen al
+  boven 15/week uitkomt, verzuipt de analist voordat er iets gebeurt.
+- **De ondergrens diagnosticeert.** Onder de 5 blijven is geen tekortkoming en
+  wordt nooit gecorrigeerd door te versoepelen. Het betekent óf dat het rustig
+  is, óf dat de detectievloer te hoog ligt — en de vloer, ernaast gemeten,
+  onderscheidt die twee.
+
+De aanbeveling maximaliseert daarom **gevoeligheid onder de volumebeperking**,
+niet een aantal alarmen. Mikken op het midden van het bereik is hoe een budget
+weer een quotum wordt.
+
+#### Een defect dat deze meting blootlegde
+
+De eerste run van deze kalibratie adviseerde de verscheepte drempel van 3,5
+naar 3,0 te verlagen, op grond van vier trekkingen. Bij twaalf trekkingen waren
+beide identiek. De oorzaak lag niet in het budget maar in de vloer zelf:
+
+| n | net recall bij 3× | vloer |
+|---|---|---|
+| 8 | 0,75 | 5× |
+| 16 | 0,81 | 3× |
+| 24 | 0,88 | 3× |
+
+De netto recall bij 3× zit *op* de 0,8-beslisgrens, dus de vloer wipte met de
+steekproefgrootte — en de uitvoer zei daar niets over. `PowerCurve` heeft nu
+`floor_is_uncertain`: klaart de beslissende magnitude de drempel met minder dan
+één standaardfout van een proportie (`sqrt(p(1-p)/n)`), dan is de vloer niet
+opgelost en zegt de tekst dat. `DetectionPower` draagt `resolved` mee tot in de
+catalogus, `precompute_power.py` draait nu op 24 trekkingen, en
+`config/detection_power.json` is opnieuw gemeten: de spike-vloer gaat van 5×
+naar **3×**.
+
+Dat was geen conservatieve marge maar een meetfout in de veilige richting: het
+systeem beweerde blinder te zijn dan het is. Een test bewaakt nu dat de
+verscheepte catalogus geen onopgeloste vloer bevat.
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per
@@ -778,7 +911,7 @@ sentinel/
     retrospective/    replay-harnas
     power/            detectievermogen-curves
     report/
-  storage/            SQLAlchemy + PostGIS + Timescale
+  storage/            SQLAlchemy (positions/events/observations; geen PostGIS — zie §6.3-decies)
   api/                FastAPI (bestaat al; groeit mee)
   ui/                 Streamlit (v2), splitsing in fase 6
 ```
@@ -875,7 +1008,7 @@ Uitvoer      ICD 203-assessment + verschil met vorige beoordeling
 | Fase | Inhoud | Klaar wanneer |
 |---|---|---|
 | **1. Kritieke correcties** | `AsOfView` + `ingested_at`; quotum-lus, contamination en stemming eruit; causale baseline; aggregatie op één plek | Zuivere ruis levert 0 alarmen; geen module leest buiten `AsOfView` |
-| **2. Evaluatie & kalibratie** | Synthetische injectie (9 scenario's), event-niveau scoring, detectievermogen-curves, retrospectief replay | Detectievermogen-curve per indicator; drempels gezet op 5–15/week |
+| **2. Evaluatie & kalibratie** | Synthetische injectie (9 scenario's), event-niveau scoring, detectievermogen-curves, retrospectief replay | **Klaar** — curve per indicator (§6.3-ter), retrospectief replay (§6.3-octies), budget-kalibratie (§6.3-undecies) |
 | **3. Regio-architectuur** | `RegionModule`, indicator-registry, dubbele baseline, confidence-raamwerk, vijf-tabbladen-schil met eerlijke status | Euro-Atlantic draait volledig als regiomodule |
 | **4. NLD EEZ** | Postgres/PostGIS/Timescale, AIS-connectors, identiteit, tracks, gedragsprimitieven, entity-events, synthetische trackgenerator | Loitering en dark-gaps aantoonbaar gedetecteerd op DMA-historie |
 | **5. Overige regio's** | MENA / Indo-Pacific / Caribbean, config-gedreven, per stuk pas activeren als de bron er is | Elk actief tabblad heeft een gevalideerde indicator |

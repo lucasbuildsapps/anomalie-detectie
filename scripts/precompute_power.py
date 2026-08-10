@@ -40,7 +40,7 @@ DEFAULT_OUTPUT = Path(__file__).resolve().parent.parent / "config" / \
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--repeats", type=int, default=8,
+    parser.add_argument("--repeats", type=int, default=24,
                         help="draws per magnitude; more is slower but steadier")
     parser.add_argument("--force", action="store_true",
                         help="re-measure configurations already cached")

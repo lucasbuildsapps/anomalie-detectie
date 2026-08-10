@@ -149,13 +149,16 @@ MODULE = RegionModule(
     sources=SOURCES,
     indicators=INDICATORS,
     activation_requirements=(
-        "an AIS feed with retained history for the Dutch EEZ",
-        "infrastructure geometry (cables, pipelines, wind farms)",
+        "an AIS feed with retained history for the Dutch EEZ — the storage, "
+        "derivation and evaluation path all exist; the data does not",
+        "infrastructure geometry (cables, pipelines, wind farms), which needs "
+        "corridor shapes rather than the bounding boxes stored today",
         "identity resolution, for the identity-conflict indicator",
         "a measured floor for AIS gaps, which the fleet harness does not "
         "yet inject",
     ),
-    summary=("Maritime behaviour in the Dutch EEZ. The entity engine and its "
-             "peer baselines are built and the loiter floor is measured; "
-             "there is no AIS feed yet, so nothing is being tested."),
+    summary=("Maritime behaviour in the Dutch EEZ. Positions, derived events, "
+             "peer baselines and a measured loiter floor are all in place and "
+             "run end to end; there is no AIS feed yet, so nothing is being "
+             "tested."),
 )
