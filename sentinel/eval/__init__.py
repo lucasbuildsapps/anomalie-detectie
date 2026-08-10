@@ -14,6 +14,13 @@ from sentinel.eval.harness import (
     run_scenario,
     run_suite,
 )
+from sentinel.eval.retrospective import (
+    RetrospectiveReport,
+    TruthEvent,
+    WarningResult,
+    events_from_chronology,
+    replay,
+)
 from sentinel.eval.synthetic import SCENARIO_KINDS, Scenario, ScenarioGenerator
 
 __all__ = [
@@ -21,13 +28,18 @@ __all__ = [
     "Episode",
     "MatchResult",
     "PowerCurve",
+    "RetrospectiveReport",
     "Scenario",
     "ScenarioGenerator",
     "ScenarioScore",
+    "TruthEvent",
+    "WarningResult",
     "detection_floor",
+    "events_from_chronology",
     "false_alarm_rate",
     "match_episodes",
     "power_curve",
+    "replay",
     "run_scenario",
     "run_suite",
     "to_episodes",

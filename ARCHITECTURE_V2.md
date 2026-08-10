@@ -698,6 +698,42 @@ plek.
 `None` en kapte niets af: de waarschuwing stond onder de bevinding terwijl het
 oordeel er geen weet van had. Nu wordt hij doorgegeven.
 
+### 6.3-octies Retrospectieve validatie — gebouwd, met vier grenzen
+
+`sentinel/eval/retrospective.py` speelt de regio per datum opnieuw af en vraagt
+per chronologie-gebeurtenis of er vooraf een indicator actief stond, en hoe
+lang. Vier grenzen staan in de *uitvoer*, niet in een voetnoot:
+
+1. **Steekproef.** Een gecureerde chronologie van grote escalaties telt
+   tientallen gebeurtenissen, geen duizenden. Onder `min_events` weigert het
+   rapport een percentage te noemen en zegt waarom.
+2. **Selectiebias.** De chronologie wordt geschreven door dezelfde persoon die
+   het systeem afstelt. Geen fraude — een eerlijke curator kiest nog steeds
+   gebeurtenissen die hij belangrijk vindt, en belang correleert met
+   zichtbaarheid in de data. Het synthetische harnas kent die lus niet, en
+   blijft daarom primair.
+3. **Aankomstgetrouwheid.** Rust de replay op geschatte aankomsttijden, dan is
+   elke waarschuwingstijd optimistisch met de niet-vastgelegde
+   rapportagevertraging. Dat wordt gemeld, niet uitgemiddeld.
+4. **Waarschuwingstijd is geen voorsprong op intentie.** Dat een indicator
+   eerder afging betekent dat de *gemeten activiteit* eerder verschoof. Een
+   chronologie kan niet vaststellen dat die verschuiving voorbereiding was.
+
+Twee ontwerpkeuzes die de meting eerlijk houden:
+
+**Alleen alarmen binnen `lead_window` tellen.** Een indicator die acht maanden
+eerder afging en daarna zweeg heeft niet voor déze gebeurtenis gewaarschuwd;
+meetellen laat een systeem dat continu alarmeert de eer opeisen voor alles wat
+volgt.
+
+**Alarmen zonder gebeurtenis heten niet-toegeschreven, niet fout.** Een
+gecureerde chronologie is geen volledig verslag van wat er gebeurde, dus een
+alarm daarbuiten is geen bewijs van een vals alarm.
+
+Waar de twee harnassen elkaar tegenspreken — goed detectievermogen in
+simulatie, niets dat afgaat vóór een echte escalatie — is die tegenspraak de
+bevinding, en wijst zij naar de scenariogenerator, niet naar de detector.
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per
