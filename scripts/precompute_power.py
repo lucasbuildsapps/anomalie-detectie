@@ -55,7 +55,8 @@ def main() -> int:
     indicators = [i for region in REGIONS for i in region.indicators]
     measurable = [i for i in indicators
                   if i.test_type.value in ("level_deviation",
-                                           "sustained_divergence")]
+                                           "sustained_divergence",
+                                           "entity_behaviour")]
 
     print(f"{len(indicators)} indicators declared, "
           f"{len(measurable)} measurable "
@@ -70,10 +71,11 @@ def main() -> int:
             continue
         print(f"  {indicator.key:32s} measuring...", flush=True)
         power = catalog.measure(indicator, production_detector)
-        measured += 1
         if power is None:
-            print(f"  {'':32s} -> not measurable")
+            print(f"  {'':32s} -> declined; no honest measurement exists "
+                  f"for this configuration")
         else:
+            measured += 1
             print(f"  {'':32s} -> {power.describe()}")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

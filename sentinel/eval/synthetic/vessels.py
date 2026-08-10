@@ -328,7 +328,9 @@ class Fleet:
 
 
 def build_fleet(seed: int = 42, n_fishing: int = 40, n_cargo: int = 60,
-                n_targets: int = 2, hours: float = 30.0) -> Fleet:
+                n_targets: int = 2, hours: float = 30.0,
+                target_loiter_hours: float = 4.0,
+                n_contaminating: int = 0) -> Fleet:
     """A day's traffic: trawlers that loiter by trade, cargo that does not,
     and a couple of cargo vessels that stop where they should not.
 
@@ -352,9 +354,22 @@ def build_fleet(seed: int = 42, n_fishing: int = 40, n_cargo: int = 60,
         frame["entity_key"] = f"cargo-{i:03d}"
         frames.append(frame)
 
+    # Cargo vessels that also loiter, but are not targets. As their number
+    # rises, loitering stops being rare for the class and the peer baseline
+    # stops flagging it — the entity analogue of an escalation becoming the
+    # baseline. `n_contaminating` exists so that degradation can be measured
+    # rather than discovered in the field.
+    for i in range(n_contaminating):
+        generator = VesselTrackGenerator(seed=seed + 4000 + i, hours=hours)
+        frame = generator.loiter_near_cable(
+            hours_loitering=target_loiter_hours).positions.copy()
+        frame["entity_key"] = f"cargo-also-{i:03d}"
+        frames.append(frame)
+
     for i in range(n_targets):
         generator = VesselTrackGenerator(seed=seed + 3000 + i, hours=hours)
-        frame = generator.loiter_near_cable().positions.copy()
+        frame = generator.loiter_near_cable(
+            hours_loitering=target_loiter_hours).positions.copy()
         key = f"cargo-target-{i:02d}"
         frame["entity_key"] = key
         targets.append(key)
@@ -362,4 +377,4 @@ def build_fleet(seed: int = 42, n_fishing: int = 40, n_cargo: int = 60,
 
     positions = pd.concat(frames, ignore_index=True)
     return Fleet(positions=positions, target_keys=tuple(targets),
-                 n_vessels=n_fishing + n_cargo + n_targets)
+                 n_vessels=n_fishing + n_cargo + n_targets + n_contaminating)

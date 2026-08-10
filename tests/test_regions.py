@@ -290,6 +290,58 @@ def test_loading_a_missing_catalogue_is_empty_not_an_error(tmp_path):
     assert DetectionPowerCatalog.load(tmp_path / "absent.json").entries == {}
 
 
+def test_round_trip_preserves_the_unit_and_the_caveat(tmp_path):
+    """The caveat is the part that must survive persistence.
+
+    A floor whose qualifying condition was dropped in serialisation is worse
+    than no floor: it reads as unconditional coverage.
+    """
+    catalog = DetectionPowerCatalog(entries={
+        "k": DetectionPower("Loitering", 1.0, unit="hours",
+                            caveat="Only while rarer than 9% of the class."),
+    })
+    path = tmp_path / "power.json"
+    catalog.save(path)
+    restored = DetectionPowerCatalog.load(path).entries["k"]
+    assert restored.unit == "hours"
+    assert restored.caveat == "Only while rarer than 9% of the class."
+    assert "1 hours" in restored.describe()
+    assert "9%" in restored.describe()
+
+
+# =========================================================================
+# entity behaviour: measured for what the fleet harness injects, and only
+# for that
+# =========================================================================
+def _entity_indicator(event_types, **overrides) -> Indicator:
+    return Indicator(
+        key="e", region_key="nld_eez", name="E", question="q?", meaning="m",
+        test_type=IndicatorTest.ENTITY_BEHAVIOUR, entity_kind="vessel",
+        status=IndicatorStatus.ACTIVE,
+        test_config={"event_types": list(event_types), **overrides})
+
+
+def test_entity_power_comes_from_the_committed_catalogue():
+    """The loiter indicator can support a null result without re-measuring."""
+    catalog = DetectionPowerCatalog.load("config/detection_power.json")
+    power = catalog.power_for(_entity_indicator(
+        ["loiter", "proximity_critical_infra"],
+        peer_baseline=["vessel_class", "area", "month"],
+        min_duration_minutes=60))
+    assert power is not None
+    assert power.unit == "hours"
+    assert power.caveat and "rarer than" in power.caveat
+
+
+def test_a_loiter_floor_is_not_quoted_at_an_ais_gap_indicator():
+    """The fleet harness injects loitering. Attaching its floor to a gap
+    indicator would let a null result claim coverage nobody measured."""
+    catalog = DetectionPowerCatalog(measure_missing=True)
+    assert catalog.measure(_entity_indicator(["ais_gap"])) is None
+    assert catalog.measure(_entity_indicator(["identity_inconsistency"])) is None
+    assert catalog.entries == {}
+
+
 def test_catalogue_does_not_measure_on_demand_by_default():
     """A live evaluation must not block for minutes on a measurement."""
     assert DetectionPowerCatalog().measure_missing is False

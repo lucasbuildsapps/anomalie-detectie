@@ -48,11 +48,20 @@ missing between those and an activated NLD EEZ:
   the `entity_behaviour` test. On a synthetic fleet of 102 vessels — 40
   trawlers that loiter by trade, 60 cargo that do not, 2 cargo that stopped
   on a cable corridor — it flags 2, both targets, no trawlers.
-- **A measured detection floor for entity behaviour.** The power harness
-  scores series, and entity tests are scored per vessel against peers, so
-  there is no floor for them yet. Until there is, a quiet entity indicator
-  reports *insufficient data* rather than claiming calm — which is correct,
-  and also why the indicators below stay `DRAFT`.
+- ~~A measured detection floor for entity behaviour.~~ **Measured** for
+  loitering (`sentinel/eval/entity_power.py`) and committed to
+  `config/detection_power.json`: a loiter of **1 hour or longer** is detected
+  in 80% of runs, with no trawlers flagged. It carries a condition that
+  matters more than the number — detection depends on the behaviour staying
+  rare within its class, and **collapses to zero at ~12% prevalence**. Not a
+  slope, a cliff, and a silent one: the output is a clean null result while
+  the thing the capability was built to catch becomes common. The remedy is
+  the same one the series layer already uses — a *declared* reference for
+  what participation historically was, so a rise in participation is itself
+  the signal — and it is **not built**.
+  The floor covers loitering only. The catalogue declines to quote a number
+  for the AIS-gap and identity indicators rather than lending them one from a
+  behaviour nobody measured.
 - **Identity resolution.** The `identity_swap` scenario currently produces no
   events; nothing yet compares broadcast identifiers across a track.
 - **A live AIS feed.** This is why the region is `DATA_ONLY` rather than

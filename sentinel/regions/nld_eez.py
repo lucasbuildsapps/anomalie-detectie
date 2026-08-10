@@ -1,18 +1,31 @@
 """NLD EEZ: maritime behaviour in the Dutch exclusive economic zone.
 
 Status is DATA_ONLY, and that is the honest answer today rather than a
-placeholder. The count-series indicators below could be evaluated as soon as
-AIS lands, but the ones that carry the actual mission value — loitering near
-infrastructure, dark vessels, route deviation — are `entity_behaviour` tests,
-and the entity engine does not exist yet. Marking the region MONITORED on the
-strength of the count indicators would let a tab that cannot see the
-interesting cases present itself as watching for them.
+placeholder. What is missing is no longer the machinery — the entity engine
+exists, emits typed events, judges them against peer baselines, and has a
+measured detection floor for loitering. What is missing is the data: there is
+no live AIS feed and no infrastructure geometry to measure proximity against.
+Marking the region MONITORED without those would let a tab that cannot see
+anything present itself as watching.
 
 The two-layer design is why these can be declared now at all. The entity
-engine will emit typed events (`ais_gap`, `loiter`, `proximity_critical_infra`)
-into the same event store as any count source, and the indicators below will
-then be evaluated by exactly the machinery Euro-Atlantic already uses. No
-second engine, no parallel truth model.
+engine emits typed events (`ais_gap`, `loiter`, `proximity_critical_infra`)
+into the same event store as any count source, and the indicators below are
+evaluated by exactly the machinery Euro-Atlantic already uses. No second
+engine, no parallel truth model.
+
+What the measured floor does and does not cover
+-----------------------------------------------
+Only `loiter_near_infrastructure` has one. The fleet harness injects
+loitering, so that is the only behaviour whose floor has been measured; the
+catalogue declines to quote a number for the AIS-gap and identity indicators
+rather than lending them a floor from a different behaviour. Those two will
+report insufficient data even once AIS lands — correctly, and visibly.
+
+The loiter floor also carries a condition worth reading before trusting a
+quiet answer: detection depends on the behaviour staying *rare* within its
+class, and collapses to nothing once roughly a tenth of the class does it.
+See `sentinel/eval/entity_power.py`.
 
 A note on baselines here
 ------------------------
@@ -137,11 +150,12 @@ MODULE = RegionModule(
     indicators=INDICATORS,
     activation_requirements=(
         "an AIS feed with retained history for the Dutch EEZ",
-        "the entity engine, for trajectory and identity resolution",
         "infrastructure geometry (cables, pipelines, wind farms)",
-        "peer baselines per vessel class and area",
+        "identity resolution, for the identity-conflict indicator",
+        "a measured floor for AIS gaps, which the fleet harness does not "
+        "yet inject",
     ),
-    summary=("Maritime behaviour in the Dutch EEZ. Sources are identified and "
-             "indicators are written down; the entity engine they depend on "
-             "is not built, so nothing is being tested yet."),
+    summary=("Maritime behaviour in the Dutch EEZ. The entity engine and its "
+             "peer baselines are built and the loiter floor is measured; "
+             "there is no AIS feed yet, so nothing is being tested."),
 )

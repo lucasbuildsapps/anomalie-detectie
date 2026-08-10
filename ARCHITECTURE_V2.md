@@ -583,6 +583,47 @@ dat vereist herkomst die de detector niet heeft. Daarom een derde uitkomst:
 **PENDING**. Vuren is goed, stilte is fout, en of de kanttekening klopt is
 pas toetsbaar als de bewijslaag er is.
 
+### 6.3-quinquies Detectievermogen van de entiteitslaag — en een stille klif
+
+Entiteitsgedrag wordt niet op een reeks gescoord maar per vaartuig tegen zijn
+peers, dus het heeft een eigen meting (`sentinel/eval/entity_power.py`) op een
+synthetische vloot: 40 trawlers die van beroepswege stilliggen, 60
+vrachtschepen die dat niet doen, 2 vrachtschepen die stoppen boven een
+kabelcorridor.
+
+| Dimensie | Meting |
+|---|---|
+| Duur | 0,5 u → 0/2 gevonden; **1,0 u en langer → 2/2, nul trawlers** |
+| Prevalentie | 3% → 2/2; 9% → 2/2; **12% → 0/2**; 27% → 0/2 |
+
+De duurdrempel is een gewone vloer, gezet door het minimum van de primitief
+zelf: daaronder ontstaat geen event, dus valt er stroomafwaarts niets te
+beoordelen. De prevalentiedrempel is iets anders, en gevaarlijker.
+
+**Zeldzaamheid ís het signaal.** Zodra genoeg vaartuigen van een klasse het
+gedrag vertonen, is het per definitie niet zeldzaam meer en markeert de
+peer-baseline niemand — ook de vaartuigen niet die het wél verdienen. Er is
+geen geleidelijke degradatie en geen waarschuwing over verminderd vertrouwen:
+de uitvoer is een schoon nulresultaat terwijl precies datgene waarvoor de
+capaciteit gebouwd is gemeengoed wordt. Het is de entiteitsvorm van de
+escalatie die de baseline werd, en het vraagt dezelfde remedie — een
+*gedeclareerde* referentie voor wat deelname historisch was, zodat een
+stijging in deelname zelf het signaal is in plaats van wat het signaal
+verbergt.
+
+Die remedie is **niet gebouwd**. Wat wel gebouwd is, is de meting, zodat het
+gat vastligt in plaats van weggeredeneerd te worden; de vloer in de catalogus
+draagt de voorwaarde mee in de tekst die de analist leest:
+
+> Loitering of 1 hours or larger would have been detected 80% of the time.
+> This holds only while the behaviour stays rarer than 9% of the vessel
+> class; above that it is no longer rare and nothing is flagged, including
+> genuine cases.
+
+De meting dekt **alleen loiteren**. Voor de AIS-gat- en identiteitsindicatoren
+weigert de catalogus een getal te noemen in plaats van er een te lenen van
+gedrag dat niemand gemeten heeft; die blijven dus onvoldoende-data melden.
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per

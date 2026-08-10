@@ -23,6 +23,13 @@ job:
 - `condition` is deterministic. It either holds or it does not; there is no
   effect size below which it would be missed, so there is nothing to measure
   and saying so is not the same as claiming a measurement.
+- `entity_behaviour` is not scored on a series at all — it is judged per
+  entity against peers — so it is measured by `sentinel.eval.entity_power` on
+  a synthetic fleet, and only for the behaviour that harness actually injects
+  (`loiter`). An indicator watching for AIS gaps or identity conflicts gets
+  **no** floor from a loiter measurement, and quoting one at it would be the
+  precise dishonesty the null-result rule exists to prevent. Those return
+  None, which the detect layer reads as insufficient data.
 """
 from __future__ import annotations
 
@@ -60,7 +67,10 @@ def _config_key(indicator: Indicator) -> str:
     relevant = {
         k: v for k, v in sorted(indicator.test_config.items())
         if k in ("threshold", "aggregation", "reference_periods",
-                 "cusum_threshold", "min_sustained_periods")
+                 "cusum_threshold", "min_sustained_periods",
+                 # entity behaviour: what is watched and how strictly
+                 "event_types", "peer_baseline", "min_duration_minutes",
+                 "min_gap_minutes")
     }
     return json.dumps(
         {"test": indicator.test_type.value, "config": relevant},
@@ -107,16 +117,20 @@ class DetectionPowerCatalog:
         key = _config_key(indicator)
         if key in self.entries:
             return self.entries[key]
-        if self.measure_missing and factory is not None:
+        if self.measure_missing:
             return self.measure(indicator, factory)
         return None
 
     # -- measurement -----------------------------------------------------
     def measure(self, indicator: Indicator,
-                factory: DetectorFactory) -> DetectionPower | None:
+                factory: DetectorFactory | None = None,
+                ) -> DetectionPower | None:
         """Run the harness for this configuration and cache the result."""
+        if indicator.test_type is IndicatorTest.ENTITY_BEHAVIOUR:
+            return self._measure_entity(indicator)
+
         scenario = scenario_for(indicator.test_type)
-        if scenario is None:
+        if scenario is None or factory is None:
             return None
 
         # Imported here so the catalogue stays importable without the
@@ -135,7 +149,27 @@ class DetectionPowerCatalog:
         self.entries[_config_key(indicator)] = power
         return power
 
-    def warm(self, indicators, factory: DetectorFactory) -> int:
+    def _measure_entity(self, indicator: Indicator) -> DetectionPower | None:
+        """Measure an entity indicator on the synthetic fleet, or decline.
+
+        The fleet harness injects loitering. An indicator that watches for AIS
+        gaps or identity conflicts is therefore unmeasured, and declining is
+        the honest answer — a loiter floor attached to a gap indicator would
+        let a null result claim coverage nobody measured.
+        """
+        watched = set(indicator.test_config.get("event_types", ()))
+        if "loiter" not in watched:
+            return None
+
+        from sentinel.eval.entity_power import measure as measure_entity
+
+        result = measure_entity(threshold=self.threshold,
+                                n_repeats=max(self.n_repeats // 4, 1))
+        power = result.to_detection_power()
+        self.entries[_config_key(indicator)] = power
+        return power
+
+    def warm(self, indicators, factory: DetectorFactory | None = None) -> int:
         """Measure every configuration not already cached. Returns how many."""
         measured = 0
         for indicator in indicators:
@@ -158,6 +192,8 @@ class DetectionPowerCatalog:
                     "threshold": power.threshold,
                     "n_repeats": power.n_repeats,
                     "confounded": power.confounded,
+                    "unit": power.unit,
+                    "caveat": power.caveat,
                 }
                 for key, power in sorted(self.entries.items())
             },
@@ -174,6 +210,8 @@ class DetectionPowerCatalog:
                 threshold=float(value.get("threshold", 0.8)),
                 n_repeats=int(value.get("n_repeats", 0)),
                 confounded=bool(value.get("confounded", False)),
+                unit=str(value.get("unit", "x")),
+                caveat=value.get("caveat"),
             )
             for key, value in raw.items()
         }

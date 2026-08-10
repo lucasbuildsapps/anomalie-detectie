@@ -67,6 +67,15 @@ class DetectionPower:
     threshold: float = 0.8
     n_repeats: int = 5
     confounded: bool = False
+    #: Unit of `floor_magnitude`. "x" is a multiple of the baseline; entity
+    #: measurements are in real units such as hours, and rendering those as
+    #: "1x" would be quietly wrong.
+    unit: str = "x"
+    #: A condition the floor depends on. Some capabilities fail along a
+    #: dimension the floor does not express — entity behaviour stops being
+    #: detectable once it stops being rare — and an unqualified floor would
+    #: overstate what the null result covers.
+    caveat: str | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 < float(self.threshold) <= 1.0:
@@ -108,9 +117,14 @@ class DetectionPower:
             return (f"No effect size of {self.scenario_kind} was reliably "
                     f"detected at any tested magnitude. A null result here "
                     f"carries little weight.")
-        return (f"A {self.scenario_kind} of {self.floor_magnitude:g}x or "
-                f"larger would have been detected "
-                f"{self.threshold:.0%} of the time.")
+        size = (f"{self.floor_magnitude:g}{self.unit}" if self.unit == "x"
+                else f"{self.floor_magnitude:g} {self.unit}")
+        text = (f"{self.scenario_kind} of {size} or larger would have been "
+                f"detected {self.threshold:.0%} of the time.")
+        text = text[0].upper() + text[1:]
+        if self.caveat:
+            text += f" {self.caveat}"
+        return text
 
 
 @dataclass(frozen=True)
