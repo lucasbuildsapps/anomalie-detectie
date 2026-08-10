@@ -39,6 +39,7 @@ __all__ = [
     "IngestResult",
     "normalise",
     "run_ingest",
+    "run_position_ingest",
 ]
 
 #: How `ingested_at` is filled when the source does not state it.
@@ -209,3 +210,53 @@ def run_ingest(connector: Connector, dataset_id: int, *,
         n_with_observed_arrival=min(observed, n_inserted),
         notes=tuple(notes),
     )
+
+
+def run_position_ingest(connector, dataset_id: int, *,
+                        since: datetime | None = None,
+                        until: datetime | None = None,
+                        insert=None) -> IngestResult:
+    """Fetch and store position reports. The `positions` counterpart.
+
+    Separate from `run_ingest` because positions land in a different table
+    with a different shape, not because they deserve different discipline: the
+    arrival-time rules, the failure-is-a-finding rule and the duplicate
+    accounting are identical.
+
+    A connector that reports partial failure (some days fetched, some not) is
+    a success with notes, not an error. An AIS history with a hole in it is
+    still worth having, and the hole belongs in the report.
+    """
+    started = datetime.now(UTC).replace(tzinfo=None)
+
+    def _finish(**kwargs) -> IngestResult:
+        return IngestResult(
+            source_key=connector.source.key, started_at=started,
+            finished_at=datetime.now(UTC).replace(tzinfo=None), **kwargs)
+
+    try:
+        raw = connector.fetch(since=since, until=until)
+    except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+        return _finish(error=f"{type(exc).__name__}: {exc}")
+
+    failures = tuple(raw.attrs.get("failed_days", ())) if raw is not None else ()
+    notes = tuple(f"could not fetch {f}" for f in failures)
+
+    if raw is None or raw.empty:
+        if failures:
+            return _finish(
+                n_fetched=0,
+                error=f"every requested archive failed ({len(failures)})",
+                notes=notes)
+        return _finish(n_fetched=0, notes=notes)
+
+    observed = (int(raw["ingested_at"].notna().sum())
+                if "ingested_at" in raw.columns else 0)
+
+    if insert is None:
+        from core.storage import insert_positions as insert
+    n_inserted = int(insert(dataset_id, raw, arrival="event_time"))
+
+    return _finish(n_fetched=len(raw), n_inserted=n_inserted,
+                   n_with_observed_arrival=min(observed, n_inserted),
+                   notes=notes)

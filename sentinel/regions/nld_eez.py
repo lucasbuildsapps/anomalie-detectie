@@ -46,6 +46,7 @@ from sentinel.core.contracts import (
     Reliability,
     Source,
 )
+from sentinel.ingest.dma_ais import DMA_SOURCE
 from sentinel.regions.base import GeoScope, RegionModule
 
 KEY = "nld_eez"
@@ -61,15 +62,10 @@ SOURCES = (
         licence="free tier; no historical archive",
         redistribution_allowed=False,
     ),
-    Source(
-        key="dma_ais",
-        name="Danish Maritime Authority historical AIS",
-        kind="ais",
-        reliability=Reliability.B,
-        credibility=Credibility.C2,
-        licence="open data",
-        redistribution_allowed=True,
-    ),
+    # Imported rather than restated: the connector is where this source's
+    # grading is maintained, and two copies would drift the moment one is
+    # revised. A region declares *which* sources it uses, not what they are.
+    DMA_SOURCE,
 )
 
 INDICATORS = (

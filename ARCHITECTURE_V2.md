@@ -867,6 +867,48 @@ Dat was geen conservatieve marge maar een meetfout in de veilige richting: het
 systeem beweerde blinder te zijn dan het is. Een test bewaakt nu dat de
 verscheepte catalogus geen onopgeloste vloer bevat.
 
+### 6.3-duodecies Netwerkconnectors — en wat "getest" hier betekent
+
+Geen van de gedeclareerde bronnen is bereikbaar vanuit de omgeving waarin dit
+geschreven is: de proxy weigert `CONNECT` naar `web.ais.dk`,
+`api.acleddata.com` én `aisstream.io`. Dat stuurt het ontwerp in plaats van de
+afwezigheid te verontschuldigen.
+
+**Transport is een naad, geen laag.** `transport.py` is een tiental regels
+`urlopen` achter een injecteerbaar protocol. Alles wat bepaalt wat de data
+*betekent* — kolomafbeelding, tijdformaat, sentinelwaarden, filtering,
+aankomsttijd — zit in de connector en wordt tegen fixtures getest. Een
+connector die ophalen, parsen en opslaan in één functie doet is alleen te
+testen door de bron te bellen, wat in de praktijk betekent: niet.
+
+**De DMA-parser heeft nooit een echt bestand gezien.** De kolomafbeelding komt
+uit de gepubliceerde formaatbeschrijving. Dat is een echt risico, en het wordt
+gedragen in plaats van verstopt: matchen gebeurt op genormaliseerde
+kolomnaam, en een ontbrekende verplichte kolom levert een `SchemaError` die
+noemt wat gewenst was en wat er stond. Er is bewust géén positionele
+terugval — een verschoven kolomvolgorde zou dan als geldige data gelezen
+worden. De eerste echte run is dus een leesbare fout als het formaat verschoven
+is, geen stille rommel.
+
+**Waarom DMA eerst.** Van de gedeclareerde bronnen is het de enige zonder
+API-sleutel en met herdistributie toegestaan, en de enige die iets deblokkeert:
+de entiteitsengine, de peer-baselines, de populatienoemer en een gemeten
+loitervloer draaien allemaal al — op een synthetische vloot. Wat ontbreekt zijn
+echte tracks.
+
+**Aankomsttijd is de publicatiedatum van het archief**, niet het zendmoment.
+Het bestand van de 3e verschijnt op de 4e, dus dan had de tool het kunnen
+weten. Het zendmoment vastleggen zou directe toegang claimen en elke replay die
+er doorheen loopt vleien.
+
+Bewust niet gebouwd, met reden: **aisstream.io** (sleutel-gated live socket,
+geen historie, niet fixture-testbaar, en de verkeerde volgorde — DMA-historie
+valideert de methodiek, aisstream neemt alleen vooruit op), **ACLED**
+(registratie plus een herdistributieverbod, wat een inzetbesluit is en geen
+programmeertaak) en **Kystverket** (zelfde vorm als DMA; pas toevoegen als de
+DMA-afbeelding tegen een echt bestand bevestigd is, anders schrijven we
+dezelfde onbevestigde aanname twee keer op).
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per
@@ -898,7 +940,9 @@ sentinel/
   ingest/
     base.py           Connector-protocol, run_ingest, normalisatie
     chronology.py     gecureerde incidentchronologie (gebouwd)
-    connectors/       aisstream, dma_ais, kystverket, acled  (nog leeg)
+    transport.py      Fetcher-naad (het enige niet-offline-testbare deel)
+    dma_ais.py        DMA dagarchieven -> positions (gebouwd)
+    (aisstream, kystverket, acled: bewust nog niet — zie §6.3-duodecies)
   regions/
     base.py           RegionModule-descriptor
     euro_atlantic/    volledig
