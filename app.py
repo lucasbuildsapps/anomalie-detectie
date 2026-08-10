@@ -126,7 +126,8 @@ with st.sidebar:
         )
     st.divider()
 
-    nav_items = [t("nav_normbeeld"), t("nav_triage"), t("nav_compare")]
+    nav_items = [t("nav_normbeeld"), t("nav_triage"), t("nav_compare"),
+                 t("nav_regions")]
     for label in nav_items:
         is_active = st.session_state.active_page == label
         wrapper_cls = "sidebar-nav sidebar-nav-active" if is_active else "sidebar-nav"
@@ -165,6 +166,8 @@ elif st.session_state.active_page == t("nav_triage"):
     _target = ("ui.pages.triage", "page_triage")
 elif st.session_state.active_page == t("nav_compare"):
     _target = ("ui.pages.compare", "page_compare")
+elif st.session_state.active_page == t("nav_regions"):
+    _target = ("ui.pages.regions", "page_regions")
 else:
     _target = ("ui.pages.normbeeld", "page_normbeeld")
 

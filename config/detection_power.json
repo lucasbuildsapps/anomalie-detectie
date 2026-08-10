@@ -1,0 +1,29 @@
+{
+  "{\"config\": {\"aggregation\": \"daily\", \"threshold\": 3.5}, \"test\": \"level_deviation\"}": {
+    "scenario_kind": "spike",
+    "floor_magnitude": 5.0,
+    "threshold": 0.8,
+    "n_repeats": 8,
+    "confounded": false,
+    "unit": "x",
+    "caveat": null
+  },
+  "{\"config\": {\"aggregation\": \"daily\"}, \"test\": \"sustained_divergence\"}": {
+    "scenario_kind": "adaptation_failure",
+    "floor_magnitude": 1.5,
+    "threshold": 0.8,
+    "n_repeats": 8,
+    "confounded": false,
+    "unit": "x",
+    "caveat": null
+  },
+  "{\"config\": {\"event_types\": [\"loiter\", \"proximity_critical_infra\"], \"min_duration_minutes\": 60, \"peer_baseline\": [\"vessel_class\", \"area\", \"month\"]}, \"test\": \"entity_behaviour\"}": {
+    "scenario_kind": "Loitering",
+    "floor_magnitude": 1.0,
+    "threshold": 0.8,
+    "n_repeats": 2,
+    "confounded": false,
+    "unit": "hours",
+    "caveat": "This holds only while the behaviour stays rarer than 9% of the vessel class; above that it is no longer rare and nothing is flagged, including genuine cases."
+  }
+}

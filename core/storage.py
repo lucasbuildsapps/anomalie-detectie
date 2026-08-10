@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pandas as pd
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -79,8 +80,17 @@ observations = Table(
     Column("lon", Float),
     Column("extras", Text),
     Column("row_hash", String(64), nullable=False),
+    # Wanneer wíj deze rij kregen (naïef UTC). `timestamp` zegt wanneer iets
+    # gebeurde; deze kolom zegt wanneer het bekend werd. Zonder dat onderscheid
+    # is niet te reconstrueren wat de tool op een gegeven dag had kunnen zeggen
+    # — laat binnengekomen rapportage zit dan stilzwijgend in de historie.
+    # Zie migrations/versions/0007_ingested_at.py en sentinel/core/time/.
+    Column("ingested_at", DateTime),
+    # True = `ingested_at` is een schatting (backfill), niet waargenomen.
+    Column("ingest_estimated", Boolean),
     UniqueConstraint("dataset_id", "row_hash", name="uq_obs_dataset_hash"),
     Index("ix_obs_dataset_ts", "dataset_id", "timestamp"),
+    Index("ix_obs_dataset_ingested", "dataset_id", "ingested_at"),
 )
 
 annotations_t = Table(
@@ -734,10 +744,39 @@ def _insert_ignore_conflicts(con, rows: list[dict], table=None,
     con.execute(stmt, rows)
 
 
-def insert_observations(dataset_id: int, df: pd.DataFrame) -> int:
+#: Aankomst-beleid voor `insert_observations`.
+#:
+#: - "now": deze rijen komen nú binnen (connector-inwinning). `ingested_at` is
+#:   waargenomen, niet geschat.
+#: - "event_time": bulk-import van historie. Wanneer die rijen destijds
+#:   beschikbaar waren, weten we niet; we nemen aan "meteen" en markeren dat
+#:   als schatting. Zonder deze aanname is replay over historie onmogelijk —
+#:   mét de aanname is replay optimistisch, en dat moet zichtbaar zijn.
+ARRIVAL_POLICIES = ("now", "event_time")
+
+
+def insert_observations(dataset_id: int, df: pd.DataFrame,
+                        arrival: str = "now") -> int:
     """Insert rijen; dedupe via de unique constraint op (dataset_id, row_hash)
-    met ON CONFLICT DO NOTHING. Returnt het aantal daadwerkelijk nieuwe rijen."""
-    extra_cols = [c for c in df.columns if c not in STANDARD_FIELDS]
+    met ON CONFLICT DO NOTHING. Returnt het aantal daadwerkelijk nieuwe rijen.
+
+    `arrival` bepaalt hoe `ingested_at` wordt gevuld (zie ARRIVAL_POLICIES).
+    Een expliciete `ingested_at`-kolom in `df` wint altijd: sommige bronnen
+    melden zelf wanneer een bericht is ontvangen, en dat is de beste waarheid
+    die we kunnen krijgen.
+
+    Let op: `row_hash` verandert niet mee. Een her-import van dezelfde rij
+    behoudt dus de oorspronkelijke `ingested_at` — precies goed, want de
+    eerste keer dat we hem zagen ís het moment waarop we het wisten.
+    """
+    if arrival not in ARRIVAL_POLICIES:
+        raise ValueError(
+            f"onbekend arrival-beleid {arrival!r}; kies uit {ARRIVAL_POLICIES}"
+        )
+    now = datetime.now(UTC).replace(tzinfo=None)
+    has_explicit_arrival = "ingested_at" in df.columns
+    extra_cols = [c for c in df.columns
+                  if c not in STANDARD_FIELDS and c != "ingested_at"]
 
     rows: list[dict] = []
     for row in df.to_dict("records"):
@@ -760,9 +799,19 @@ def insert_observations(dataset_id: int, df: pd.DataFrame) -> int:
         val = row.get("value")
         lat = row.get("lat")
         lon = row.get("lon")
+        ts = _to_naive_utc(ts_raw)
+
+        explicit = row.get("ingested_at") if has_explicit_arrival else None
+        if explicit is not None and not pd.isna(explicit):
+            ingested_at, estimated = _to_naive_utc(explicit), False
+        elif arrival == "event_time":
+            ingested_at, estimated = ts, True
+        else:
+            ingested_at, estimated = now, False
+
         rows.append({
             "dataset_id": dataset_id,
-            "timestamp": _to_naive_utc(ts_raw),
+            "timestamp": ts,
             "value": None if val is None or pd.isna(val) else float(val),
             "category": _safe(row.get("category")),
             "location_name": _safe(row.get("location_name")),
@@ -770,6 +819,8 @@ def insert_observations(dataset_id: int, df: pd.DataFrame) -> int:
             "lon": None if lon is None or pd.isna(lon) else float(lon),
             "extras": extras_json,
             "row_hash": row_hash,
+            "ingested_at": ingested_at,
+            "ingest_estimated": estimated,
         })
 
     if not rows:
@@ -789,23 +840,15 @@ def insert_observations(dataset_id: int, df: pd.DataFrame) -> int:
     return n_new
 
 
-def load_observations(dataset_id: int) -> pd.DataFrame:
-    stmt = select(
-        observations.c.timestamp, observations.c.value,
-        observations.c.category, observations.c.location_name,
-        observations.c.lat, observations.c.lon, observations.c.extras,
-    ).where(observations.c.dataset_id == dataset_id).order_by(
-        observations.c.timestamp
-    )
-    with _engine().connect() as con:
-        df = pd.read_sql_query(stmt, con)
+def _normalize_observations(df: pd.DataFrame) -> pd.DataFrame:
+    """Defensief normaliseren: data uit oudere imports of andere DB-backends
+    kan afwijkende types bevatten (strings, Decimals, gemengde formaten)."""
     if df.empty:
         return df
-    # Defensief normaliseren: data uit oudere imports of andere DB-backends
-    # kan afwijkende types bevatten (strings, Decimals, gemengde formaten).
-    if not pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
-        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce",
-                                         format="mixed")
+    for col in ("timestamp", "ingested_at"):
+        if col in df.columns and not pd.api.types.is_datetime64_any_dtype(
+                df[col]):
+            df[col] = pd.to_datetime(df[col], errors="coerce", format="mixed")
     df["value"] = pd.to_numeric(df["value"], errors="coerce")
     for col in ("lat", "lon"):
         if col in df.columns:
@@ -815,11 +858,71 @@ def load_observations(dataset_id: int) -> pd.DataFrame:
             df[col] = df[col].apply(
                 lambda v: str(v) if v is not None and not pd.isna(v) else None
             )
+    if "ingest_estimated" in df.columns:
+        # NULL = onbekend = behandel als schatting. Een rij waarvan we de
+        # herkomst niet kennen mag geen exacte reconstructie suggereren.
+        df["ingest_estimated"] = (
+            df["ingest_estimated"].fillna(True).astype(bool)
+        )
     df = df.dropna(subset=["timestamp"]).reset_index(drop=True)
     extras_series = df["extras"].apply(lambda s: json.loads(s) if s else {})
     extras_df = pd.json_normalize(extras_series)
-    df = pd.concat([df.drop(columns=["extras"]), extras_df], axis=1)
-    return df
+    return pd.concat([df.drop(columns=["extras"]), extras_df], axis=1)
+
+
+_OBS_COLUMNS = (
+    observations.c.timestamp, observations.c.value,
+    observations.c.category, observations.c.location_name,
+    observations.c.lat, observations.c.lon, observations.c.extras,
+)
+
+
+def load_observations(dataset_id: int) -> pd.DataFrame:
+    """Alle waarnemingen van een dataset, ongeacht wanneer ze binnenkwamen.
+
+    Voor productie-uitvoer hoort `load_observations_as_of` gebruikt te worden;
+    deze functie is voor beheer, export en de v1-paden.
+    """
+    stmt = select(*_OBS_COLUMNS).where(
+        observations.c.dataset_id == dataset_id
+    ).order_by(observations.c.timestamp)
+    with _engine().connect() as con:
+        df = pd.read_sql_query(stmt, con)
+    return _normalize_observations(df)
+
+
+def load_observations_as_of(dataset_id: int, as_of: datetime) -> pd.DataFrame:
+    """Waarnemingen zoals ze op `as_of` bekend waren.
+
+    Twee filters, allebei nodig:
+
+    - `ingested_at <= as_of` — we konden niets gebruiken wat nog niet binnen
+      was. Dit is wat laat binnengekomen rapportage uit een replay houdt.
+    - `timestamp <= as_of` — een waarschuwingssysteem op tijdstip t hoort geen
+      gebeurtenissen te kennen die ná t plaatsvinden, ook niet als een bron ze
+      vooruit heeft gemeld.
+
+    Rijen zonder `ingested_at` (pre-migratie, nooit gebackfilled) worden
+    behandeld alsof ze bekend waren op hun `timestamp`; ze dragen dan
+    `ingest_estimated = True`, zodat de aanname zichtbaar blijft.
+
+    Deze functie is het enige pad waarlangs `sentinel.core.time.AsOfView`
+    data leest. Zie ARCHITECTURE_V2.md §2.1.
+    """
+    as_of = _to_naive_utc(as_of)
+    known = observations.c.ingested_at
+    stmt = select(
+        *_OBS_COLUMNS,
+        func.coalesce(known, observations.c.timestamp).label("ingested_at"),
+        observations.c.ingest_estimated,
+    ).where(
+        (observations.c.dataset_id == dataset_id)
+        & (observations.c.timestamp <= as_of)
+        & (func.coalesce(known, observations.c.timestamp) <= as_of)
+    ).order_by(observations.c.timestamp)
+    with _engine().connect() as con:
+        df = pd.read_sql_query(stmt, con)
+    return _normalize_observations(df)
 
 
 # ---------------------------------------------------------------------------
