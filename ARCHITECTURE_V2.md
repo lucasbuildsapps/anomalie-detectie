@@ -813,6 +813,60 @@ uit te drukken in plaats van makkelijk te maken — dezelfde aanpak als bij
 `AsOfView`: de fout structureel onmogelijk maken in plaats van er discipline
 op te vragen.
 
+### 6.3-undecies Het alert-budget — en waarom het geen quotum is
+
+Besluit #6 legde 5–15 alarmen per week per regio vast als kalibratiedoel dat het
+verwijderde quotum vervangt. Het verschil is het hele punt van
+`sentinel/eval/budget.py`.
+
+v1's `run_auto_pilot()` versoepelde de gevoeligheid tijdens de run tot er iets
+te tonen was. Dat garandeert bevindingen, en het garandeert ze het luidst in de
+weken waarin het minst gebeurt. Hier gebeurt het omgekeerde: het budget wordt
+**vooraf en offline** gemeten en zet dan een drempel vast. Tijdens de run is er
+geen rangschikking, geen top-N en geen onderdrukking. Gebeuren er dertig
+dingen, dan ziet de analist dertig alarmen.
+
+**De ondergrens is geen doel.** Dat is precies de val waar het quotum in liep:
+"5–15" leest als een bereik om in te landen, en de voor de hand liggende manier
+om 5 te halen is versoepelen tot ruis het verschil aanvult. De twee grenzen
+doen hier verschillend werk:
+
+- **De bovengrens bindt.** Een configuratie die op *rustige data* alleen al
+  boven 15/week uitkomt, verzuipt de analist voordat er iets gebeurt.
+- **De ondergrens diagnosticeert.** Onder de 5 blijven is geen tekortkoming en
+  wordt nooit gecorrigeerd door te versoepelen. Het betekent óf dat het rustig
+  is, óf dat de detectievloer te hoog ligt — en de vloer, ernaast gemeten,
+  onderscheidt die twee.
+
+De aanbeveling maximaliseert daarom **gevoeligheid onder de volumebeperking**,
+niet een aantal alarmen. Mikken op het midden van het bereik is hoe een budget
+weer een quotum wordt.
+
+#### Een defect dat deze meting blootlegde
+
+De eerste run van deze kalibratie adviseerde de verscheepte drempel van 3,5
+naar 3,0 te verlagen, op grond van vier trekkingen. Bij twaalf trekkingen waren
+beide identiek. De oorzaak lag niet in het budget maar in de vloer zelf:
+
+| n | net recall bij 3× | vloer |
+|---|---|---|
+| 8 | 0,75 | 5× |
+| 16 | 0,81 | 3× |
+| 24 | 0,88 | 3× |
+
+De netto recall bij 3× zit *op* de 0,8-beslisgrens, dus de vloer wipte met de
+steekproefgrootte — en de uitvoer zei daar niets over. `PowerCurve` heeft nu
+`floor_is_uncertain`: klaart de beslissende magnitude de drempel met minder dan
+één standaardfout van een proportie (`sqrt(p(1-p)/n)`), dan is de vloer niet
+opgelost en zegt de tekst dat. `DetectionPower` draagt `resolved` mee tot in de
+catalogus, `precompute_power.py` draait nu op 24 trekkingen, en
+`config/detection_power.json` is opnieuw gemeten: de spike-vloer gaat van 5×
+naar **3×**.
+
+Dat was geen conservatieve marge maar een meetfout in de veilige richting: het
+systeem beweerde blinder te zijn dan het is. Een test bewaakt nu dat de
+verscheepte catalogus geen onopgeloste vloer bevat.
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per
@@ -954,7 +1008,7 @@ Uitvoer      ICD 203-assessment + verschil met vorige beoordeling
 | Fase | Inhoud | Klaar wanneer |
 |---|---|---|
 | **1. Kritieke correcties** | `AsOfView` + `ingested_at`; quotum-lus, contamination en stemming eruit; causale baseline; aggregatie op één plek | Zuivere ruis levert 0 alarmen; geen module leest buiten `AsOfView` |
-| **2. Evaluatie & kalibratie** | Synthetische injectie (9 scenario's), event-niveau scoring, detectievermogen-curves, retrospectief replay | Detectievermogen-curve per indicator; drempels gezet op 5–15/week |
+| **2. Evaluatie & kalibratie** | Synthetische injectie (9 scenario's), event-niveau scoring, detectievermogen-curves, retrospectief replay | **Klaar** — curve per indicator (§6.3-ter), retrospectief replay (§6.3-octies), budget-kalibratie (§6.3-undecies) |
 | **3. Regio-architectuur** | `RegionModule`, indicator-registry, dubbele baseline, confidence-raamwerk, vijf-tabbladen-schil met eerlijke status | Euro-Atlantic draait volledig als regiomodule |
 | **4. NLD EEZ** | Postgres/PostGIS/Timescale, AIS-connectors, identiteit, tracks, gedragsprimitieven, entity-events, synthetische trackgenerator | Loitering en dark-gaps aantoonbaar gedetecteerd op DMA-historie |
 | **5. Overige regio's** | MENA / Indo-Pacific / Caribbean, config-gedreven, per stuk pas activeren als de bron er is | Elk actief tabblad heeft een gevalideerde indicator |

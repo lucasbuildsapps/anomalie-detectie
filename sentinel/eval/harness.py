@@ -11,6 +11,7 @@ detectors, v2 tests, and anything built later without knowing their internals
 """
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
@@ -158,6 +159,38 @@ class PowerCurve:
         return float("nan")
 
     @property
+    def floor_is_uncertain(self) -> bool:
+        """True when one more draw could move the floor.
+
+        Found by measurement, not by reasoning: the spike floor for the
+        shipped `strike_tempo_spike` configuration reads 5x at 8 repeats and
+        3x at 16, because the net recall at 3x lands on the 0.8 decision
+        boundary (0.75 / 0.81 / 0.88 at n = 8 / 16 / 24). The floor was
+        flipping with sample size and the output said nothing about it.
+
+        A proportion estimated from `n` draws has standard error
+        `sqrt(p(1-p)/n)`. If the deciding magnitude clears the threshold by
+        less than that, or the magnitude below it falls short by less, then
+        the floor is not resolved and quoting it as exact overstates what was
+        measured.
+        """
+        if self.is_confounded or not np.isfinite(self.floor):
+            return False
+        nets = self.net_recalls
+        index = self.magnitudes.index(self.floor)
+
+        def _se(p: float) -> float:
+            return math.sqrt(max(p * (1.0 - p), 0.0) / max(self.n_repeats, 1))
+
+        if nets[index] - self.threshold < _se(nets[index]):
+            return True
+        if index > 0:
+            below = nets[index - 1]
+            if self.threshold - below < _se(below):
+                return True
+        return False
+
+    @property
     def is_confounded(self) -> bool:
         """True when chance overlap alone would satisfy the threshold.
 
@@ -179,10 +212,15 @@ class PowerCurve:
             return (f"{self.kind}: not reliably detected at any tested "
                     f"magnitude (up to x{max(self.magnitudes):g}). "
                     f"A null result for this scenario type means little.")
-        return (f"{self.kind}: reliably detected from x{self.floor:g} "
+        text = (f"{self.kind}: reliably detected from x{self.floor:g} "
                 f"({self.threshold:.0%} attributable hit rate over "
                 f"{self.n_repeats} runs). Smaller effects fall below the "
                 f"detection floor.")
+        if self.floor_is_uncertain:
+            text += (f" This floor is not resolved at {self.n_repeats} runs — "
+                     f"the deciding magnitude sits within sampling noise of "
+                     f"the threshold, so more repeats may move it.")
+        return text
 
     def to_frame(self) -> pd.DataFrame:
         return pd.DataFrame({"magnitude": self.magnitudes,

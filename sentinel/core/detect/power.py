@@ -95,7 +95,9 @@ class DetectionPowerCatalog:
 
     entries: dict[str, DetectionPower] = field(default_factory=dict)
     measure_missing: bool = False
-    n_repeats: int = 8
+    #: Bumped from 8 after measuring that the spike floor flipped between
+    #: 5x and 3x depending on sample size. See PowerCurve.floor_is_uncertain.
+    n_repeats: int = 24
     threshold: float = 0.8
 
     # -- lookup ----------------------------------------------------------
@@ -145,6 +147,7 @@ class DetectionPowerCatalog:
             threshold=self.threshold,
             n_repeats=self.n_repeats,
             confounded=curve.is_confounded,
+            resolved=not curve.floor_is_uncertain,
         )
         self.entries[_config_key(indicator)] = power
         return power
@@ -193,6 +196,7 @@ class DetectionPowerCatalog:
                     "n_repeats": power.n_repeats,
                     "confounded": power.confounded,
                     "unit": power.unit,
+                    "resolved": power.resolved,
                     "caveat": power.caveat,
                 }
                 for key, power in sorted(self.entries.items())
@@ -211,6 +215,7 @@ class DetectionPowerCatalog:
                 n_repeats=int(value.get("n_repeats", 0)),
                 confounded=bool(value.get("confounded", False)),
                 unit=str(value.get("unit", "x")),
+                resolved=bool(value.get("resolved", True)),
                 caveat=value.get("caveat"),
             )
             for key, value in raw.items()
