@@ -166,8 +166,13 @@ class DetectionPowerCatalog:
 
         from sentinel.eval.entity_power import measure as measure_entity
 
+        # A third rather than a quarter of the series count: each entity
+        # repeat builds a whole fleet, so it is dearer per draw — but the
+        # rule-of-three guard needs n >= 15 before a perfect score counts as
+        # resolved, and a floor the catalogue has to label unresolved is worth
+        # less than the runtime saved.
         result = measure_entity(threshold=self.threshold,
-                                n_repeats=max(self.n_repeats // 4, 1))
+                                n_repeats=max(self.n_repeats // 3, 1))
         power = result.to_detection_power()
         self.entries[_config_key(indicator)] = power
         return power
