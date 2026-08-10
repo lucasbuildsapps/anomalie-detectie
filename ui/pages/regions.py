@@ -31,7 +31,10 @@ from sentinel.core.contracts import ConfidenceInputs, MonitoringStatus, Verdict
 from sentinel.core.detect.power import DetectionPowerCatalog
 from sentinel.core.time import PointInTimeStore
 from sentinel.regions import REGIONS, evaluate_region
-from sentinel.regions.providers import storage_provider
+from sentinel.regions.providers import (
+    storage_event_provider,
+    storage_provider,
+)
 from sentinel.report import compose, compose_region
 from ui.components import render_topbar
 from ui.theme import P
@@ -145,7 +148,13 @@ def _render_region(region, dataset_id: int | None, as_of: datetime,
         region, provider, as_of, catalog,
         inputs=ConfidenceInputs(
             reconstruction_faithful=(provenance.is_faithful
-                                     if provenance.n_rows else None)))
+                                     if provenance.n_rows else None)),
+        # Entity indicators read derived events, not the observation series.
+        # No population provider yet: positions are not stored, so rarity is
+        # untestable and the entity test reports that rather than calling a
+        # magnitude-only pass "quiet". See sentinel/regions/README.md.
+        event_provider=storage_event_provider(dataset_id, region, store.view),
+    )
 
     st.markdown(f"### {_html.escape(status.headline())}")
 

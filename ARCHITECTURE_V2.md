@@ -734,6 +734,43 @@ Waar de twee harnassen elkaar tegenspreken — goed detectievermogen in
 simulatie, niets dat afgaat vóór een echte escalatie — is die tegenspraak de
 bevinding, en wijst zij naar de scenariogenerator, niet naar de detector.
 
+### 6.3-nonies De entiteitslaag aangesloten — eis 7 afgemaakt
+
+Niet-onderhandelbare eis 7 zegt: entiteit-regio's en count-regio's delen
+hetzelfde datamodel en dezelfde indicator-machinerie. De machinerie was
+gedeeld; de opslag niet. `sentinel/entity/` produceerde `Event`-objecten die in
+het geheugen leefden en nergens werden weggeschreven, en `evaluate_region` gaf
+nooit events of peers door aan een context. Elke entiteitsindicator meldde dus
+*onvoldoende data*, ongeacht wat de data zei. Gebouwd, gemeten, en
+onbereikbaar.
+
+Wat er nu ligt:
+
+- **`entity_events`** — een eigen tabel met dezelfde point-in-time kolommen als
+  `observations`. Bewust niet `events_t`: die is een analisten-annotatie
+  (datum + label) zonder herkomst, entiteit of aankomsttijd.
+- **`AsOfView.events()`** — dezelfde causale garantie als `observations()`, en
+  hier weegt hij zwaarder: een afgeleid event draagt het moment waarop de
+  *detector draaide*. Een loiter van de 3e die pas op de 9e is berekend moet
+  onzichtbaar blijven voor een replay van de 5e, anders krijgt het systeem
+  krediet voor vooruitziendheid die het niet had.
+- **`evaluate_region(..., event_provider=...)`** — een aparte assemblagestap,
+  géén aparte engine. Hij eindigt in dezelfde `evaluate_indicator`-aanroep als
+  elke count-indicator; alleen de invoer verschilt.
+
+**De noemer die ontbreekt, en waarom dat expliciet is.** Zeldzaamheid heeft een
+noemer nodig van *elk waargenomen vaartuig*, inclusief de stille meerderheid
+die niets deed. Entity-events bevatten alleen vaartuigen die wél iets deden.
+Zonder aparte populatie is participatie dus `1.0` per constructie, kan alleen
+magnitude nog vlaggen, en is zeldzaamheid — het primaire signaal — nooit
+getoetst. `evaluate_region` accepteert daarom een `population_provider`;
+niemand levert er nu een, want dat vereist positie-opslag.
+
+Tot die er is faalt de toets **dicht**: `PeerBaseline` draagt
+`rarity_testable`, en de entiteitstoets meldt bij een lege uitslag
+onvoldoende data in plaats van rust — "de vraag waar we voornamelijk op
+leunen is niet gesteld" is geen stil resultaat.
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per

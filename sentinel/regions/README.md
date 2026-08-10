@@ -62,6 +62,23 @@ missing between those and an activated NLD EEZ:
   The floor covers loitering only. The catalogue declines to quote a number
   for the AIS-gap and identity indicators rather than lending them one from a
   behaviour nobody measured.
+- ~~A production path for entity indicators.~~ **Built.** `entity_events` is a
+  real table with the same point-in-time columns as `observations`;
+  `AsOfView.events()` reads it under the same causal guarantee; and
+  `evaluate_region(..., event_provider=...)` assembles events and a peer
+  baseline into the *same* `evaluate_indicator` call every count indicator
+  uses. Positions → typed events → storage → verdict is covered end to end in
+  `tests/test_entity_pipeline.py`.
+- **An observed-entity population.** This is the live gap, and it is the one
+  that keeps the NLD EEZ indicators honest rather than useful. Rarity needs a
+  denominator of *every vessel observed*, including the silent majority that
+  did nothing. Entity events only record vessels that did something, so
+  without a population participation is `1.0` by construction, only magnitude
+  can ever flag, and rarity — the primary signal — is never tested.
+  `evaluate_region` takes a `population_provider` for exactly this; nothing
+  supplies one yet, because that requires position storage. Until then the
+  entity test returns **insufficient data** rather than calling a
+  magnitude-only pass quiet. It fails closed, and it says so.
 - **Identity resolution.** The `identity_swap` scenario currently produces no
   events; nothing yet compares broadcast identifiers across a track.
 - **A live AIS feed.** This is why the region is `DATA_ONLY` rather than
@@ -71,4 +88,6 @@ missing between those and an activated NLD EEZ:
   it produces meaningless deviations. Real use needs an expected route per
   vessel, or none.
 - **Position storage.** PostGIS plus a partitioned position table. The
-  primitives run on frames and need no database, but a live AIS feed does.
+  primitives run on frames and need no database, but a live AIS feed does —
+  and it is also where the observed-entity population above has to come from,
+  which makes it the highest-value item left on this list.

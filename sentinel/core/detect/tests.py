@@ -365,6 +365,17 @@ def _test_entity_behaviour(context: IndicatorContext) -> Signal:
 
     unusual = [(event, a) for event, a in usable if a.is_unusual]
     if not unusual:
+        # Rarity is the primary signal here, and it needs a denominator of
+        # every entity observed — including the silent majority that did
+        # nothing. Without that, participation is 1.0 by construction, only
+        # magnitude can ever flag, and "nothing unusual" would mean "the
+        # question we mainly rely on was never asked".
+        if getattr(context.peers, "is_degenerate", False):
+            return _insufficient(
+                context,
+                f"{len(usable)} behaviour event(s) were assessed on magnitude "
+                f"only: no observed-population data, so whether the behaviour "
+                f"is rare for its class could not be tested")
         return _quiet(context, evidence=(
             Evidence(
                 kind=EvidenceKind.CONTEXT,

@@ -123,6 +123,17 @@ def _default_loader(dataset_id: int, as_of: datetime) -> pd.DataFrame:
     return load_observations_as_of(dataset_id, as_of)
 
 
+#: Event loader contract: ``(dataset_id, as_of, region_key) -> DataFrame``.
+EventLoader = Callable[[int, datetime, "str | None"], pd.DataFrame]
+
+
+def _default_event_loader(dataset_id: int, as_of: datetime,
+                          region_key: str | None = None) -> pd.DataFrame:
+    from core.storage import load_entity_events_as_of
+
+    return load_entity_events_as_of(dataset_id, as_of, region_key)
+
+
 @dataclass(frozen=True)
 class AsOfView:
     """A read-only window on the world as it was known at `as_of`.
@@ -134,6 +145,7 @@ class AsOfView:
 
     as_of: datetime
     loader: Loader = _default_loader
+    event_loader: EventLoader = _default_event_loader
 
     def __post_init__(self) -> None:
         # frozen dataclass: assign through object.__setattr__
@@ -152,6 +164,20 @@ class AsOfView:
         assert_causal(df, self.as_of)
         return df
 
+    def events(self, dataset_id: int,
+               region_key: str | None = None) -> pd.DataFrame:
+        """Entity events known at `as_of`, verified causal before returning.
+
+        The same guarantee as `observations`, and it matters more here: a
+        derived event carries the time the *detector ran*, so a loiter that
+        occurred on the 3rd but was only computed on the 9th must stay
+        invisible to a replay dated the 5th. Otherwise the system is credited
+        with foresight it did not have.
+        """
+        df = self.event_loader(dataset_id, self.as_of, region_key)
+        assert_causal(df, self.as_of, time_col="event_time")
+        return df
+
     def provenance(self, dataset_id: int) -> Provenance:
         """How much of this view rests on assumed arrival times."""
         df = self.observations(dataset_id)
@@ -168,7 +194,8 @@ class AsOfView:
     # -- navigation ------------------------------------------------------
     def at(self, as_of) -> AsOfView:
         """A view on the same source at a different instant."""
-        return AsOfView(as_of=to_naive_utc(as_of), loader=self.loader)
+        return AsOfView(as_of=to_naive_utc(as_of), loader=self.loader,
+                        event_loader=self.event_loader)
 
     def rewind(self, **delta) -> AsOfView:
         """A view further back in time, e.g. ``view.rewind(days=7)``."""
@@ -212,11 +239,14 @@ class PointInTimeStore:
     driven at a series of past instants.
     """
 
-    def __init__(self, loader: Loader | None = None) -> None:
+    def __init__(self, loader: Loader | None = None,
+                 event_loader: EventLoader | None = None) -> None:
         self.loader: Loader = loader or _default_loader
+        self.event_loader: EventLoader = event_loader or _default_event_loader
 
     def view(self, as_of) -> AsOfView:
-        return AsOfView(as_of=to_naive_utc(as_of), loader=self.loader)
+        return AsOfView(as_of=to_naive_utc(as_of), loader=self.loader,
+                        event_loader=self.event_loader)
 
     def now(self) -> AsOfView:
         return self.view(datetime.now(UTC).replace(tzinfo=None))

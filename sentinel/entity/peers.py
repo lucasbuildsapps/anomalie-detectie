@@ -224,6 +224,15 @@ class PeerBaseline:
     events: pd.DataFrame
     population: pd.DataFrame
     config: PeerConfig
+    #: False when the population was inferred from the events themselves
+    #: rather than supplied. Participation is then 1.0 by construction, so
+    #: rarity — the primary signal — was never actually tested. Carried so a
+    #: caller can refuse to call that outcome "quiet".
+    rarity_testable: bool = True
+
+    @property
+    def is_degenerate(self) -> bool:
+        return not self.rarity_testable
 
     @classmethod
     def fit(cls, events: Iterable[Event] | pd.DataFrame,
@@ -242,6 +251,7 @@ class PeerBaseline:
         if as_of is not None and not frame.empty:
             frame = frame[frame["ingested_at"] <= pd.Timestamp(as_of)]
 
+        rarity_testable = population is not None
         if population is None:
             # Fall back to the entities seen in the events. Honest but weak:
             # participation can then only ever be 1.0, so rarity says nothing.
@@ -253,7 +263,7 @@ class PeerBaseline:
 
         return cls(events=frame.reset_index(drop=True),
                    population=population.reset_index(drop=True),
-                   config=config)
+                   config=config, rarity_testable=rarity_testable)
 
     @classmethod
     def from_positions(cls, positions: pd.DataFrame,

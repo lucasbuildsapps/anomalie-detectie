@@ -93,6 +93,45 @@ observations = Table(
     Index("ix_obs_dataset_ingested", "dataset_id", "ingested_at"),
 )
 
+# Entity-engine output: getypeerde gebeurtenissen (loiter, ais_gap, ...) met
+# dezelfde point-in-time kolommen als `observations`. Bewust een eigen tabel
+# en niet `events_t`: die laatste is een analisten-annotatie (datum + label)
+# en draagt geen herkomst, geen entiteit en geen aankomsttijd.
+#
+# Dit is de tabel waar niet-onderhandelbare eis 7 op rust: entiteit-regio's en
+# count-regio's delen dezelfde indicator-machinerie, en vanaf hier ook dezelfde
+# opslagvorm. Zie ARCHITECTURE_V2.md §3.1.
+entity_events_t = Table(
+    "entity_events", _metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("dataset_id", Integer,
+           ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False),
+    Column("region_key", String(64), nullable=False),
+    Column("event_type", String(64), nullable=False),
+    Column("event_time", DateTime, nullable=False),
+    # Wanneer wíj hem kregen. Voor afgeleide events is dat het moment waarop
+    # de detector draaide, niet het moment van het gedrag zelf.
+    Column("ingested_at", DateTime, nullable=False),
+    Column("ingest_estimated", Boolean),
+    Column("entity_key", String(128)),
+    Column("entity_kind", String(32)),
+    Column("area_key", String(64)),
+    Column("lat", Float),
+    Column("lon", Float),
+    Column("magnitude", Float),
+    Column("unit", String(32)),
+    # Herkomst: welke bronnen, welke methode, welke laag. Zonder dit is een
+    # afgeleid event niet te reproduceren en dus niet te weerleggen.
+    Column("producer", String(32)),
+    Column("method", String(128)),
+    Column("source_keys", Text),
+    Column("attrs", Text),
+    Column("row_hash", String(64), nullable=False),
+    UniqueConstraint("dataset_id", "row_hash", name="uq_evt_dataset_hash"),
+    Index("ix_evt_region_time", "dataset_id", "region_key", "event_time"),
+    Index("ix_evt_region_ingested", "dataset_id", "region_key", "ingested_at"),
+)
+
 annotations_t = Table(
     "annotations", _metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
@@ -923,6 +962,98 @@ def load_observations_as_of(dataset_id: int, as_of: datetime) -> pd.DataFrame:
     with _engine().connect() as con:
         df = pd.read_sql_query(stmt, con)
     return _normalize_observations(df)
+
+
+# ---------------------------------------------------------------------------
+# Entity-events (sentinel/entity → indicator-machinerie)
+# ---------------------------------------------------------------------------
+def _event_row(dataset_id: int, event) -> dict:
+    """Eén `sentinel.core.contracts.Event` als databaserij.
+
+    De hash dekt identiteit, type en tijd — niet de magnitude. Een detector
+    die opnieuw draait op dezelfde posities moet hetzelfde event opleveren en
+    geen duplicaat; een licht afwijkende duur door een gewijzigde parameter is
+    hetzelfde voorval, niet een tweede.
+    """
+    lineage = event.lineage
+    entity_key = event.entity.key if event.entity else None
+    key_str = "|".join(str(x) for x in (
+        event.region_key, event.event_type, entity_key,
+        _to_naive_utc(event.event_time).isoformat(), event.area_key,
+    ))
+    return {
+        "dataset_id": dataset_id,
+        "region_key": event.region_key,
+        "event_type": event.event_type,
+        "event_time": _to_naive_utc(event.event_time),
+        "ingested_at": _to_naive_utc(event.ingested_at),
+        "ingest_estimated": bool(event.ingest_estimated),
+        "entity_key": entity_key,
+        "entity_kind": event.entity.kind if event.entity else None,
+        "area_key": event.area_key,
+        "lat": None if event.geo is None else float(event.geo.lat),
+        "lon": None if event.geo is None else float(event.geo.lon),
+        "magnitude": (None if event.magnitude is None
+                      else float(event.magnitude)),
+        "unit": event.unit,
+        "producer": lineage.producer.value,
+        "method": lineage.method,
+        "source_keys": json.dumps(list(lineage.source_keys)),
+        "attrs": json.dumps(dict(event.attrs), default=str),
+        "row_hash": hashlib.sha256(key_str.encode()).hexdigest(),
+    }
+
+
+def insert_entity_events(dataset_id: int, events) -> int:
+    """Sla entity-events op; dedupe zoals bij observaties. Returnt nieuwe rijen.
+
+    Her-draaien van een detector over dezelfde periode voegt niets toe en laat
+    de oorspronkelijke `ingested_at` staan — het eerste moment waarop we het
+    gedrag zagen ís het moment waarop we het wisten.
+    """
+    _ensure_table(entity_events_t)
+    rows = [_event_row(dataset_id, event) for event in events]
+    if not rows:
+        return 0
+
+    count_stmt = select(func.count(entity_events_t.c.id)).where(
+        entity_events_t.c.dataset_id == dataset_id
+    )
+    with _engine().begin() as con:
+        before = con.execute(count_stmt).scalar_one()
+        _insert_ignore_conflicts(con, rows, table=entity_events_t)
+        after = con.execute(count_stmt).scalar_one()
+    return int(after - before)
+
+
+def load_entity_events_as_of(dataset_id: int, as_of: datetime,
+                             region_key: str | None = None) -> pd.DataFrame:
+    """Entity-events zoals ze op `as_of` bekend waren.
+
+    Dezelfde twee filters als `load_observations_as_of`, en om dezelfde reden:
+    een detector die op t draaide kan geen gedrag kennen van ná t, en gedrag
+    dat pas later is afgeleid was op t nog niet beschikbaar.
+    """
+    _ensure_table(entity_events_t)
+    as_of = _to_naive_utc(as_of)
+    conditions = [
+        entity_events_t.c.dataset_id == dataset_id,
+        entity_events_t.c.event_time <= as_of,
+        entity_events_t.c.ingested_at <= as_of,
+    ]
+    if region_key is not None:
+        conditions.append(entity_events_t.c.region_key == region_key)
+
+    stmt = select(entity_events_t).where(*conditions).order_by(
+        entity_events_t.c.event_time)
+    with _engine().connect() as con:
+        df = pd.read_sql_query(stmt, con)
+    if df.empty:
+        return df
+    for col in ("event_time", "ingested_at"):
+        if not pd.api.types.is_datetime64_any_dtype(df[col]):
+            df[col] = pd.to_datetime(df[col], errors="coerce", format="mixed")
+    return df
 
 
 # ---------------------------------------------------------------------------
