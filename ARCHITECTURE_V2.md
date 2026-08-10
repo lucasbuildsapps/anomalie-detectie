@@ -170,7 +170,10 @@ seizoen. Zonder die scheiding sluipt het quotum via de achterdeur terug binnen.
 
 ## 3. Gemeenschappelijk datamodel
 
-PostgreSQL + PostGIS; `position` als TimescaleDB-hypertable.
+PostgreSQL of SQLite via dezelfde SQLAlchemy-definities. **Niet** PostGIS en
+**niet** TimescaleDB — dat was het oorspronkelijke plan en het is bewust niet
+gebouwd; de afweging en de concrete trigger om alsnog over te stappen staan in
+§6.3-decies.
 
 ### 3.1 Kern-entiteiten
 
@@ -771,6 +774,45 @@ Tot die er is faalt de toets **dicht**: `PeerBaseline` draagt
 onvoldoende data in plaats van rust — "de vraag waar we voornamelijk op
 leunen is niet gesteld" is geen stil resultaat.
 
+### 6.3-decies Positie-opslag — en waarom er géén PostGIS in zit
+
+De `positions`-tabel heeft twee taken. De zichtbare: een plek waar een
+AIS-feed kan landen. De dragende: de **waargenomen populatie** — elk vaartuig
+dat iets uitzond, inclusief de stille meerderheid die niets deed. Daarmee is
+zeldzaamheid weer toetsbaar en kan een entiteitsindicator een echt oordeel
+vellen in plaats van magnitude-only onvoldoende data.
+
+**Afwijking van het plan, bewust.** §10 noemde "PostGIS plus een
+gepartitioneerde positietabel". Geen van beide is gebouwd:
+
+- Niets in deze codebase doet een echte ruimtelijke query. `entity/geo.py`
+  rekent haversine en cross-track zonder geometrie-stack, en de noemer
+  hierboven is een `SELECT DISTINCT`. Een harde PostGIS-afhankelijkheid zou de
+  SQLite-testweg breken waar de hele suite op draait, in ruil voor niets dat
+  vandaag gebruikt wordt.
+- Partitioneren beantwoordt een volumeprobleem, en er ís geen volume — er is
+  geen feed. Een lege tabel partitioneren is gokken naar een belasting die
+  niemand gemeten heeft.
+
+Waar PostGIS wél gaat lonen, en dat is concreet: zodra een indicator "binnen
+deze corridor" vraagt in plaats van "binnen deze box". Kabelcorridors zijn
+lijnen met een buffer, en `loiter_near_infrastructure` is precies die vraag.
+Dat staat in `sentinel/regions/README.md` als de trigger, niet als een vaag
+later.
+
+**De koppeling die niet uit elkaar kan lopen.** Participatie is *entiteiten
+die het deden / entiteiten waargenomen*. Scoop de teller op 30 dagen en laat
+de noemer op alles staan, en élk gedrag lijkt zeldzaam — een schip dat drie
+jaar geleden voor het laatst iets uitzond telt nog steeds als waargenomen. Dat
+drukt participatie onder de zeldzaamheidsdrempel en levert vals-positieven op
+in precies de richting waartegen de peer-baseline moet beschermen.
+
+`entity_providers()` geeft daarom beide providers in één aanroep terug, met één
+`window_days` die op allebei of op geen van beide slaat. De mismatch is niet
+uit te drukken in plaats van makkelijk te maken — dezelfde aanpak als bij
+`AsOfView`: de fout structureel onmogelijk maken in plaats van er discipline
+op te vragen.
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per
@@ -815,7 +857,7 @@ sentinel/
     retrospective/    replay-harnas
     power/            detectievermogen-curves
     report/
-  storage/            SQLAlchemy + PostGIS + Timescale
+  storage/            SQLAlchemy (positions/events/observations; geen PostGIS — zie §6.3-decies)
   api/                FastAPI (bestaat al; groeit mee)
   ui/                 Streamlit (v2), splitsing in fase 6
 ```

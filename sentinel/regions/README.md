@@ -69,16 +69,20 @@ missing between those and an activated NLD EEZ:
   baseline into the *same* `evaluate_indicator` call every count indicator
   uses. Positions → typed events → storage → verdict is covered end to end in
   `tests/test_entity_pipeline.py`.
-- **An observed-entity population.** This is the live gap, and it is the one
-  that keeps the NLD EEZ indicators honest rather than useful. Rarity needs a
-  denominator of *every vessel observed*, including the silent majority that
-  did nothing. Entity events only record vessels that did something, so
-  without a population participation is `1.0` by construction, only magnitude
-  can ever flag, and rarity — the primary signal — is never tested.
-  `evaluate_region` takes a `population_provider` for exactly this; nothing
-  supplies one yet, because that requires position storage. Until then the
-  entity test returns **insufficient data** rather than calling a
-  magnitude-only pass quiet. It fails closed, and it says so.
+- ~~An observed-entity population.~~ **Built.** The `positions` table supplies
+  it: `population_from_view` returns every entity that emitted a position,
+  including the silent majority that did nothing. Rarity is testable again, so
+  an entity indicator can now reach ACTIVE or a genuine null instead of
+  reporting magnitude-only insufficiency.
+
+  The two providers are handed out **together** by `entity_providers`, and
+  that is deliberate. Participation is *entities that did the thing / entities
+  observed*. Scope the numerator to 30 days and leave the denominator at
+  all-time and every behaviour looks rare — a vessel seen three years ago and
+  never since still counts as observed. That drags participation under the
+  rarity threshold and produces false positives in precisely the direction
+  peer baselines exist to prevent. One `window_days` applies to both or to
+  neither, so the mismatch is not expressible.
 - **Identity resolution.** The `identity_swap` scenario currently produces no
   events; nothing yet compares broadcast identifiers across a track.
 - **A live AIS feed.** This is why the region is `DATA_ONLY` rather than
@@ -87,7 +91,22 @@ missing between those and an activated NLD EEZ:
   for a whole call, so applying a transit lane to a vessel that was never on
   it produces meaningless deviations. Real use needs an expected route per
   vessel, or none.
-- **Position storage.** PostGIS plus a partitioned position table. The
-  primitives run on frames and need no database, but a live AIS feed does —
-  and it is also where the observed-entity population above has to come from,
-  which makes it the highest-value item left on this list.
+- ~~Position storage.~~ **Built**, and deliberately *not* as the roadmap
+  described it. No PostGIS and no partitioning:
+
+  - Nothing in this codebase performs a real spatial query. `entity/geo.py`
+    computes haversine and cross-track offset without a geometry stack, and
+    the population denominator is a `SELECT DISTINCT`. A hard PostGIS
+    dependency would break the SQLite path the whole suite runs on, in
+    exchange for nothing used today.
+  - Partitioning answers a volume problem, and there is no volume — there is
+    no live feed. Partitioning an empty table is a guess about a load nobody
+    has measured.
+
+  Where PostGIS *will* earn its place: when an indicator asks "within this
+  corridor" rather than "within this box". Cable corridors are lines with a
+  buffer; `bbox` filtering cannot express them, and
+  `loiter_near_infrastructure` is exactly that question.
+
+  `scripts/derive_events.py` closes the loop — positions in, typed events out,
+  written back through the same point-in-time discipline.

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 
@@ -30,7 +30,9 @@ from sentinel.regions.base import RegionModule
 
 __all__ = [
     "AGGREGATION_FREQ",
+    "entity_providers",
     "events_from_view",
+    "population_from_view",
     "series_from_view",
     "storage_event_provider",
     "storage_provider",
@@ -212,3 +214,70 @@ def storage_event_provider(dataset_id: int, region: RegionModule,
                                 event_types=event_types, areas=areas)
 
     return provide
+
+
+# ---------------------------------------------------------------------------
+# The observed population, and why it is paired with the event provider
+# ---------------------------------------------------------------------------
+def population_from_view(view: AsOfView, dataset_id: int,
+                         group_by: tuple[str, ...] = ("vessel_class",),
+                         since: datetime | None = None,
+                         bbox: tuple | None = None) -> pd.DataFrame:
+    """Every entity observed by `view.as_of`: the denominator rarity needs.
+
+    One row per entity per group, from the position stream rather than from
+    events — the whole point is to include the silent majority that emitted
+    positions and did nothing else. Counting only entities that produced an
+    event makes participation 1.0 by construction and inverts the rarity
+    signal entirely.
+    """
+    frame = view.positions(dataset_id, since=since, bbox=bbox)
+    if frame.empty:
+        return pd.DataFrame(columns=["entity_key", *group_by])
+
+    columns = ["entity_key", *[c for c in group_by if c in frame.columns]]
+    return frame[columns].drop_duplicates().reset_index(drop=True)
+
+
+def entity_providers(dataset_id: int, region: RegionModule,
+                     view_factory: Callable[[datetime], AsOfView],
+                     window_days: int | None = None,
+                     ) -> tuple[Callable, Callable]:
+    """Event and population providers for one region, built together.
+
+    Deliberately one function returning both, because the dangerous failure is
+    them disagreeing. Participation is ``entities that did the thing / entities
+    observed``. Scope the numerator to the last 30 days and leave the
+    denominator at all-time, and every behaviour looks rare — a vessel that
+    reported positions three years ago and never since still counts as
+    observed. That inflates the denominator, drags participation below the
+    rarity threshold, and produces false positives in the one direction the
+    peer baseline is supposed to protect against.
+
+    Handing out two independently-configured providers would make that
+    mismatch a one-line mistake. Here `window_days` applies to both or to
+    neither.
+    """
+    window = None if window_days is None else timedelta(days=int(window_days))
+
+    def _since(as_of: datetime) -> datetime | None:
+        return None if window is None else as_of - window
+
+    def events(indicator: Indicator, as_of: datetime) -> tuple[Event, ...]:
+        found = events_from_view(
+            view_factory(as_of), dataset_id, region.key,
+            areas=((indicator.area_key,) if indicator.area_key
+                   else region.geography.areas))
+        since = _since(as_of)
+        if since is None:
+            return found
+        return tuple(e for e in found if e.event_time >= since)
+
+    def population(indicator: Indicator, as_of: datetime) -> pd.DataFrame:
+        grouping = (tuple(indicator.test_config.get("peer_baseline", ()))
+                    or ("vessel_class",))
+        return population_from_view(
+            view_factory(as_of), dataset_id, group_by=grouping,
+            since=_since(as_of), bbox=region.geography.bbox)
+
+    return events, population

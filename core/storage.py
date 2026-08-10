@@ -132,6 +132,46 @@ entity_events_t = Table(
     Index("ix_evt_region_ingested", "dataset_id", "region_key", "ingested_at"),
 )
 
+# Ruwe positieberichten (AIS en soortgelijk). Dit is de bron waaruit de
+# entity-primitieven events afleiden, én — belangrijker — de plek waar de
+# *waargenomen populatie* vandaan komt: elk vaartuig dat iets uitzond, ook de
+# stille meerderheid die niets deed. Zonder die noemer is zeldzaamheid niet
+# toetsbaar en kan de peer-baseline alleen op magnitude oordelen.
+#
+# Bewust géén PostGIS. Het plan noemde het, maar niets in deze codebase doet
+# een echte ruimtelijke query: `sentinel/entity/geo.py` rekent haversine zonder
+# geometrie-stack, en de noemer hierboven is een SELECT DISTINCT. Een harde
+# PostGIS-afhankelijkheid zou de SQLite-testweg breken waar de hele suite op
+# draait, in ruil voor niets dat vandaag gebruikt wordt. Waar het wél gaat
+# lonen: zodra een indicator "binnen dit polygoon" vraagt in plaats van "binnen
+# deze bounding box" — kabelcorridors zijn lijnen, geen rechthoeken.
+positions_t = Table(
+    "positions", _metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("dataset_id", Integer,
+           ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False),
+    Column("entity_key", String(128), nullable=False),
+    Column("entity_kind", String(32)),
+    Column("timestamp", DateTime, nullable=False),
+    Column("ingested_at", DateTime, nullable=False),
+    Column("ingest_estimated", Boolean),
+    Column("lat", Float, nullable=False),
+    Column("lon", Float, nullable=False),
+    Column("sog", Float),          # speed over ground, knopen
+    Column("cog", Float),          # course over ground, graden
+    Column("heading", Float),
+    # De klasse waarop peers gegroepeerd worden. Op de positie en niet op een
+    # aparte vaartuigtabel, omdat een schip van klasse kan wisselen en de
+    # vergelijking hoort te gebeuren met wat het op dát moment was.
+    Column("vessel_class", String(64)),
+    Column("source_key", String(64)),
+    Column("row_hash", String(64), nullable=False),
+    UniqueConstraint("dataset_id", "row_hash", name="uq_pos_dataset_hash"),
+    Index("ix_pos_entity_ts", "dataset_id", "entity_key", "timestamp"),
+    Index("ix_pos_dataset_ts", "dataset_id", "timestamp"),
+    Index("ix_pos_dataset_ingested", "dataset_id", "ingested_at"),
+)
+
 annotations_t = Table(
     "annotations", _metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
@@ -962,6 +1002,135 @@ def load_observations_as_of(dataset_id: int, as_of: datetime) -> pd.DataFrame:
     with _engine().connect() as con:
         df = pd.read_sql_query(stmt, con)
     return _normalize_observations(df)
+
+
+# ---------------------------------------------------------------------------
+# Posities (AIS en soortgelijk)
+# ---------------------------------------------------------------------------
+POSITION_FIELDS = ("entity_key", "entity_kind", "timestamp", "lat", "lon",
+                   "sog", "cog", "heading", "vessel_class", "source_key")
+
+
+def insert_positions(dataset_id: int, df: pd.DataFrame,
+                     arrival: str = "now") -> int:
+    """Sla positieberichten op; dedupe op (entiteit, tijd, plaats).
+
+    Hetzelfde aankomstbeleid als bij observaties: `"now"` voor live inwinning,
+    `"event_time"` voor bulk-historie (die rijen worden dan als geschat
+    gemarkeerd). Een expliciete `ingested_at`-kolom wint altijd.
+
+    De hash dekt entiteit, tijdstip en positie. Twee berichten van hetzelfde
+    schip op hetzelfde moment vanaf dezelfde plek zijn hetzelfde bericht, ook
+    als ze via twee ontvangers binnenkwamen — en dubbele ontvangst is bij AIS
+    eerder regel dan uitzondering.
+    """
+    if arrival not in ARRIVAL_POLICIES:
+        raise ValueError(
+            f"onbekend arrival-beleid {arrival!r}; kies uit {ARRIVAL_POLICIES}")
+    _ensure_table(positions_t)
+    if df is None or df.empty:
+        return 0
+
+    for required in ("entity_key", "timestamp", "lat", "lon"):
+        if required not in df.columns:
+            raise ValueError(
+                f"positiekolom {required!r} ontbreekt; zonder identiteit, tijd "
+                f"en plaats is een positie geen positie")
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    has_explicit_arrival = "ingested_at" in df.columns
+
+    rows: list[dict] = []
+    for row in df.to_dict("records"):
+        ts_raw, lat, lon = row.get("timestamp"), row.get("lat"), row.get("lon")
+        if pd.isna(ts_raw) or pd.isna(lat) or pd.isna(lon):
+            continue
+        ts = _to_naive_utc(ts_raw)
+
+        explicit = row.get("ingested_at") if has_explicit_arrival else None
+        if explicit is not None and not pd.isna(explicit):
+            ingested_at, estimated = _to_naive_utc(explicit), False
+        elif arrival == "event_time":
+            ingested_at, estimated = ts, True
+        else:
+            ingested_at, estimated = now, False
+
+        key_str = f"{row['entity_key']}|{ts.isoformat()}|{lat:.6f}|{lon:.6f}"
+        rows.append({
+            "dataset_id": dataset_id,
+            "entity_key": str(row["entity_key"]),
+            "entity_kind": _safe(row.get("entity_kind")) or "vessel",
+            "timestamp": ts,
+            "ingested_at": ingested_at,
+            "ingest_estimated": estimated,
+            "lat": float(lat),
+            "lon": float(lon),
+            "sog": None if pd.isna(row.get("sog")) else _as_float(row.get("sog")),
+            "cog": None if pd.isna(row.get("cog")) else _as_float(row.get("cog")),
+            "heading": (None if pd.isna(row.get("heading"))
+                        else _as_float(row.get("heading"))),
+            "vessel_class": _safe(row.get("vessel_class")),
+            "source_key": _safe(row.get("source_key")),
+            "row_hash": hashlib.sha256(key_str.encode()).hexdigest(),
+        })
+
+    if not rows:
+        return 0
+
+    count_stmt = select(func.count(positions_t.c.id)).where(
+        positions_t.c.dataset_id == dataset_id)
+    with _engine().begin() as con:
+        before = con.execute(count_stmt).scalar_one()
+        _insert_ignore_conflicts(con, rows, table=positions_t)
+        after = con.execute(count_stmt).scalar_one()
+    return int(after - before)
+
+
+def _as_float(value):
+    try:
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def load_positions_as_of(dataset_id: int, as_of: datetime,
+                         since: datetime | None = None,
+                         bbox: tuple | None = None) -> pd.DataFrame:
+    """Posities zoals ze op `as_of` bekend waren.
+
+    `bbox` is `(lat_min, lat_max, lon_min, lon_max)` — een rechthoek, geen
+    polygoon. Dat is genoeg om een regio af te bakenen en niet genoeg voor een
+    kabelcorridor; zie de opmerking bij `positions_t` over waar PostGIS gaat
+    lonen.
+    """
+    _ensure_table(positions_t)
+    as_of = _to_naive_utc(as_of)
+    conditions = [
+        positions_t.c.dataset_id == dataset_id,
+        positions_t.c.timestamp <= as_of,
+        positions_t.c.ingested_at <= as_of,
+    ]
+    if since is not None:
+        conditions.append(positions_t.c.timestamp >= _to_naive_utc(since))
+    if bbox is not None:
+        lat_min, lat_max, lon_min, lon_max = bbox
+        conditions += [
+            positions_t.c.lat >= float(lat_min),
+            positions_t.c.lat <= float(lat_max),
+            positions_t.c.lon >= float(lon_min),
+            positions_t.c.lon <= float(lon_max),
+        ]
+
+    stmt = select(positions_t).where(*conditions).order_by(
+        positions_t.c.entity_key, positions_t.c.timestamp)
+    with _engine().connect() as con:
+        df = pd.read_sql_query(stmt, con)
+    if df.empty:
+        return df
+    for col in ("timestamp", "ingested_at"):
+        if not pd.api.types.is_datetime64_any_dtype(df[col]):
+            df[col] = pd.to_datetime(df[col], errors="coerce", format="mixed")
+    return df
 
 
 # ---------------------------------------------------------------------------

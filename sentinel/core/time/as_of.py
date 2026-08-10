@@ -134,6 +134,18 @@ def _default_event_loader(dataset_id: int, as_of: datetime,
     return load_entity_events_as_of(dataset_id, as_of, region_key)
 
 
+#: Position loader contract: ``(dataset_id, as_of, since, bbox) -> DataFrame``.
+PositionLoader = Callable[..., pd.DataFrame]
+
+
+def _default_position_loader(dataset_id: int, as_of: datetime,
+                             since: datetime | None = None,
+                             bbox: tuple | None = None) -> pd.DataFrame:
+    from core.storage import load_positions_as_of
+
+    return load_positions_as_of(dataset_id, as_of, since=since, bbox=bbox)
+
+
 @dataclass(frozen=True)
 class AsOfView:
     """A read-only window on the world as it was known at `as_of`.
@@ -146,6 +158,7 @@ class AsOfView:
     as_of: datetime
     loader: Loader = _default_loader
     event_loader: EventLoader = _default_event_loader
+    position_loader: PositionLoader = _default_position_loader
 
     def __post_init__(self) -> None:
         # frozen dataclass: assign through object.__setattr__
@@ -178,6 +191,17 @@ class AsOfView:
         assert_causal(df, self.as_of, time_col="event_time")
         return df
 
+    def positions(self, dataset_id: int, since: datetime | None = None,
+                  bbox: tuple | None = None) -> pd.DataFrame:
+        """Position reports known at `as_of`, verified causal.
+
+        The raw stream the entity primitives run over, and the source of the
+        observed population that makes rarity testable at all.
+        """
+        df = self.position_loader(dataset_id, self.as_of, since, bbox)
+        assert_causal(df, self.as_of)
+        return df
+
     def provenance(self, dataset_id: int) -> Provenance:
         """How much of this view rests on assumed arrival times."""
         df = self.observations(dataset_id)
@@ -195,7 +219,8 @@ class AsOfView:
     def at(self, as_of) -> AsOfView:
         """A view on the same source at a different instant."""
         return AsOfView(as_of=to_naive_utc(as_of), loader=self.loader,
-                        event_loader=self.event_loader)
+                        event_loader=self.event_loader,
+                        position_loader=self.position_loader)
 
     def rewind(self, **delta) -> AsOfView:
         """A view further back in time, e.g. ``view.rewind(days=7)``."""
@@ -240,13 +265,17 @@ class PointInTimeStore:
     """
 
     def __init__(self, loader: Loader | None = None,
-                 event_loader: EventLoader | None = None) -> None:
+                 event_loader: EventLoader | None = None,
+                 position_loader: PositionLoader | None = None) -> None:
         self.loader: Loader = loader or _default_loader
         self.event_loader: EventLoader = event_loader or _default_event_loader
+        self.position_loader: PositionLoader = (
+            position_loader or _default_position_loader)
 
     def view(self, as_of) -> AsOfView:
         return AsOfView(as_of=to_naive_utc(as_of), loader=self.loader,
-                        event_loader=self.event_loader)
+                        event_loader=self.event_loader,
+                        position_loader=self.position_loader)
 
     def now(self) -> AsOfView:
         return self.view(datetime.now(UTC).replace(tzinfo=None))

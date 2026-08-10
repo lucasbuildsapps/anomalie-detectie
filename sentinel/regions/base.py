@@ -60,6 +60,19 @@ class GeoScope:
         return (self.lat_min <= lat <= self.lat_max
                 and self.lon_min <= lon <= self.lon_max)
 
+    @property
+    def bbox(self) -> tuple[float, float, float, float] | None:
+        """`(lat_min, lat_max, lon_min, lon_max)`, or None if worldwide.
+
+        None for the default scope on purpose: filtering a query by a box that
+        covers the planet is pure cost, and it also lets a caller distinguish
+        "this region declared its extent" from "nobody narrowed it".
+        """
+        if (self.lat_min, self.lat_max, self.lon_min, self.lon_max) == \
+                (-90.0, 90.0, -180.0, 180.0):
+            return None
+        return (self.lat_min, self.lat_max, self.lon_min, self.lon_max)
+
 
 @dataclass(frozen=True)
 class RegionModule:

@@ -237,5 +237,8 @@ def test_the_watchboard_supplies_an_event_provider():
     """Without one, every entity indicator on the page reports insufficient
     data regardless of what was derived — the gap this wiring closed."""
     source = __import__("pathlib").Path("ui/pages/regions.py").read_text()
-    assert "storage_event_provider" in source
+    assert "entity_providers" in source
     assert "event_provider=" in source
+    assert "population_provider=" in source, (
+        "without a population the entity test can only judge magnitude, and "
+        "reports insufficient data rather than a verdict")
