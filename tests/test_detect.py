@@ -290,13 +290,26 @@ def test_draft_indicators_are_not_evaluated():
     assert "not active" in signal.insufficient_reason
 
 
-def test_unbuilt_test_type_says_so_rather_than_reporting_quiet():
-    """An unimplemented capability must not masquerade as a clean result."""
+def test_every_declared_test_type_has_an_implementation():
+    """All four are now built, so the 'not implemented' branch is unreachable.
+
+    Worth asserting rather than assuming: adding a fifth test type to the
+    enum without wiring it would otherwise surface as an indicator that
+    silently reports insufficient data forever, which reads like a data
+    problem rather than a missing implementation.
+    """
+    from sentinel.core.detect.tests import _TESTS
+
+    assert set(_TESTS) == set(IndicatorTest)
+
+
+def test_a_test_missing_its_prerequisites_says_which_one():
+    """An unbuilt or unsupplied capability must not masquerade as clean."""
     indicator = _indicator(test_type=IndicatorTest.ENTITY_BEHAVIOUR,
                            entity_kind="vessel")
     signal = evaluate_indicator(_context(_quiet_series(), indicator))
     assert signal.verdict is Verdict.INSUFFICIENT_DATA
-    assert "not implemented yet" in signal.insufficient_reason
+    assert "no peer baseline" in signal.insufficient_reason
 
 
 def test_every_signal_carries_grounded_confidence():
@@ -312,3 +325,112 @@ def test_quiet_series_never_produce_active_signals(seed):
     """The property the whole design is for: quiet in, quiet out."""
     signal = evaluate_indicator(_context(_quiet_series(seed=seed)))
     assert signal.verdict is not Verdict.ACTIVE
+
+
+# =========================================================================
+# entity_behaviour
+# =========================================================================
+def _entity_indicator(**overrides) -> Indicator:
+    kwargs = dict(
+        key="loiter_near_infrastructure", region_key="nld_eez",
+        name="Loitering near infrastructure",
+        question="Is a vessel behaving unusually for its class?",
+        meaning="A vessel class that does not normally linger, lingering.",
+        test_type=IndicatorTest.ENTITY_BEHAVIOUR, entity_kind="vessel",
+        status=IndicatorStatus.ACTIVE,
+        test_config={"event_types": ["loiter"]},
+    )
+    kwargs.update(overrides)
+    return Indicator(**kwargs)
+
+
+def _fleet_context(indicator=None, only_fishing: bool = False,
+                   peers=True, power=POWER):
+    from sentinel.entity import PeerBaseline, extract_events
+    from sentinel.eval.synthetic.vessels import build_fleet
+
+    fleet = build_fleet()
+    events = []
+    for _key, group in fleet.positions.groupby("entity_key"):
+        events.extend(extract_events(group))
+    baseline = PeerBaseline.from_positions(fleet.positions, events)
+    if only_fishing:
+        events = [e for e in events if e.entity.key.startswith("fish")]
+    return IndicatorContext(
+        indicator=indicator or _entity_indicator(),
+        as_of=AS_OF,
+        events=tuple(events),
+        peers=baseline if peers else None,
+        power=power,
+        inputs=ConfidenceInputs(data_coverage=0.99, staleness_days=1,
+                                source_reliability=Reliability.C,
+                                effective_corroboration=2.0,
+                                reconstruction_faithful=True),
+    )
+
+
+def test_entity_behaviour_flags_the_vessel_that_does_not_belong():
+    signal = evaluate_indicator(_fleet_context())
+    assert signal.verdict is Verdict.ACTIVE
+    summaries = " ".join(e.summary for e in signal.evidence)
+    assert "cargo-target" in summaries
+    assert "cargo vessels show loiter" in summaries
+
+
+def test_entity_behaviour_does_not_flag_a_fleet_of_trawlers():
+    """The failure this whole layer exists to avoid.
+
+    Forty vessels loitering for hours, all of them doing their job. The
+    events are real; the verdict must still be quiet.
+    """
+    signal = evaluate_indicator(_fleet_context(only_fishing=True))
+    assert signal.verdict is Verdict.NOT_ACTIVE
+    assert "within the normal range" in " ".join(
+        e.summary for e in signal.evidence)
+
+
+def test_entity_behaviour_always_offers_a_non_hostile_explanation():
+    """Behaviour is not intent, and the alert must say so unprompted."""
+    signal = evaluate_indicator(_fleet_context())
+    alternatives = signal.evidence_of(EvidenceKind.ALTERNATIVE)
+    assert alternatives
+    assert "not intent" in alternatives[0].summary
+
+
+def test_entity_behaviour_without_a_peer_baseline_is_untested():
+    """Unusual 'for its class' is meaningless without a class to compare."""
+    signal = evaluate_indicator(_fleet_context(peers=False))
+    assert signal.verdict is Verdict.INSUFFICIENT_DATA
+    assert "no peer baseline" in signal.insufficient_reason
+
+
+def test_entity_behaviour_with_no_observed_events_is_genuinely_quiet():
+    """The primitives ran and found nothing to judge — a real null."""
+    context = _fleet_context()
+    signal = evaluate_indicator(
+        IndicatorContext(indicator=context.indicator, as_of=AS_OF,
+                         events=(), peers=context.peers, power=POWER,
+                         inputs=context.inputs))
+    assert signal.verdict is Verdict.NOT_ACTIVE
+
+
+def test_entity_behaviour_respects_the_declared_event_types():
+    indicator = _entity_indicator(test_config={"event_types": ["ais_gap"]})
+    signal = evaluate_indicator(_fleet_context(indicator=indicator))
+    # The fleet produces no gaps, so an ais_gap indicator sees nothing.
+    assert signal.verdict is Verdict.NOT_ACTIVE
+
+
+def test_entity_behaviour_null_result_still_needs_detection_power():
+    """The same rule as every other test: no floor, no claim of quiet."""
+    signal = evaluate_indicator(_fleet_context(only_fishing=True, power=None))
+    assert signal.verdict is Verdict.INSUFFICIENT_DATA
+    assert "detection power" in signal.insufficient_reason
+
+
+def test_entity_behaviour_ranks_by_how_unusual_rather_than_by_order():
+    """The evidence names the most unusual vessel, not the first one seen."""
+    signal = evaluate_indicator(_fleet_context())
+    first = signal.evidence[0].summary
+    assert "cargo-target" in first, (
+        "the headline evidence must be the strongest case, not an arbitrary one")

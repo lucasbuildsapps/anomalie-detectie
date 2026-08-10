@@ -44,14 +44,19 @@ The entity engine's *primitives* now exist (`sentinel/entity/`): they turn
 positions into `loiter`, `ais_gap` and `route_deviation` events. What is
 missing between those and an activated NLD EEZ:
 
-- **A peer baseline.** The primitives deliberately do not judge. A trawler on
-  a fishing ground and a cargo vessel on a cable corridor emit the *same*
-  `loiter` event, and a test enforces that they do — the difference is vessel
-  class and location, which is a baseline question. Until that baseline
-  exists, the entity indicators cannot be activated without flagging every
-  fishing vessel in the North Sea.
+- ~~A peer baseline.~~ **Built** (`sentinel/entity/peers.py`) and wired into
+  the `entity_behaviour` test. On a synthetic fleet of 102 vessels — 40
+  trawlers that loiter by trade, 60 cargo that do not, 2 cargo that stopped
+  on a cable corridor — it flags 2, both targets, no trawlers.
+- **A measured detection floor for entity behaviour.** The power harness
+  scores series, and entity tests are scored per vessel against peers, so
+  there is no floor for them yet. Until there is, a quiet entity indicator
+  reports *insufficient data* rather than claiming calm — which is correct,
+  and also why the indicators below stay `DRAFT`.
 - **Identity resolution.** The `identity_swap` scenario currently produces no
   events; nothing yet compares broadcast identifiers across a track.
+- **A live AIS feed.** This is why the region is `DATA_ONLY` rather than
+  `MONITORED`: the machinery now exists, the data does not.
 - **Per-vessel expected routes.** `detect_route_deviation` takes one route
   for a whole call, so applying a transit lane to a vessel that was never on
   it produces meaningless deviations. Real use needs an expected route per

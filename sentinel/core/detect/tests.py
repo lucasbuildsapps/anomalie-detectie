@@ -58,13 +58,20 @@ class IndicatorContext:
     """
 
     indicator: Indicator
-    series: pd.Series
     as_of: datetime
-    adaptive: BaselineFit
+    #: Series-based tests need these; entity tests do not, and vice versa.
+    #: Each test states what it is missing rather than the context pretending
+    #: every input applies to every question.
+    series: pd.Series | None = None
+    adaptive: BaselineFit | None = None
     reference: BaselineFit | None = None
     power: DetectionPower | None = None
     inputs: ConfidenceInputs = field(default_factory=ConfidenceInputs)
     divergence_config: DivergenceConfig | None = None
+    #: Entity-layer events in this indicator's scope, and the peer baseline
+    #: that decides which of them are unusual.
+    events: tuple = ()
+    peers: object | None = None
 
     @property
     def confidence(self) -> Confidence:
@@ -131,6 +138,8 @@ def _latest_usable(context: IndicatorContext) -> int | None:
 # =========================================================================
 def _test_level_deviation(context: IndicatorContext) -> Signal:
     """Is the latest period unusual against the recent baseline?"""
+    if context.adaptive is None or context.series is None:
+        return _insufficient(context, "no series or baseline was supplied")
     threshold = float(context.indicator.test_config.get("threshold", 3.5))
     position = _latest_usable(context)
     if position is None:
@@ -174,6 +183,8 @@ def _test_sustained_divergence(context: IndicatorContext) -> Signal:
     The test that answers the question a purely adaptive system cannot: not
     "is today unusual" but "has the definition of normal quietly moved".
     """
+    if context.adaptive is None or context.series is None:
+        return _insufficient(context, "no series or baseline was supplied")
     if context.reference is None:
         return _insufficient(
             context,
@@ -249,6 +260,8 @@ def _test_condition(context: IndicatorContext) -> Signal:
     normally is not zero, which is a classic warning signal and a systematic
     blind spot of anything built around peak-finding.
     """
+    if context.series is None:
+        return _insufficient(context, "no series was supplied")
     config = context.indicator.test_config
     rule = str(config.get("rule", "")).strip()
     periods = max(1, int(config.get("periods", 1)))
@@ -311,12 +324,94 @@ def _test_condition(context: IndicatorContext) -> Signal:
 
 
 # =========================================================================
+# entity_behaviour
+# =========================================================================
+def _test_entity_behaviour(context: IndicatorContext) -> Signal:
+    """Is any entity behaving unusually for its class, here?
+
+    The verdict comes from the peer baseline, not from the events. Events are
+    observations — a trawler and a cargo vessel both produce `loiter` — and
+    the judgement is whether the behaviour is unusual *for that class*. Doing
+    it the other way round flags every fishing vessel in the North Sea.
+
+    A behaviour the baseline cannot assess is reported as untested rather
+    than quiet. With too few comparable vessels observed, "nothing unusual"
+    would mean "we had nothing to compare against", which is a different
+    statement and a much weaker one.
+    """
+    if context.peers is None:
+        return _insufficient(
+            context,
+            "no peer baseline is available, so behaviour cannot be judged "
+            "unusual for its class")
+
+    wanted = tuple(context.indicator.test_config.get("event_types", ()))
+    candidates = [
+        event for event in context.events
+        if not wanted or event.event_type in wanted
+    ]
+    if not candidates:
+        # No behaviour of the declared type was observed at all. That is a
+        # genuine null: the primitives ran and found nothing to judge.
+        return _quiet(context)
+
+    assessed = [(event, context.peers.assess(event)) for event in candidates]
+    usable = [(event, a) for event, a in assessed if a is not None]
+    if not usable:
+        return _insufficient(
+            context,
+            f"{len(candidates)} behaviour event(s) observed, but too few "
+            f"comparable vessels to judge whether any is unusual")
+
+    unusual = [(event, a) for event, a in usable if a.is_unusual]
+    if not unusual:
+        return _quiet(context, evidence=(
+            Evidence(
+                kind=EvidenceKind.CONTEXT,
+                summary=(f"{len(usable)} behaviour event(s) assessed against "
+                         f"peers; all within the normal range for their "
+                         f"class"),
+                weight=0.0,
+            ),
+        ))
+
+    event, assessment = max(unusual, key=lambda pair: pair[1].score)
+    entity = event.entity.key if event.entity else "unknown"
+    evidence = [
+        Evidence(
+            kind=EvidenceKind.CONTEXT,
+            summary=(f"{entity}: {event.event_type} of "
+                     f"{event.magnitude:.0f} {event.unit or ''}".strip()
+                     + f" — {assessment.describe()}"),
+            weight=0.0,
+        ),
+    ]
+    if len(unusual) > 1:
+        evidence.append(Evidence(
+            kind=EvidenceKind.CONTEXT,
+            summary=(f"{len(unusual)} of {len(usable)} assessed events were "
+                     f"unusual for their class"),
+            weight=0.0,
+        ))
+    evidence.append(Evidence(
+        kind=EvidenceKind.ALTERNATIVE,
+        summary=("equipment failure, weather, or a legitimate operational "
+                 "reason produce the same track; behaviour is not intent"),
+        weight=-0.3,
+    ))
+
+    return _active(context, effect_size=assessment.score,
+                   direction=Direction.ABOVE, evidence=tuple(evidence))
+
+
+# =========================================================================
 # dispatch
 # =========================================================================
 _TESTS = {
     IndicatorTest.LEVEL_DEVIATION: _test_level_deviation,
     IndicatorTest.SUSTAINED_DIVERGENCE: _test_sustained_divergence,
     IndicatorTest.CONDITION: _test_condition,
+    IndicatorTest.ENTITY_BEHAVIOUR: _test_entity_behaviour,
 }
 
 
@@ -334,8 +429,8 @@ def evaluate_indicator(context: IndicatorContext) -> Signal:
 
     test = _TESTS.get(indicator.test_type)
     if test is None:
-        # ENTITY_BEHAVIOUR lands here until the entity engine exists. Saying
-        # so is better than silently treating an unbuilt capability as quiet.
+        # Any test type without an implementation lands here. Saying so is
+        # better than silently treating an unbuilt capability as quiet.
         return _insufficient(
             context,
             f"the {indicator.test_type.value} test is not implemented yet, "
