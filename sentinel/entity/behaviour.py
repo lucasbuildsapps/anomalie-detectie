@@ -65,6 +65,11 @@ class BehaviourConfig:
     loiter_max_speed_knots: float = 1.5
     loiter_min_minutes: float = 60.0
     gap_min_minutes: float = 30.0
+    #: Implied speed above which one identifier cannot be one vessel.
+    #: Far above any real hull on purpose: the question is whether this is
+    #: physically one ship, not whether it was speeding. See
+    #: `sentinel/entity/identity.py`.
+    implausible_speed_knots: float = 100.0
     deviation_min_km: float = 10.0
     deviation_min_minutes: float = 30.0
 
@@ -73,6 +78,11 @@ class BehaviourConfig:
             raise ValueError("loiter speed threshold must be positive")
         if self.gap_min_minutes <= 0:
             raise ValueError("gap threshold must be positive")
+        if self.implausible_speed_knots <= 50:
+            raise ValueError(
+                "an implausibility threshold at or below 50 knots would flag "
+                "fast craft as identity conflicts; this is a physics check, "
+                "not a speed limit")
 
 
 def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
@@ -225,9 +235,12 @@ def extract_events(positions: pd.DataFrame,
     are observations, and the peer baseline that decides which of them are
     unusual lives at the indicator layer.
     """
+    from sentinel.entity.identity import detect_identity_conflicts
+
     config = config or BehaviourConfig()
     events = detect_loiter(positions, config, region_key)
     events += detect_ais_gaps(positions, config, region_key)
+    events += detect_identity_conflicts(positions, config, region_key)
     if route is not None:
         events += detect_route_deviation(positions, config, route, region_key)
     return sorted(events, key=lambda e: e.event_time)

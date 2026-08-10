@@ -42,6 +42,7 @@ from sentinel.eval.synthetic.vessels import build_fleet
 __all__ = [
     "EntityPowerResult",
     "gap_detection_power",
+    "identity_detection_power",
     "measure",
     "measure_duration_floor",
     "measure_gap_floor",
@@ -318,4 +319,79 @@ def gap_detection_power(threshold: float = 0.8, n_repeats: int = 6,
                 "rare for the vessel class is deliberately not asked: a "
                 "dropout happens to a vessel rather than being chosen, so "
                 "rarity there measures receiver coverage, not conduct."),
+    )
+
+
+def _identity_recall(spoof_jump_km: float, seed: int = 42,
+                     peer_config: PeerConfig | None = None) -> tuple[float, int]:
+    """Fraction of spoofed identifiers flagged, and the false alarms beside."""
+    fleet = build_fleet(seed=seed, spoof_jump_km=spoof_jump_km)
+    events = []
+    for _key, group in fleet.positions.groupby("entity_key"):
+        events.extend(extract_events(group))
+
+    conflicts = [e for e in events if e.event_type == "identity_conflict"]
+    baseline = PeerBaseline.from_positions(fleet.positions, events,
+                                           config=peer_config)
+    flagged = {
+        event.entity.key for event in conflicts
+        if (assessment := baseline.assess(event)) is not None
+        and assessment.is_unusual
+    }
+    targets = set(fleet.target_keys)
+    return (len(targets & flagged) / max(len(targets), 1),
+            len(flagged - targets))
+
+
+def identity_detection_power(threshold: float = 0.8, n_repeats: int = 6,
+                             distances_km: tuple[float, ...] = (
+                                 10, 20, 30, 40, 50, 80),
+                             peer_config: PeerConfig | None = None,
+                             ) -> DetectionPower:
+    """The identity-conflict floor: smallest impossible displacement caught.
+
+    Unlike the other entity floors this one is close to deterministic. A jump
+    either implies a speed no hull can reach or it does not, so recall moves
+    from 0 to 1 over a single step rather than sloping. The number is
+    therefore a *physics* boundary, not a statistical one — and that is why
+    the caveat below matters more than usual.
+
+    The floor is a displacement, and a displacement only becomes an implied
+    speed once you divide by the reporting interval. At the ten-minute cadence
+    the harness models, roughly 31 km implies 100 knots. On an hourly
+    satellite feed the same threshold needs six times the distance, and on a
+    ten-second terrestrial feed a fraction of it. Quoting the kilometres
+    without the cadence would make the number look like a property of the
+    detector when it is mostly a property of the feed.
+    """
+    floor = float("nan")
+    alarms = 0
+    for km in distances_km:
+        recalls, false_alarms = [], 0
+        for i in range(n_repeats):
+            recall, alarm = _identity_recall(km, seed=42 + i,
+                                             peer_config=peer_config)
+            recalls.append(recall)
+            false_alarms += alarm
+        mean = float(np.mean(recalls))
+        if mean >= threshold and _resolves(mean, threshold, n_repeats):
+            floor, alarms = km, false_alarms
+            break
+
+    too_noisy = alarms > n_repeats
+    return DetectionPower(
+        scenario_kind="An impossible position jump",
+        floor_magnitude=float("nan") if too_noisy else floor,
+        threshold=threshold,
+        n_repeats=n_repeats,
+        confounded=too_noisy,
+        resolved=bool(np.isfinite(floor)) and not too_noisy,
+        unit="km",
+        caveat=("Measured at a ten-minute reporting cadence, where this "
+                "distance is what implies an impossible speed. A sparser feed "
+                "needs proportionally more distance before the same conflict "
+                "is visible, so this floor describes the feed as much as the "
+                "detector. It reports that one identifier was used by more "
+                "than one vessel, never which one, and a decoding error "
+                "produces the same signature."),
     )

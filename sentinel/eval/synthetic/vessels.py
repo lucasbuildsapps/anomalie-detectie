@@ -351,6 +351,7 @@ def build_fleet(seed: int = 42, n_fishing: int = 40, n_cargo: int = 60,
                 target_loiter_hours: float = 4.0,
                 n_contaminating: int = 0,
                 target_gap_minutes: float = 0.0,
+                spoof_jump_km: float = 0.0,
                 background_gap_minutes: float = 60.0,
                 background_gap_rate: float = 0.7) -> Fleet:
     """A day's traffic: trawlers that loiter by trade, cargo that does not,
@@ -412,6 +413,18 @@ def build_fleet(seed: int = 42, n_fishing: int = 40, n_cargo: int = 60,
         frame["entity_key"] = f"cargo-also-{i:03d}"
         frames.append(frame)
 
+    # A second hull broadcasting a target's identifier. Injected by splicing
+    # a displaced position into the middle of the track rather than by adding
+    # a separate vessel: that is what the receiver actually sees — one
+    # identifier, reports that cannot belong to one hull.
+    def _spoof(frame: pd.DataFrame) -> pd.DataFrame:
+        if spoof_jump_km <= 0 or len(frame) < 4:
+            return frame
+        out = frame.copy().reset_index(drop=True)
+        at = len(out) // 2
+        out.loc[at, "lat"] = float(out.loc[at, "lat"]) + spoof_jump_km / 111.0
+        return out
+
     for i in range(n_targets):
         generator = VesselTrackGenerator(seed=seed + 3000 + i, hours=hours)
         frame = generator.loiter_near_cable(
@@ -421,6 +434,7 @@ def build_fleet(seed: int = 42, n_fishing: int = 40, n_cargo: int = 60,
         if target_gap_minutes > 0:
             frame = generator.punch_gap(frame, target_gap_minutes,
                                         at_fraction=0.75)
+        frame = _spoof(frame)
         targets.append(key)
         frames.append(frame)
 

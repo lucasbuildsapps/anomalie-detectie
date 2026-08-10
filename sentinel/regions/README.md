@@ -35,7 +35,7 @@ indicator returned insufficient data is **not** quiet either, and says so.
 | `base.py` | `RegionModule`, `GeoScope`. Rejects an unmonitored region that does not declare its activation requirements, and a monitored one that defines no indicators. |
 | `evaluate.py` | `evaluate_region` — one entry point for every region. Data arrives through a provider callable, so regions never touch storage and the caller keeps the point-in-time discipline. |
 | `euro_atlantic.py` | Fully declared and `MONITORED`: sustained tempo, single-period surge, reporting silence, against a declared 2015–2021 reference. |
-| `nld_eez.py` | `DATA_ONLY`. Four indicators declared, three of them `entity_behaviour` and so not evaluable until the entity engine exists. Marking it `MONITORED` would let a tab that cannot see the interesting cases present itself as watching for them. |
+| `nld_eez.py` | `DATA_ONLY`. Four indicators, all four with a measured and resolved floor, all four running end to end on a synthetic fleet. It stays `DATA_ONLY` because there is no AIS feed — marking it `MONITORED` would let a tab with no data present itself as watching. |
 | `pending.py` | MENA, Indo-Pacific and Caribbean as `NOT_MONITORED` shells, each carrying the conditions that would activate it. |
 
 ## Still to build
@@ -83,8 +83,16 @@ missing between those and an activated NLD EEZ:
   rarity threshold and produces false positives in precisely the direction
   peer baselines exist to prevent. One `window_days` applies to both or to
   neither, so the mismatch is not expressible.
-- **Identity resolution.** The `identity_swap` scenario currently produces no
-  events; nothing yet compares broadcast identifiers across a track.
+- ~~Identity resolution.~~ **Built** as a *kinematic* check
+  (`sentinel/entity/identity.py`): one identifier reported where no single
+  hull could have travelled. Floor measured at **40 km** for a ten-minute
+  cadence, zero false alarms.
+
+  Deliberately not built: the static-field version — same identifier, changed
+  name, IMO or callsign. It is easy and mostly *legitimate*, since reflagging
+  and renaming happen constantly, so a detector on it would spend its life
+  reporting paperwork. The kinematic version cannot be explained that way:
+  either the position is wrong or the identity is.
 - **A live AIS feed.** This is why the region is `DATA_ONLY` rather than
   `MONITORED`: the machinery now exists, the data does not.
 - **Per-vessel expected routes.** `detect_route_deviation` takes one route

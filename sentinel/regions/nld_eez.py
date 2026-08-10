@@ -16,16 +16,21 @@ engine, no parallel truth model.
 
 What the measured floor does and does not cover
 -----------------------------------------------
-`loiter_near_infrastructure` and `ais_gap_near_infrastructure` both have one,
-measured against different rules. Loitering is judged on rarity *and*
-magnitude; a dark period is judged on duration alone, because a reception
-dropout happens *to* a vessel and asking whether its class does this would
-report receiver coverage as conduct.
+All four now have one, each measured against its own rule:
 
-`identity_inconsistency` has no floor and no primitive behind it, so the
-catalogue declines rather than lending it a number from a different
-behaviour. It will report insufficient data even once AIS lands — correctly,
-and visibly.
+| indicator | floor | judged on |
+|---|---|---|
+| loitering | 1 hour | rarity *and* magnitude |
+| dark period | 720 min | duration only — a dropout happens *to* a vessel, so asking whether its class does this would report receiver coverage as conduct |
+| identity conflict | 40 km | physical impossibility at a ten-minute cadence |
+| unidentified density | 3x | level deviation |
+
+The identity floor is a distance, and a distance only becomes an implied
+speed once divided by the reporting interval — so it describes the feed as
+much as the detector. What it does *not* cover is a changed name, IMO or
+callsign: reflagging is legitimate and constant, and a detector built on it
+would spend its life reporting paperwork. Those fields are not stored, and
+that is a deliberate order of work rather than an oversight.
 
 The loiter floor also carries a condition worth reading before trusting a
 quiet answer: detection depends on the behaviour staying *rare* within its
@@ -121,15 +126,21 @@ INDICATORS = (
         key="identity_inconsistency",
         region_key=KEY,
         name="Conflicting vessel identity",
-        question=("Is a vessel broadcasting identifiers that conflict with "
-                  "what it broadcast before?"),
-        meaning=("Reflagging is legitimate and common; spoofing is not. The "
-                 "record shows the conflict, and the distinction needs "
-                 "context the numbers do not carry."),
+        question=("Is one identifier being used by what must be more than "
+                  "one vessel?"),
+        meaning=("Two reports no single hull could have travelled between. "
+                 "Reflagging and renaming are legitimate and common, so the "
+                 "test is deliberately not about changed paperwork — it is "
+                 "about physical impossibility. A decoding error produces the "
+                 "same signature, and the record says which vessel broadcast "
+                 "what, never who intended anything."),
         test_type=IndicatorTest.ENTITY_BEHAVIOUR,
         entity_kind="vessel",
         status=IndicatorStatus.DRAFT,
-        test_config={"event_types": ["identity_inconsistency"]},
+        test_config={
+            "event_types": ["identity_conflict"],
+            "peer_baseline": ["vessel_class"],
+        },
     ),
     Indicator(
         key="unknown_vessel_density",
@@ -160,11 +171,12 @@ MODULE = RegionModule(
         "derivation and evaluation path all exist; the data does not",
         "infrastructure geometry (cables, pipelines, wind farms), which needs "
         "corridor shapes rather than the bounding boxes stored today",
-        "identity resolution, for the identity-conflict indicator — the only "
-        "one of the four with neither a primitive nor a measured floor",
+        "static-identity fields (name, IMO, callsign) in the position store, "
+        "if conflicting paperwork is ever to be tested alongside the "
+        "physical-impossibility check that exists now",
     ),
     summary=("Maritime behaviour in the Dutch EEZ. Positions, derived events, "
-             "peer baselines and a measured loiter floor are all in place and "
-             "run end to end; there is no AIS feed yet, so nothing is being "
-             "tested."),
+             "peer baselines and a measured floor for every indicator are in "
+             "place and run end to end; there is no AIS feed yet, so nothing "
+             "is being tested."),
 )

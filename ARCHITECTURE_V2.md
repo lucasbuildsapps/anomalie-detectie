@@ -944,6 +944,44 @@ tegen drempel 0,80 met n=16 — binnen de ruis), en "te weinig herhalingen" word
 niet langer gemeld als "confounded detector". Dat zijn verschillende storingen,
 en de tweede zou iemand een detector laten herstellen die niets mankeert.
 
+### 6.3-quaterdecies Identiteitsconflicten — fysica, geen papierwerk
+
+De laatste van de vier NLD EEZ-indicatoren zonder primitief. Een MMSI is een
+*claim*, geen feit, en er kunnen twee dingen mee misgaan die niet even veel
+waard zijn om te bouwen:
+
+**Statische velden** — dezelfde identificatie met een andere naam, IMO of
+roepnaam dan eerder. Makkelijk te detecteren en meestal *legitiem*: omvlaggen
+en hernoemen gebeurt voortdurend, dus zo'n detector besteedt zijn leven aan het
+melden van papierwerk. Bewust niet gebouwd.
+
+**Kinematische onmogelijkheid** — dezelfde identificatie gemeld op twee plekken
+waar geen enkele romp tussen kan zijn gevaren. Dat is niet weg te verklaren met
+papieren: óf de positie klopt niet, óf de identiteit. En het vraagt niets meer
+dan `lat`, `lon` en `timestamp` — precies wat de positie-opslag bevat.
+
+De drempel is bewust ver boven elk echt schip (100 knopen). De vraag is niet
+"voer dit schip te hard" maar "is dit fysiek één schip"; hem bij een
+plausibel maximum leggen zou een harde onmogelijkheid veranderen in een zacht
+oordeel over vaarprestaties. Een snelle veerboot haalt 40 knopen; een
+GPS-fout haalt er 400.
+
+**De vloer is een afstand, en dat is een eigenschap van de feed.** 40 km bij
+een rapportagecadans van tien minuten, want een verplaatsing wordt pas een
+impliciete snelheid als je door het rapportage-interval deelt. Op een uurlijkse
+satellietfeed is zes keer zo veel afstand nodig. De kilometers zonder de
+cadans citeren zou het getal op de detector laten lijken terwijl het vooral de
+feed beschrijft.
+
+Wat het event zegt: *één identificatie is gebruikt door wat meer dan één
+vaartuig moet zijn*. Niet wie de indringer is, niet dat iemand iets van plan
+was — een decodeerfout geeft dezelfde signatuur, en die alternatieve verklaring
+reist mee.
+
+Daarmee heeft elk van de vier NLD EEZ-indicatoren een gemeten én opgeloste
+vloer, elk tegen zijn eigen regel. De regio blijft DATA_ONLY: de machinerie
+staat er, de AIS-feed niet.
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per

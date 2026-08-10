@@ -344,11 +344,15 @@ def test_a_gap_indicator_gets_the_gap_floor_not_the_loiter_one():
     assert "Loitering" not in gap.scenario_kind
 
 
-def test_an_identity_indicator_still_has_no_floor_to_quote():
-    """No primitive emits identity events, so there is nothing to measure and
-    declining is the only honest answer."""
+def test_a_behaviour_the_harness_does_not_inject_gets_no_floor():
+    """The harness injects loitering, dark periods and spoofed identifiers.
+    Anything else is unmeasured, and declining is the only honest answer —
+    lending it a floor from another behaviour would let a null result claim
+    coverage nobody measured."""
     catalog = DetectionPowerCatalog(measure_missing=True, n_repeats=3)
-    assert catalog.measure(_entity_indicator(["identity_inconsistency"])) is None
+    assert catalog.measure(_entity_indicator(["route_deviation"])) is None
+    assert catalog.measure(
+        _entity_indicator(["proximity_critical_infra"])) is None
     assert catalog.entries == {}
 
 

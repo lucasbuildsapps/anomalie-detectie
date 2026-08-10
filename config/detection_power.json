@@ -29,6 +29,16 @@
     "resolved": true,
     "caveat": "Judged on duration against peers only. Whether a gap is rare for the vessel class is deliberately not asked: a dropout happens to a vessel rather than being chosen, so rarity there measures receiver coverage, not conduct."
   },
+  "{\"config\": {\"event_types\": [\"identity_conflict\"], \"peer_baseline\": [\"vessel_class\"]}, \"test\": \"entity_behaviour\"}": {
+    "scenario_kind": "An impossible position jump",
+    "floor_magnitude": 40,
+    "threshold": 0.8,
+    "n_repeats": 16,
+    "confounded": false,
+    "unit": "km",
+    "resolved": true,
+    "caveat": "Measured at a ten-minute reporting cadence, where this distance is what implies an impossible speed. A sparser feed needs proportionally more distance before the same conflict is visible, so this floor describes the feed as much as the detector. It reports that one identifier was used by more than one vessel, never which one, and a decoding error produces the same signature."
+  },
   "{\"config\": {\"event_types\": [\"loiter\", \"proximity_critical_infra\"], \"min_duration_minutes\": 60, \"peer_baseline\": [\"vessel_class\", \"area\", \"month\"]}, \"test\": \"entity_behaviour\"}": {
     "scenario_kind": "Loitering",
     "floor_magnitude": 1.0,

@@ -156,15 +156,26 @@ class DetectionPowerCatalog:
     def _measure_entity(self, indicator: Indicator) -> DetectionPower | None:
         """Measure an entity indicator on the synthetic fleet, or decline.
 
-        The fleet harness injects loitering and dark periods, and each is
-        measured against its own rule — a gap is judged on duration alone,
-        because rarity there would report receiver coverage rather than
-        conduct. Identity conflicts have no primitive yet, so they stay
-        unmeasured, and declining is the honest answer: a loiter floor
-        attached to an identity indicator would let a null result claim
-        coverage nobody measured.
+        The fleet harness injects loitering, dark periods and spoofed
+        identifiers, and each is measured against its own rule — a gap is
+        judged on duration alone, because rarity there would report receiver
+        coverage rather than conduct.
+
+        A behaviour the harness does not inject gets **no** floor. Lending it
+        one from a different behaviour would let a null result claim coverage
+        nobody measured, which is the failure the null-result requirement
+        exists to prevent.
         """
         watched = set(indicator.test_config.get("event_types", ()))
+
+        if "identity_conflict" in watched or "identity_inconsistency" in watched:
+            from sentinel.eval.entity_power import identity_detection_power
+
+            power = identity_detection_power(
+                threshold=self.threshold,
+                n_repeats=max(self.n_repeats // 3, 1))
+            self.entries[_config_key(indicator)] = power
+            return power
 
         if "ais_gap" in watched and "loiter" not in watched:
             from sentinel.eval.entity_power import gap_detection_power
