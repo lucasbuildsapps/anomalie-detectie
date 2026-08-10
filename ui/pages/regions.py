@@ -27,7 +27,7 @@ from datetime import datetime
 import streamlit as st
 
 from core import storage
-from sentinel.core.contracts import MonitoringStatus, Verdict
+from sentinel.core.contracts import ConfidenceInputs, MonitoringStatus, Verdict
 from sentinel.core.detect.power import DetectionPowerCatalog
 from sentinel.core.time import PointInTimeStore
 from sentinel.regions import REGIONS, evaluate_region
@@ -135,13 +135,20 @@ def _render_region(region, dataset_id: int | None, as_of: datetime,
 
     store = PointInTimeStore()
     provider = storage_provider(dataset_id, region, store.view)
-    status = evaluate_region(region, provider, as_of, catalog)
+
+    # A replay resting on assumed arrival times is optimistic by an unknown
+    # margin. That has to reach confidence, not only the caption below —
+    # showing the caveat while the confidence pillar stays unaware would let
+    # a finding read as better-grounded than its own provenance says it is.
+    provenance = store.view(as_of).provenance(dataset_id)
+    status = evaluate_region(
+        region, provider, as_of, catalog,
+        inputs=ConfidenceInputs(
+            reconstruction_faithful=(provenance.is_faithful
+                                     if provenance.n_rows else None)))
 
     st.markdown(f"### {_html.escape(status.headline())}")
 
-    # Provenance: a replay resting on assumed arrival times is optimistic by
-    # an unknown margin, and the analyst should see that before the verdicts.
-    provenance = store.view(as_of).provenance(dataset_id)
     if provenance.n_rows and not provenance.is_faithful:
         st.caption(f"⚠️ {provenance.describe()}")
 

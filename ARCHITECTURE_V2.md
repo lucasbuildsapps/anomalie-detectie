@@ -666,6 +666,38 @@ larger…". Die naam beschrijft het *faalmechanisme dat onderzocht wordt* en
 leest op een analistenpagina als een defect in het gereedschap. Nu "a sustained
 increase of 1.5x".
 
+### 6.3-septies Ingestie: de kolom waar alles op rust
+
+`sentinel/ingest/` bestaat om één kolom: `ingested_at`. Fase 1 bouwde hem en
+vulde hem retroactief met `ingest_estimated = 1`; deze laag geeft hem een
+waarheidsgetrouwe waarde.
+
+| geval | wat er gebeurt | getrouw? |
+|---|---|---|
+| bron meldt publicatiedatum | die wordt `ingested_at` | **ja** |
+| bulk-historie zonder datums | valt terug op gebeurtenistijd, elke rij gemarkeerd | nee |
+| live meelezen | aankomst is nu, en nu is de waarheid | ja |
+
+De laag kiest nooit stilzwijgend. `IngestResult` draagt hoeveel rijen met een
+waargenomen aankomsttijd zijn geland, zodat een dataset die volledig geschat is
+zich later niet als getrouwe replay kan voordoen.
+
+Een replay op geschatte aankomsten beantwoordt *"wat hadden we kunnen zeggen
+als rapportage instant was"*. Dat is een nuttige vraag en een vleiende, en niet
+de vraag waarop een waarschuwingssysteem wordt afgerekend.
+
+**Waarom de eerste connector een bestand leest.** De gecureerde chronologie is
+waar retrospectieve validatie tegenaan toetst, en is — anders dan een
+API-client — end-to-end testbaar. Een ongeteste netwerkclient bouwen had code
+opgeleverd die af lijkt en het niet is. Die connectors zijn een bewust lege
+plek.
+
+**Een wiring-gat dat hierbij zichtbaar werd.** Het watchboard berekende
+`Provenance` al en toonde die als bijschrift, maar gaf hem niet door aan
+`evaluate_region`. De confidence-pijler `reconstruction_faithful` bleef dus
+`None` en kapte niets af: de waarschuwing stond onder de bevinding terwijl het
+oordeel er geen weet van had. Nu wordt hij doorgegeven.
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per
@@ -695,9 +727,9 @@ sentinel/
     behaviour/        loiter, deviation, proximity, rendezvous
     emit/             behaviour → Event
   ingest/
-    connectors/       aisstream, dma_ais, kystverket, acled, gdelt, ...
-    normalize/        naar het gedeelde contract
-    provenance/       source-grading, ingest_run-administratie
+    base.py           Connector-protocol, run_ingest, normalisatie
+    chronology.py     gecureerde incidentchronologie (gebouwd)
+    connectors/       aisstream, dma_ais, kystverket, acled  (nog leeg)
   regions/
     base.py           RegionModule-descriptor
     euro_atlantic/    volledig
