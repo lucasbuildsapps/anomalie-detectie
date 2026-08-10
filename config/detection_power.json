@@ -19,6 +19,16 @@
     "resolved": true,
     "caveat": null
   },
+  "{\"config\": {\"event_types\": [\"ais_gap\"], \"min_gap_minutes\": 30, \"peer_baseline\": [\"vessel_class\", \"area\"], \"use_rarity\": false}, \"test\": \"entity_behaviour\"}": {
+    "scenario_kind": "A dark period",
+    "floor_magnitude": 720,
+    "threshold": 0.8,
+    "n_repeats": 16,
+    "confounded": false,
+    "unit": "minutes",
+    "resolved": true,
+    "caveat": "Judged on duration against peers only. Whether a gap is rare for the vessel class is deliberately not asked: a dropout happens to a vessel rather than being chosen, so rarity there measures receiver coverage, not conduct."
+  },
   "{\"config\": {\"event_types\": [\"loiter\", \"proximity_critical_infra\"], \"min_duration_minutes\": 60, \"peer_baseline\": [\"vessel_class\", \"area\", \"month\"]}, \"test\": \"entity_behaviour\"}": {
     "scenario_kind": "Loitering",
     "floor_magnitude": 1.0,

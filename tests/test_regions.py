@@ -333,11 +333,21 @@ def test_entity_power_comes_from_the_committed_catalogue():
     assert power.caveat and "rarer than" in power.caveat
 
 
-def test_a_loiter_floor_is_not_quoted_at_an_ais_gap_indicator():
-    """The fleet harness injects loitering. Attaching its floor to a gap
-    indicator would let a null result claim coverage nobody measured."""
-    catalog = DetectionPowerCatalog(measure_missing=True)
-    assert catalog.measure(_entity_indicator(["ais_gap"])) is None
+def test_a_gap_indicator_gets_the_gap_floor_not_the_loiter_one():
+    """Each behaviour is measured against its own rule. Lending one floor to
+    another behaviour would let a null result claim coverage nobody
+    measured — the failure this dispatch exists to prevent."""
+    catalog = DetectionPowerCatalog(measure_missing=True, n_repeats=3)
+    gap = catalog.measure(_entity_indicator(["ais_gap"]))
+    assert gap is not None
+    assert gap.unit == "minutes"
+    assert "Loitering" not in gap.scenario_kind
+
+
+def test_an_identity_indicator_still_has_no_floor_to_quote():
+    """No primitive emits identity events, so there is nothing to measure and
+    declining is the only honest answer."""
+    catalog = DetectionPowerCatalog(measure_missing=True, n_repeats=3)
     assert catalog.measure(_entity_indicator(["identity_inconsistency"])) is None
     assert catalog.entries == {}
 

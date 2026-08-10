@@ -123,7 +123,13 @@ def _entity_signal_for(indicator: Indicator, region: RegionModule,
         )
 
     grouping = tuple(indicator.test_config.get("peer_baseline", ())) or None
-    config = PeerConfig(group_by=grouping) if grouping else PeerConfig()
+    # The peer rules the indicator declares are the rules its floor was
+    # measured under; reading them from anywhere else would make the two
+    # disagree without either side noticing.
+    options = {"use_rarity": bool(indicator.test_config.get("use_rarity", True))}
+    if grouping:
+        options["group_by"] = grouping
+    config = PeerConfig(**options)
     population = (population_provider(indicator, as_of)
                   if population_provider is not None else None)
 

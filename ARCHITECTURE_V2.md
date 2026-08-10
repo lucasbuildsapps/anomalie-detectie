@@ -909,6 +909,41 @@ programmeertaak) en **Kystverket** (zelfde vorm als DMA; pas toevoegen als de
 DMA-afbeelding tegen een echt bestand bevestigd is, anders schrijven we
 dezelfde onbevestigde aanname twee keer op).
 
+### 6.3-terdecies De AIS-gat-vloer, en een kwantielsnede die was blijven staan
+
+De gat-indicator had geen gemeten vloer en meldde daarom altijd onvoldoende
+data. Het harnas injecteert nu donkere periodes en meet die vloer: **720
+minuten**, geoordeeld op duur tegen peers.
+
+Onderweg kwam een echt defect boven water dat niets met gaten te maken had.
+`is_extreme_magnitude` vuurde op `magnitude_percentile >= 0.95`. Een percentiel
+markeert per constructie ~5% van élke populatie, of er nu iets mis is of niet —
+exact het bezwaar waarmee §1 `IsolationForest(contamination=...)` schrapte:
+*"markeert 5% per constructie; een kwantielsnede, geen toets."* Het had in de
+peer-baseline overleefd, onzichtbaar zolang het enige gemeten gedrag
+(loiteren) te zeldzaam was om magnitude überhaupt beoordeelbaar te maken. Op
+een vloot met realistische AIS-uitval en **niets geïnjecteerd** markeerde de
+rangregel 0–3 vaartuigen per run.
+
+De toets is nu een robuuste afwijking van de peer-mediaan, op **log-schaal**
+omdat duren rechtsscheef zijn: op de ruwe schaal ligt een echt lid van die
+staart een paar MAD's van de mediaan en meet je de vorm van de verdeling in
+plaats van iets ongewoons.
+
+**Zeldzaamheid is niet altijd de juiste vraag.** Die beantwoordt "kiest deze
+klasse hiervoor" — precies goed voor loiteren, betekenisloos voor een
+AIS-uitval. Een dropout overkomt een schip; hem markeren omdat maar 8% van zijn
+klasse toevallig in een dekkingsgat zat, rapporteert de vorm van het
+ontvangernetwerk als gedrag. `PeerConfig.use_rarity` staat daarom uit voor de
+gat-indicator, en die instelling staat in `test_config` omdat de vloer eronder
+onder precies die instelling is gemeten.
+
+Twee kleinere correcties, allebei van hetzelfde type: een vloer wordt pas
+gerapporteerd als de meting hem *oplost* (bij 480 minuten was de recall 0,83
+tegen drempel 0,80 met n=16 — binnen de ruis), en "te weinig herhalingen" wordt
+niet langer gemeld als "confounded detector". Dat zijn verschillende storingen,
+en de tweede zou iemand een detector laten herstellen die niets mankeert.
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per

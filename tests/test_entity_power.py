@@ -146,3 +146,85 @@ def test_a_recall_on_the_decision_boundary_is_not_resolved():
     assert not borderline.floor_is_resolved
     assert "treat it as approximate" in \
         borderline.to_detection_power().describe()
+
+
+# =========================================================================
+# AIS gaps: a different behaviour, judged by a different rule
+# =========================================================================
+def test_a_dark_period_floor_is_measured_in_minutes():
+    from sentinel.eval.entity_power import gap_detection_power
+
+    power = gap_detection_power(n_repeats=16)
+    assert power.unit == "minutes"
+    assert "minutes" in power.describe()
+    assert power.resolved
+
+
+def test_the_gap_floor_says_rarity_was_deliberately_not_asked():
+    """An analyst reading a quiet gap result has to know which question was
+    answered — otherwise 'nothing unusual' covers more than it measured."""
+    from sentinel.eval.entity_power import gap_detection_power
+
+    text = gap_detection_power(n_repeats=16).describe()
+    assert "rarity" in text
+    assert "receiver coverage" in text
+
+
+def test_too_few_repeats_is_reported_as_thin_not_as_a_broken_detector():
+    """A floor nothing resolved is not the same failure as a detector that
+    fires on everything, and saying so would send someone to retune a
+    detector that is fine."""
+    from sentinel.eval.entity_power import gap_detection_power
+
+    power = gap_detection_power(n_repeats=2)
+    assert not power.is_quotable
+    assert not power.confounded, (
+        "too few repeats must not be reported as a confounded detector")
+    assert "No effect size" in power.describe()
+    assert "too often" not in power.describe(), (
+        "that phrasing blames a noisy detector, which is the other failure")
+
+
+def test_short_dark_periods_are_not_detected():
+    from sentinel.eval.entity_power import _gap_recall
+
+    recall, _ = _gap_recall(120)
+    assert recall == 0.0
+
+
+def test_long_dark_periods_are_detected():
+    from sentinel.eval.entity_power import _gap_recall
+
+    recall, _ = _gap_recall(960)
+    assert recall == 1.0
+
+
+def test_rarity_would_flag_vessels_for_sitting_in_a_coverage_hole():
+    """The mechanism `use_rarity=False` exists to prevent.
+
+    Not a tuning preference. When dropouts are uncommon in a class — patchy
+    receiver coverage, a different transponder class — rarity flags whichever
+    vessels happened to be in the hole, and reports the shape of the receiver
+    network as vessel conduct. Measured directly rather than incidentally:
+    with a low background dropout rate, rarity fires and magnitude does not.
+    """
+    from sentinel.entity import PeerBaseline, PeerConfig, extract_events
+    from sentinel.eval.synthetic.vessels import build_fleet
+
+    def flagged(use_rarity: bool) -> int:
+        total = 0
+        for i in range(4):
+            fleet = build_fleet(seed=42 + i, background_gap_rate=0.08,
+                                target_gap_minutes=0)
+            events = []
+            for _key, group in fleet.positions.groupby("entity_key"):
+                events.extend(extract_events(group))
+            baseline = PeerBaseline.from_positions(
+                fleet.positions, events,
+                config=PeerConfig(use_rarity=use_rarity))
+            total += len({
+                e.entity.key for e in events if e.event_type == "ais_gap"
+                and (a := baseline.assess(e)) is not None and a.is_unusual})
+        return total
+
+    assert flagged(use_rarity=True) > flagged(use_rarity=False)

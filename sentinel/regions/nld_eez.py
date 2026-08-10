@@ -16,11 +16,16 @@ engine, no parallel truth model.
 
 What the measured floor does and does not cover
 -----------------------------------------------
-Only `loiter_near_infrastructure` has one. The fleet harness injects
-loitering, so that is the only behaviour whose floor has been measured; the
-catalogue declines to quote a number for the AIS-gap and identity indicators
-rather than lending them a floor from a different behaviour. Those two will
-report insufficient data even once AIS lands — correctly, and visibly.
+`loiter_near_infrastructure` and `ais_gap_near_infrastructure` both have one,
+measured against different rules. Loitering is judged on rarity *and*
+magnitude; a dark period is judged on duration alone, because a reception
+dropout happens *to* a vessel and asking whether its class does this would
+report receiver coverage as conduct.
+
+`identity_inconsistency` has no floor and no primitive behind it, so the
+catalogue declines rather than lending it a number from a different
+behaviour. It will report insufficient data even once AIS lands — correctly,
+and visibly.
 
 The loiter floor also carries a condition worth reading before trusting a
 quiet answer: detection depends on the behaviour staying *rare* within its
@@ -104,6 +109,12 @@ INDICATORS = (
             "event_types": ["ais_gap"],
             "peer_baseline": ["vessel_class", "area"],
             "min_gap_minutes": 30,
+            # Judged on duration against peers, never on rarity. A dropout
+            # happens *to* a vessel, so "does this class do this" measures
+            # receiver coverage rather than conduct — and the measured floor
+            # below was taken under exactly this setting, so changing it here
+            # would invalidate the number.
+            "use_rarity": False,
         },
     ),
     Indicator(
@@ -149,9 +160,8 @@ MODULE = RegionModule(
         "derivation and evaluation path all exist; the data does not",
         "infrastructure geometry (cables, pipelines, wind farms), which needs "
         "corridor shapes rather than the bounding boxes stored today",
-        "identity resolution, for the identity-conflict indicator",
-        "a measured floor for AIS gaps, which the fleet harness does not "
-        "yet inject",
+        "identity resolution, for the identity-conflict indicator — the only "
+        "one of the four with neither a primitive nor a measured floor",
     ),
     summary=("Maritime behaviour in the Dutch EEZ. Positions, derived events, "
              "peer baselines and a measured loiter floor are all in place and "

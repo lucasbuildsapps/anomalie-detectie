@@ -41,10 +41,84 @@ from sentinel.eval.synthetic.vessels import build_fleet
 
 __all__ = [
     "EntityPowerResult",
+    "gap_detection_power",
     "measure",
     "measure_duration_floor",
+    "measure_gap_floor",
     "measure_prevalence_cliff",
 ]
+
+
+def _gap_recall(target_gap_minutes: float, seed: int = 42,
+                peer_config: PeerConfig | None = None) -> tuple[float, int]:
+    """Fraction of injected dark periods flagged, and the false alarms beside.
+
+    Judged on magnitude alone: `use_rarity=False` is not a tuning choice but
+    a statement about what the behaviour is. A reception dropout happens *to*
+    a vessel, so "do vessels of this class do this" reports the shape of the
+    receiver network rather than anything the vessel did.
+    """
+    config = peer_config or PeerConfig(use_rarity=False)
+    fleet = build_fleet(seed=seed, target_gap_minutes=target_gap_minutes)
+    events = []
+    for _key, group in fleet.positions.groupby("entity_key"):
+        events.extend(extract_events(group))
+
+    gaps = [e for e in events if e.event_type == "ais_gap"]
+    baseline = PeerBaseline.from_positions(fleet.positions, events,
+                                           config=config)
+    flagged = {
+        event.entity.key for event in gaps
+        if (assessment := baseline.assess(event)) is not None
+        and assessment.is_unusual
+    }
+    targets = set(fleet.target_keys)
+    return (len(targets & flagged) / max(len(targets), 1),
+            len(flagged - targets))
+
+
+def measure_gap_floor(
+    durations: tuple[float, ...] = (120, 240, 360, 480, 720, 960),
+    threshold: float = 0.8, n_repeats: int = 6,
+    peer_config: PeerConfig | None = None) -> tuple[float, float, int]:
+    """Shortest dark period reliably detected, in minutes.
+
+    Returns `(minutes, recall, false_alarms)`; `(nan, 0.0, n)` if none
+    qualified. The false-alarm count travels with the floor because a gap
+    detector that finds every target while flagging ordinary coverage holes is
+    unusable on a real feed, and recall alone would hide that.
+
+    A duration that merely *clears* the threshold is not enough: the search
+    keeps walking up until the margin exceeds the sampling error. Measured at
+    480 minutes the recall was 0.83 against a 0.8 threshold with n=16 — inside
+    the noise, so the floor would have flipped with the repeat count. Quoting
+    the first qualifying duration rather than the first defensible one is how
+    a floor becomes a number nobody can rely on.
+    """
+    for minutes in durations:
+        recalls, alarms = [], 0
+        for i in range(n_repeats):
+            recall, false_alarms = _gap_recall(
+                minutes, seed=42 + i, peer_config=peer_config)
+            recalls.append(recall)
+            alarms += false_alarms
+        mean = float(np.mean(recalls))
+        if mean >= threshold and _resolves(mean, threshold, n_repeats):
+            return minutes, mean, alarms
+    return float("nan"), 0.0, 0
+
+
+def _resolves(recall: float, threshold: float, n_repeats: int) -> bool:
+    """Whether a recall clears the threshold by more than sampling error.
+
+    The `p == 1` case uses the rule of three, for the same reason it does in
+    `EntityPowerResult`: the usual standard error collapses to zero when every
+    run succeeds, which would call three lucky draws a resolved measurement.
+    """
+    n = max(int(n_repeats), 1)
+    se = (3.0 / n if recall >= 1.0
+          else math.sqrt(max(recall * (1.0 - recall), 0.0) / n))
+    return (recall - threshold) >= se
 
 
 def _recall(target_loiter_hours: float = 4.0, n_contaminating: int = 0,
@@ -206,4 +280,42 @@ def measure(threshold: float = 0.8, n_repeats: int = 3,
         fishing_false_positives=fishing,
         threshold=threshold,
         n_repeats=n_repeats,
+    )
+
+
+def gap_detection_power(threshold: float = 0.8, n_repeats: int = 6,
+                        peer_config: PeerConfig | None = None,
+                        ) -> DetectionPower:
+    """The AIS-gap floor as a contract object, for the catalogue.
+
+    Separate from `measure()` because it measures a different behaviour with a
+    different rule. Lending the loiter floor to a gap indicator would be the
+    dishonesty the null-result requirement exists to prevent, and this is what
+    lets the catalogue stop declining instead.
+    """
+    minutes, recall, false_alarms = measure_gap_floor(
+        threshold=threshold, n_repeats=n_repeats, peer_config=peer_config)
+
+    # Two different failures, kept apart. `confounded` means the detector is
+    # too noisy for any floor to mean something — it fires on ordinary
+    # coverage holes as readily as on targets. A NaN floor with acceptable
+    # false alarms means something else entirely: no tested duration resolved,
+    # usually because there were too few repeats. Reporting the second as the
+    # first would tell an analyst the detector is broken when the measurement
+    # is merely thin.
+    too_noisy = false_alarms > n_repeats
+    return DetectionPower(
+        scenario_kind="A dark period",
+        floor_magnitude=float("nan") if too_noisy else minutes,
+        threshold=threshold,
+        n_repeats=n_repeats,
+        confounded=too_noisy,
+        # `measure_gap_floor` only returns a duration it has resolved, so a
+        # finite floor here is a resolved one by construction.
+        resolved=bool(np.isfinite(minutes)),
+        unit="minutes",
+        caveat=("Judged on duration against peers only. Whether a gap is "
+                "rare for the vessel class is deliberately not asked: a "
+                "dropout happens to a vessel rather than being chosen, so "
+                "rarity there measures receiver coverage, not conduct."),
     )
