@@ -32,6 +32,7 @@ from sentinel.core.detect.power import DetectionPowerCatalog
 from sentinel.core.time import PointInTimeStore
 from sentinel.regions import REGIONS, evaluate_region
 from sentinel.regions.providers import storage_provider
+from sentinel.report import compose, compose_region
 from ui.components import render_topbar
 from ui.theme import P
 
@@ -57,7 +58,7 @@ def _colour(kind: str) -> str:
     return {"bad": P["bad"], "ok": P["ok"], "muted": P["text_muted"]}[kind]
 
 
-def _render_signal(signal) -> None:
+def _render_signal(signal, indicator=None) -> None:
     label, kind = _VERDICT_STYLE[signal.verdict]
     st.markdown(
         f"<div style='border-left:3px solid {_colour(kind)};padding-left:12px;"
@@ -92,6 +93,12 @@ def _render_signal(signal) -> None:
             for item in signal.evidence:
                 st.markdown(
                     f"- *{item.kind.value}* — {_html.escape(item.summary)}")
+
+    # The written assessment is generated from the same signal, never typed
+    # over it: the prose and the panel above cannot disagree.
+    if indicator is not None:
+        with st.expander("Written assessment"):
+            st.text(compose(signal, indicator).format())
 
 
 def _render_region(region, dataset_id: int | None, as_of: datetime,
@@ -138,8 +145,20 @@ def _render_region(region, dataset_id: int | None, as_of: datetime,
     if provenance.n_rows and not provenance.is_faithful:
         st.caption(f"⚠️ {provenance.describe()}")
 
+    by_key = {indicator.key: indicator for indicator in region.indicators}
     for signal in status.signals:
-        _render_signal(signal)
+        _render_signal(signal, by_key.get(signal.indicator_key))
+
+    # The periodic product, from the same signals the board is showing. It is
+    # offered as a download rather than a copy-paste target so what leaves the
+    # tool is the assessed text, not a screenshot of it.
+    st.download_button(
+        "Download region report (Markdown)",
+        data=compose_region(status, by_key),
+        file_name=f"{region.key}_{as_of.date()}.md",
+        mime="text/markdown",
+        key=f"report_{region.key}",
+    )
 
 
 def page_regions() -> None:

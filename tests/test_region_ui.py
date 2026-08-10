@@ -187,3 +187,47 @@ def test_unwatched_statuses_all_carry_an_explanatory_note():
         if not status.can_produce_verdicts:
             assert status in _STATUS_NOTE, (
                 f"{status} would render with no explanation of why it is empty")
+
+
+# =========================================================================
+# the written product, from the same signals the board renders
+# =========================================================================
+def test_region_report_is_generated_from_real_signals(dataset):
+    """End to end: stored observations -> verdicts -> written assessment.
+
+    The report and the panel read from one `RegionStatus`, so the prose
+    cannot drift from the verdicts it describes.
+    """
+    from sentinel.report import compose_region
+
+    store = PointInTimeStore()
+    region = get_region("euro_atlantic")
+    provider = storage_provider(dataset, region, store.view)
+    status = evaluate_region(region, provider, AS_OF, _catalog())
+
+    report = compose_region(
+        status, {i.key: i for i in region.indicators})
+
+    assert report.splitlines()[0] == status.headline()
+    for signal in status.signals:
+        heading = {
+            Verdict.ACTIVE: "## Active",
+            Verdict.NOT_ACTIVE: "## Tested and quiet",
+            Verdict.INSUFFICIENT_DATA: "## Could not be tested",
+        }[signal.verdict]
+        assert heading in report
+
+
+def test_the_report_never_reports_a_bare_null(dataset):
+    """Every quiet finding in the product carries its floor."""
+    from sentinel.report import compose
+
+    store = PointInTimeStore()
+    region = get_region("euro_atlantic")
+    provider = storage_provider(dataset, region, store.view)
+    status = evaluate_region(region, provider, AS_OF, _catalog())
+    by_key = {i.key: i for i in region.indicators}
+
+    for signal in status.tested:
+        text = compose(signal, by_key[signal.indicator_key]).format()
+        assert "would have been detected" in text or "fixed rule" in text

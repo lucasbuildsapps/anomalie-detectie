@@ -48,6 +48,21 @@ __all__ = [
 ]
 
 
+#: Harness scenario names in analyst language. The keys are deliberately
+#: internal — they name what the evaluation probes — and several of them read
+#: badly on a page written for someone deciding whether to act.
+_SCENARIO_LABELS = {
+    "adaptation_failure": "a sustained increase",
+    "sustained_increase": "a sustained increase",
+    "gradual_escalation": "a gradual escalation",
+    "spike": "an isolated spike",
+    "drop": "a sudden fall",
+    "regime_change": "a shift to a new level",
+    "silence": "a stop in activity",
+    "source_change": "a change in source behaviour",
+}
+
+
 @dataclass(frozen=True)
 class DetectionPower:
     """What this configuration can actually find.
@@ -102,6 +117,18 @@ class DetectionPower:
         """Whether this number may be shown to an analyst."""
         return not self.confounded and math.isfinite(self.floor_magnitude)
 
+    @property
+    def scenario_label(self) -> str:
+        """The scenario in analyst language rather than harness slugs.
+
+        `adaptation_failure` names the *failure mode being probed*, which is
+        the right name inside the evaluation code and the wrong one on an
+        analyst's page — it reads as a fault in the tool rather than as the
+        thing that was looked for.
+        """
+        return _SCENARIO_LABELS.get(
+            self.scenario_kind, self.scenario_kind.replace("_", " "))
+
     def describe(self) -> str:
         if self.is_deterministic:
             # An effect size is meaningless here, and phrasing one would
@@ -110,17 +137,17 @@ class DetectionPower:
                     f"holds or it does not, so there is no effect size below "
                     f"which it would be missed.")
         if self.confounded:
-            return (f"Detection power for {self.scenario_kind} is not "
+            return (f"Detection power for {self.scenario_label} is not "
                     f"measurable: this configuration flags comparable windows "
                     f"on quiet data too often for a floor to mean anything.")
         if not math.isfinite(self.floor_magnitude):
-            return (f"No effect size of {self.scenario_kind} was reliably "
+            return (f"No effect size of {self.scenario_label} was reliably "
                     f"detected at any tested magnitude. A null result here "
                     f"carries little weight.")
         size = (f"{self.floor_magnitude:g}{self.unit}" if self.unit == "x"
                 else f"{self.floor_magnitude:g} {self.unit}")
-        text = (f"{self.scenario_kind} of {size} or larger would have been "
-                f"detected {self.threshold:.0%} of the time.")
+        text = (f"{self.scenario_label} of {size} or larger would have "
+                f"been detected {self.threshold:.0%} of the time.")
         text = text[0].upper() + text[1:]
         if self.caveat:
             text += f" {self.caveat}"
@@ -289,6 +316,12 @@ class Assessment:
     `format()` keeps likelihood and confidence in separate sentences. That is
     not styling: combined, the reader cannot tell whether the event or the
     judgement is the uncertain part.
+
+    It also renders the signal's own evidence rather than only the composer's
+    prose. An assessment whose supporting observations are not shown asks to
+    be trusted on the strength of its wording, which is the opposite of the
+    intent — the reader has to be able to disagree with the reasoning while
+    looking at the same facts.
     """
 
     signal: Signal
@@ -342,7 +375,22 @@ class Assessment:
             )
         else:
             lines.append(f"Baseline: {self.baseline_description}.")
-        lines.append(self.signal.confidence.describe())
+        if self.signal.verdict is Verdict.INSUFFICIENT_DATA:
+            # Rendering a confidence level under "could not be tested" invites
+            # the reading "we are confident nothing happened". Confidence
+            # qualifies a judgement, and no judgement was reached — so the
+            # line states what the level actually refers to.
+            lines.append(
+                f"No judgement was reached, so this carries no confidence in "
+                f"either direction. (Input quality was rated "
+                f"{self.signal.confidence.level.value}.)")
+        else:
+            lines.append(self.signal.confidence.describe())
+        support = [e for e in self.signal.evidence
+                   if e.kind is not EvidenceKind.ALTERNATIVE]
+        if support:
+            lines.append("Evidence: "
+                         + "; ".join(e.summary for e in support) + ".")
         if self.alternatives:
             lines.append("Alternative explanations: "
                          + "; ".join(self.alternatives) + ".")

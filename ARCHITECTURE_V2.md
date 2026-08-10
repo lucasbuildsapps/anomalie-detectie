@@ -624,6 +624,48 @@ De meting dekt **alleen loiteren**. Voor de AIS-gat- en identiteitsindicatoren
 weigert de catalogus een getal te noemen in plaats van er een te lenen van
 gedrag dat niemand gemeten heeft; die blijven dus onvoldoende-data melden.
 
+### 6.3-sexies Van oordeel naar tekst — en wat de opsteller níét mag zeggen
+
+`sentinel/report/` zet een `Signal` om in een geschreven beoordeling. Drie
+regels houden die laag eerlijk:
+
+**Hij verandert nooit een oordeel.** De opsteller leest een signaal en schrijft
+proza. Kon hij een bevinding verzachten of aanscherpen, dan was hij een tweede
+waarheidsmodel in een taalpak — precies wat het afschaffen van het stemmodel
+moest voorkomen.
+
+**Hij beweert nooit intentie.** Een schip dat boven een kabel stilligt heeft
+dat gedaan; waarom staat niet in de data. Elke formulering beschrijft gedrag of
+niveau, en de vervolgstappen zijn verzameltaken, geen conclusies.
+
+**Hij noemt geen kans die hij niet kan berekenen.** `effect_size` betekent niet
+hetzelfde per toets: een gestandaardiseerde afwijking bij de twee reekstoetsen,
+een ruwe afstand tot een drempel bij `condition:above`, een *aantal perioden*
+bij `condition:silence`, en een peer-rangscore bij entiteitsgedrag. Eén
+normaalstaart over alle vier levert voor drie ervan een overtuigend ogend getal
+dat niets betekent. Alleen de twee gestandaardiseerde toetsen krijgen een kans;
+de rest rendert zonder. Dat is koppig volhouden waard: de schattingsband is het
+meest citeerbare wat het product produceert, en een getal op de verkeerde
+schaal wordt evengoed geciteerd.
+
+Twee dingen die pas bij het schrijven zichtbaar werden, allebei echte fouten:
+
+1. `Assessment.format()` toonde het bewijs niet — alleen proza, confidence,
+   alternatieven en vervolg. Een beoordeling waarvan de onderliggende
+   waarnemingen niet zichtbaar zijn, vraagt om vertrouwen op grond van
+   formulering. De lezer moet het oneens kunnen zijn met de redenering terwijl
+   hij naar dezelfde feiten kijkt.
+2. Bij INSUFFICIENT_DATA stond er letterlijk "Confidence is high" onder een zin
+   die zei dat er niets getoetst kon worden. Dat leest als "we weten zeker dat
+   er niets gebeurt" — de exacte verwarring die het drieledige oordeel moet
+   beëindigen. Nu: "No judgement was reached, so this carries no confidence in
+   either direction."
+
+Daarnaast lekten harnas-slugs naar de pagina: "Adaptation_failure of 1.5x or
+larger…". Die naam beschrijft het *faalmechanisme dat onderzocht wordt* en
+leest op een analistenpagina als een defect in het gereedschap. Nu "a sustained
+increase of 1.5x".
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per
@@ -646,7 +688,7 @@ sentinel/
     confidence/       vier pijlers + detectievermogen
     evidence/         corroboratie, alternatieve verklaringen
     estimative/       ICD 203  (uit v1, ~ongewijzigd)
-    assess/           assessment-generatie, bewijsketen
+  report/             Signal → geschreven beoordeling; regiorapport
   entity/
     identity/         MMSI/IMO-resolutie, spoofing-detectie
     tracks/           trackopbouw, segmentatie, gap-detectie
