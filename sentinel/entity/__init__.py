@@ -18,15 +18,25 @@ from sentinel.entity.geo import (
     haversine,
     speed_knots,
 )
+from sentinel.entity.peers import (
+    PeerAssessment,
+    PeerBaseline,
+    PeerConfig,
+    events_to_frame,
+)
 
 __all__ = [
     "BehaviourConfig",
+    "PeerAssessment",
+    "PeerBaseline",
+    "PeerConfig",
     "bearing",
     "cross_track_distance",
     "detect_ais_gaps",
     "detect_loiter",
     "detect_route_deviation",
     "elapsed_seconds",
+    "events_to_frame",
     "extract_events",
     "haversine",
     "speed_knots",

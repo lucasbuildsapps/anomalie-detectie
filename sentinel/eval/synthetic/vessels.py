@@ -34,10 +34,12 @@ import numpy as np
 import pandas as pd
 
 __all__ = [
-    "VESSEL_SCENARIOS",
     "CABLE_CORRIDOR",
+    "VESSEL_SCENARIOS",
+    "Fleet",
     "VesselScenario",
     "VesselTrackGenerator",
+    "build_fleet",
 ]
 
 #: A notional cable route across the southern North Sea: (lat, lon) endpoints.
@@ -303,3 +305,61 @@ class VesselTrackGenerator:
     def suite(self) -> Iterator[VesselScenario]:
         for kind in VESSEL_SCENARIOS:
             yield self.build(kind)
+
+
+@dataclass(frozen=True)
+class Fleet:
+    """Many vessels at once, which is the only way to test a peer baseline.
+
+    A single track cannot show whether a behaviour is unusual — that question
+    only exists relative to comparable vessels. And the realistic difficulty
+    is not detecting a loitering vessel; it is finding the one cargo vessel
+    that stopped among hundreds of trawlers that stop constantly.
+    """
+
+    positions: pd.DataFrame
+    target_keys: tuple[str, ...]
+    n_vessels: int
+
+    @property
+    def control_keys(self) -> tuple[str, ...]:
+        keys = self.positions["entity_key"].unique().tolist()
+        return tuple(k for k in keys if k not in self.target_keys)
+
+
+def build_fleet(seed: int = 42, n_fishing: int = 40, n_cargo: int = 60,
+                n_targets: int = 2, hours: float = 30.0) -> Fleet:
+    """A day's traffic: trawlers that loiter by trade, cargo that does not,
+    and a couple of cargo vessels that stop where they should not.
+
+    The class mix matters. Make the fleet all cargo and the peer baseline has
+    nothing to learn; make it all fishing and the target is invisible. The
+    proportions here are not calibrated to real North Sea traffic — they are
+    chosen so both failure modes are reachable.
+    """
+    frames: list[pd.DataFrame] = []
+    targets: list[str] = []
+
+    for i in range(n_fishing):
+        generator = VesselTrackGenerator(seed=seed + 1000 + i, hours=hours)
+        frame = generator.fishing().positions.copy()
+        frame["entity_key"] = f"fish-{i:03d}"
+        frames.append(frame)
+
+    for i in range(n_cargo):
+        generator = VesselTrackGenerator(seed=seed + 2000 + i, hours=hours)
+        frame = generator.transit().positions.copy()
+        frame["entity_key"] = f"cargo-{i:03d}"
+        frames.append(frame)
+
+    for i in range(n_targets):
+        generator = VesselTrackGenerator(seed=seed + 3000 + i, hours=hours)
+        frame = generator.loiter_near_cable().positions.copy()
+        key = f"cargo-target-{i:02d}"
+        frame["entity_key"] = key
+        targets.append(key)
+        frames.append(frame)
+
+    positions = pd.concat(frames, ignore_index=True)
+    return Fleet(positions=positions, target_keys=tuple(targets),
+                 n_vessels=n_fishing + n_cargo + n_targets)
