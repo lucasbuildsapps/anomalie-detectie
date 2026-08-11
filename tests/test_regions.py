@@ -455,3 +455,72 @@ def test_committed_catalogue_produces_real_null_results():
     sustained = next(s for s in status.signals
                      if s.indicator_key == "strike_tempo_sustained")
     assert "1.5x or larger" in sustained.null_statement()
+
+
+# =========================================================================
+# indicator lifecycle: configuration is causal too
+# =========================================================================
+def _dated(activated=None, retired=None, status=IndicatorStatus.ACTIVE):
+    return Indicator(
+        key="k", region_key="euro_atlantic", name="K", question="q?",
+        meaning="m", test_type=IndicatorTest.LEVEL_DEVIATION, status=status,
+        activated_at=activated, retired_at=retired)
+
+
+def test_an_indicator_was_not_watching_before_it_was_activated():
+    """The configuration half of the causal rule. Evaluating today's
+    indicator set against 2022 credits the system with an indicator written
+    last month, and inflates every warning time it contributes."""
+    indicator = _dated(activated=datetime(2023, 1, 1))
+    assert not indicator.was_active_at(datetime(2022, 6, 1))
+    assert indicator.was_active_at(datetime(2023, 6, 1))
+
+
+def test_a_retired_indicator_still_covers_the_past_it_watched():
+    """Retirement ends coverage going forward; it does not erase what the
+    system saw while the indicator was running."""
+    indicator = _dated(activated=datetime(2020, 1, 1),
+                       retired=datetime(2023, 1, 1),
+                       status=IndicatorStatus.RETIRED)
+    assert indicator.was_active_at(datetime(2021, 6, 1))
+    assert not indicator.was_active_at(datetime(2024, 6, 1))
+
+
+def test_a_draft_indicator_was_never_watching():
+    assert not _dated(status=IndicatorStatus.DRAFT).was_active_at(
+        datetime(2024, 6, 1))
+
+
+def test_an_undated_indicator_is_assumed_to_have_been_watching():
+    """The only workable default for indicators that predate the field — and
+    it is reported rather than assumed silently."""
+    indicator = _dated()
+    assert indicator.was_active_at(datetime(2015, 1, 1))
+    assert not indicator.activation_dated
+
+
+def test_a_region_selects_indicators_by_when_they_watched():
+    region = get_region("euro_atlantic")
+    assert region.indicators_at(datetime(2024, 6, 1))
+
+
+def test_undated_indicators_are_reported_so_a_replay_can_say_so():
+    region = get_region("euro_atlantic")
+    assert len(region.undated_indicators) == len(region.active_indicators)
+
+
+def test_evaluation_excludes_an_indicator_that_had_not_started():
+    """The leak this closes: a replay must not evaluate configuration that
+    did not exist at the replayed instant."""
+    future = Indicator(
+        key="future", region_key="euro_atlantic", name="F", question="q?",
+        meaning="m", test_type=IndicatorTest.LEVEL_DEVIATION,
+        status=IndicatorStatus.ACTIVE, activated_at=datetime(2030, 1, 1),
+        test_config={"threshold": 3.5, "aggregation": "daily"})
+    region = RegionModule(
+        key="euro_atlantic", name="EA", status=MonitoringStatus.MONITORED,
+        indicators=(future,))
+
+    status = evaluate_region(region, _provider(_series()), AS_OF, _catalog())
+    assert not status.signals, (
+        "an indicator activated in 2030 must not produce a 2023 verdict")

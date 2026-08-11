@@ -227,7 +227,8 @@ def extract_events(positions: pd.DataFrame,
                    config: BehaviourConfig | None = None,
                    route: tuple[tuple[float, float],
                                 tuple[float, float]] | None = None,
-                   region_key: str = "nld_eez") -> list[Event]:
+                   region_key: str = "nld_eez",
+                   corridors=()) -> list[Event]:
     """Run every primitive over one vessel's positions.
 
     Returns events sorted by time. Emitting for *all* vessels, including
@@ -241,6 +242,10 @@ def extract_events(positions: pd.DataFrame,
     events = detect_loiter(positions, config, region_key)
     events += detect_ais_gaps(positions, config, region_key)
     events += detect_identity_conflicts(positions, config, region_key)
+    if corridors:
+        from sentinel.entity.infrastructure import detect_proximity
+
+        events += detect_proximity(positions, corridors, config, region_key)
     if route is not None:
         events += detect_route_deviation(positions, config, route, region_key)
     return sorted(events, key=lambda e: e.event_time)

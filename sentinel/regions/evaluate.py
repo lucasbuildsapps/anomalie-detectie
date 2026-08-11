@@ -211,6 +211,13 @@ def evaluate_region(region: RegionModule, provider: SeriesProvider,
     optional so a count-only region needs no ceremony, and an entity indicator
     without one reports insufficient data — which is the truthful answer, not
     a silent skip.
+
+    Indicators are selected by whether they were watching *at `as_of`*, not by
+    today's status. Using the current set during a replay would evaluate an
+    indicator written last month as though it had been running two years ago,
+    and every warning time it contributed would be credit the system never
+    earned. That is the configuration half of the rule `AsOfView` enforces for
+    data.
     """
     catalog = catalog or DetectionPowerCatalog()
     baseline_config = baseline_config or BaselineConfig()
@@ -230,7 +237,7 @@ def evaluate_region(region: RegionModule, provider: SeriesProvider,
         if indicator.test_type is IndicatorTest.ENTITY_BEHAVIOUR
         else _signal_for(indicator, region, provider, as_of, catalog,
                          baseline_config, base_inputs)
-        for indicator in region.active_indicators
+        for indicator in region.indicators_at(as_of)
     )
     return RegionStatus(
         region_key=region.key,

@@ -29,6 +29,12 @@ an event means the *measured activity* shifted first. It does not establish
 that the shift was preparation for the event, and a chronology cannot settle
 that question.
 
+**Indicator coverage.** `evaluate_region` now selects indicators by whether
+they were watching at the replayed instant, not by today's status — otherwise
+an indicator written last month would be credited with warnings from two years
+ago. Indicators with no declared activation date cannot be placed that way and
+are assumed to have been watching throughout; the report says how many.
+
 None of this makes the measurement worthless. It makes it a check on the
 synthetic floors rather than a replacement for them: if the system detects
 1.5x sustained increases in simulation but never fires before a real
@@ -107,6 +113,9 @@ class RetrospectiveReport:
     n_unattributed_alerts: int = 0
     min_events: int = 8
     arrival_faithful: bool | None = None
+    #: Active indicators with no declared activation date. Their coverage in
+    #: this replay is assumed rather than known.
+    undated_indicators: tuple[str, ...] = field(default_factory=tuple)
     lead_window_days: int = 90
     notes: tuple[str, ...] = field(default_factory=tuple)
 
@@ -169,6 +178,14 @@ class RetrospectiveReport:
                 f"event. A curated chronology is not a complete record of "
                 f"what happened, so these are unattributed rather than wrong.")
 
+        if self.undated_indicators:
+            lines.append(
+                f"{len(self.undated_indicators)} indicator(s) have no declared "
+                f"activation date, so this replay assumes they were watching "
+                f"throughout. Where they were in fact written later, the "
+                f"warning times they contribute are credit the system did not "
+                f"earn.")
+
         if self.arrival_faithful is False:
             lines.append(
                 "The replay rests on assumed arrival times, so every warning "
@@ -221,7 +238,8 @@ def replay(evaluate_at, events, start: datetime, end: datetime, *,
            step: timedelta | None = None,
            lead_window: timedelta | None = None,
            min_events: int = 8,
-           arrival_faithful: bool | None = None) -> RetrospectiveReport:
+           arrival_faithful: bool | None = None,
+           undated_indicators: tuple[str, ...] = ()) -> RetrospectiveReport:
     """Walk the past date by date and record when indicators were active.
 
     `evaluate_at` is a callable ``as_of -> iterable of Signal``. Injected
@@ -274,5 +292,6 @@ def replay(evaluate_at, events, start: datetime, end: datetime, *,
         n_unattributed_alerts=len(alert_dates - attributed),
         min_events=min_events,
         arrival_faithful=arrival_faithful,
+        undated_indicators=tuple(undated_indicators),
         lead_window_days=int(lead_window.total_seconds() // 86400),
     )
