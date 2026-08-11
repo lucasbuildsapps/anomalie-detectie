@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core import storage  # noqa: E402
 from sentinel.core.time import PointInTimeStore  # noqa: E402
-from sentinel.entity import extract_events  # noqa: E402
+from sentinel.entity import extract_events, load_corridors  # noqa: E402
 from sentinel.regions import get_region  # noqa: E402
 
 
@@ -42,6 +42,9 @@ def main() -> int:
                         help="derive as this date (YYYY-MM-DD); defaults to now")
     parser.add_argument("--since", default=None,
                         help="only positions from this date onwards")
+    parser.add_argument("--corridors", type=Path, default=None,
+                        help="declared infrastructure; defaults to "
+                             "data/infrastructure/<region>.json")
     args = parser.parse_args()
 
     region = get_region(args.region)
@@ -57,10 +60,21 @@ def main() -> int:
               f"Nothing to derive — that is not the same as nothing happening.")
         return 1
 
+    corridor_path = args.corridors or (
+        Path(__file__).resolve().parent.parent / "data" / "infrastructure"
+        / f"{region.key}.json")
+    corridors = load_corridors(corridor_path)
+    if not corridors:
+        print(f"No corridors declared in {corridor_path}. Proximity cannot be "
+              f"tested, so loitering will be judged anywhere in the region "
+              f"rather than near infrastructure. See "
+              f"data/infrastructure/README.md.")
+
     n_entities = positions["entity_key"].nunique()
     events = []
     for _key, group in positions.groupby("entity_key"):
-        events.extend(extract_events(group, region_key=region.key))
+        events.extend(extract_events(group, region_key=region.key,
+                                     corridors=corridors))
 
     stored = storage.insert_entity_events(args.dataset, events)
     print(f"{len(positions)} positions from {n_entities} entities -> "

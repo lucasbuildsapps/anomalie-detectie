@@ -117,3 +117,45 @@ def cross_track_distance(lat, lon, lat_a: float, lon_a: float,
     return np.arcsin(
         np.clip(np.sin(d13) * np.sin(theta13 - theta12), -1.0, 1.0)
     ) * EARTH_RADIUS_M
+
+
+def along_track_distance(lat, lon, lat_a: float, lon_a: float,
+                         lat_b: float, lon_b: float) -> np.ndarray:
+    """How far along A→B the projection of a point falls, in metres.
+
+    The companion `cross_track_distance` needs: negative means the point lies
+    behind A, and greater than the A→B length means beyond B. Without this a
+    bounded corridor cannot be distinguished from the infinite great circle
+    through it, and a vessel a hundred miles past the end of a cable reads as
+    sitting on top of it.
+    """
+    lat = np.asarray(lat, dtype=float)
+    lon = np.asarray(lon, dtype=float)
+    d13 = haversine(lat_a, lon_a, lat, lon) / EARTH_RADIUS_M
+    cross = cross_track_distance(lat, lon, lat_a, lon_a,
+                                 lat_b, lon_b) / EARTH_RADIUS_M
+    ratio = np.cos(d13) / np.maximum(np.cos(cross), 1e-12)
+    return np.arccos(np.clip(ratio, -1.0, 1.0)) * EARTH_RADIUS_M * np.sign(
+        np.cos(np.radians(bearing(lat_a, lon_a, lat, lon))
+               - np.radians(bearing(lat_a, lon_a, lat_b, lon_b))))
+
+
+def distance_to_segment(lat, lon, lat_a: float, lon_a: float,
+                        lat_b: float, lon_b: float) -> np.ndarray:
+    """Distance in metres to the *segment* A-B, not the line through it.
+
+    Clamped at both ends: past either endpoint the answer is the distance to
+    that endpoint. This is the difference between "near this cable" and "near
+    the great circle this cable happens to lie on", and cables are finite.
+    """
+    lat = np.asarray(lat, dtype=float)
+    lon = np.asarray(lon, dtype=float)
+    length = float(haversine(lat_a, lon_a, lat_b, lon_b))
+    if length <= 0.0:
+        return haversine(lat_a, lon_a, lat, lon)
+
+    along = along_track_distance(lat, lon, lat_a, lon_a, lat_b, lon_b)
+    cross = np.abs(cross_track_distance(lat, lon, lat_a, lon_a, lat_b, lon_b))
+    to_a = haversine(lat_a, lon_a, lat, lon)
+    to_b = haversine(lat_b, lon_b, lat, lon)
+    return np.where(along < 0.0, to_a, np.where(along > length, to_b, cross))

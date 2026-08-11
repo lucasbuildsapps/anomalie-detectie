@@ -125,8 +125,29 @@ class RegionModule:
 
     @property
     def active_indicators(self) -> tuple[Indicator, ...]:
+        """Indicators watching *now*. For a replay, use `indicators_at`."""
         return tuple(i for i in self.indicators
                      if i.status is IndicatorStatus.ACTIVE)
+
+    def indicators_at(self, as_of) -> tuple[Indicator, ...]:
+        """Indicators that were watching at `as_of`.
+
+        The configuration counterpart of `AsOfView`. Evaluating today's
+        indicator set against 2022 credits the system with an indicator
+        written last month, which inflates every retrospective warning time
+        that indicator contributes to.
+        """
+        return tuple(i for i in self.indicators if i.was_active_at(as_of))
+
+    @property
+    def undated_indicators(self) -> tuple[Indicator, ...]:
+        """Active indicators that cannot say when they started watching.
+
+        Their coverage in a replay is assumed rather than known — the same
+        distinction `ingest_estimated` draws for observations.
+        """
+        return tuple(i for i in self.active_indicators
+                     if not i.activation_dated)
 
     @property
     def is_watched(self) -> bool:

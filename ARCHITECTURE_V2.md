@@ -982,6 +982,47 @@ Daarmee heeft elk van de vier NLD EEZ-indicatoren een gemeten én opgeloste
 vloer, elk tegen zijn eigen regel. De regio blijft DATA_ONLY: de machinerie
 staat er, de AIS-feed niet.
 
+### 6.3-quindecies Corridors, en de laatste niet-uitgezonden event-soort
+
+`loiter_near_infrastructure` had `proximity_critical_infra` altijd al in zijn
+event-soorten staan en niets produceerde het. De indicator beoordeelde dus
+loiteren *ergens in de EEZ* in plaats van loiteren *bij een kabel* — een veel
+zwakkere vraag, want het grootste deel van de Noordzee is oninteressant.
+
+Een kabel is een lijn met een buffer, geen bounding box, en de meetkunde
+daarvoor bestond half: `cross_track_distance` meet de afstand tot de
+*oneindige* grootcirkel, zoals zijn eigen docstring waarschuwt. Daar hoort een
+along-track-klemming bij, anders leest een schip honderd mijl voorbij het einde
+van een kabel als erbovenop. `distance_to_segment` doet dat nu.
+
+Corridors zijn **gedeclareerd, niet afgeleid**:
+`data/infrastructure/nld_eez.json` is leeg, om dezelfde reden als de
+chronologie. Verzonnen kabelcoördinaten zijn niet te onderscheiden van
+geverifieerde, en niemand hoort daar stilzwijgend op te leunen.
+
+Eén event per *nadering*, niet per positiebericht: een schip dat met tien
+knopen een kabel kruist zendt elke paar seconden, en één alarm per bericht zou
+de indicator bedelven onder één legitieme doorvaart.
+
+### 6.3-sexdecies Indicator-levenscyclus — het causale gat in de configuratie
+
+`evaluate_region` selecteerde indicatoren op hun status van *vandaag*, ook
+tijdens een replay van 2022. Een indicator die vorige maand geschreven is werd
+dus beoordeeld alsof hij twee jaar geleden al meekeek, en elke
+waarschuwingstijd die hij bijdroeg was krediet dat het systeem niet verdiend
+had. Dat is precies het lek dat `AsOfView` voor *data* dichtzet, één laag hoger
+— in de configuratie.
+
+`Indicator` draagt nu `activated_at` en `retired_at`, en
+`RegionModule.indicators_at(as_of)` selecteert op wie er toen keek. Een
+*gepensioneerde* indicator wordt niet uit het verleden gewist: hij keek toen
+wél mee, en hem weglaten zou onderschatten wat het systeem zag.
+
+Indicatoren zonder datum worden aangenomen altijd actief te zijn geweest — de
+enige werkbare default voor indicatoren die ouder zijn dan het veld — en het
+retrospectieve rapport meldt hoeveel dat er zijn. Dezelfde behandeling als
+`ingest_estimated`: de aanname staat in de uitvoer in plaats van eronder.
+
 ### 6.4 Rapport
 
 Per indicator een detectievermogen-curve (recall vs. effectgrootte per

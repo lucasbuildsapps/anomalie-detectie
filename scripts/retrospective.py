@@ -86,7 +86,9 @@ def main() -> int:
     report = replay(evaluate_at, events, start, end,
                     step=timedelta(days=args.step_days),
                     lead_window=timedelta(days=args.lead_days),
-                    arrival_faithful=faithful)
+                    arrival_faithful=faithful,
+                    undated_indicators=tuple(
+                        i.key for i in region.undated_indicators))
 
     print()
     for result in report.results:
