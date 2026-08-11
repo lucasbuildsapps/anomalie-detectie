@@ -1163,14 +1163,18 @@ Uitvoer      ICD 203-assessment + verschil met vorige beoordeling
 
 ## 9. Roadmap
 
-| Fase | Inhoud | Klaar wanneer |
+> **Stand per augustus 2026.** Fase 1–4 zijn af; fase 5 wacht op bronnen en
+> fase 6 is niet begonnen. Wat per fase werkelijk is gebouwd staat in de
+> laatste kolom.
+
+| Fase | Inhoud | Stand |
 |---|---|---|
-| **1. Kritieke correcties** | `AsOfView` + `ingested_at`; quotum-lus, contamination en stemming eruit; causale baseline; aggregatie op één plek | Zuivere ruis levert 0 alarmen; geen module leest buiten `AsOfView` |
+| **1. Kritieke correcties** | `AsOfView` + `ingested_at`; quotum-lus, contamination en stemming eruit; causale baseline; aggregatie op één plek | **Af.** `AsOfView` leest observaties, events én posities; §1's verwijderlijst is uitgevoerd (quotum-lus, IsolationForest, ensemble, `similar_period`, scikit-learn) |
 | **2. Evaluatie & kalibratie** | Synthetische injectie (9 scenario's), event-niveau scoring, detectievermogen-curves, retrospectief replay | **Klaar** — curve per indicator (§6.3-ter), retrospectief replay (§6.3-octies), budget-kalibratie (§6.3-undecies) |
-| **3. Regio-architectuur** | `RegionModule`, indicator-registry, dubbele baseline, confidence-raamwerk, vijf-tabbladen-schil met eerlijke status | Euro-Atlantic draait volledig als regiomodule |
-| **4. NLD EEZ** | Postgres/PostGIS/Timescale, AIS-connectors, identiteit, tracks, gedragsprimitieven, entity-events, synthetische trackgenerator | Loitering en dark-gaps aantoonbaar gedetecteerd op DMA-historie |
-| **5. Overige regio's** | MENA / Indo-Pacific / Caribbean, config-gedreven, per stuk pas activeren als de bron er is | Elk actief tabblad heeft een gevalideerde indicator |
-| **6. UX & hardening** | FastAPI-splitsing, kaartcomponent, RBAC, retention, monitoring | Multi-user, kaartinteractie op trackniveau |
+| **3. Regio-architectuur** | `RegionModule`, indicator-registry, dubbele baseline, confidence-raamwerk, vijf-tabbladen-schil met eerlijke status | **Af.** Plus de levenscyclus uit §10-doel 6: indicatoren worden geselecteerd op wie er *toen* keek (§6.3-sexdecies) |
+| **4. NLD EEZ** | Postgres/PostGIS/Timescale, AIS-connectors, identiteit, tracks, gedragsprimitieven, entity-events, synthetische trackgenerator | **Machinerie af, data niet.** Alle vier de indicatoren hebben een gemeten én opgeloste vloer en draaien end-to-end op een synthetische vloot. Zonder PostGIS/Timescale (§6.3-decies). De DMA-connector is gebouwd maar heeft nooit een echt bestand gezien — daarom blijft de regio DATA_ONLY |
+| **5. Overige regio's** | MENA / Indo-Pacific / Caribbean, config-gedreven, per stuk pas activeren als de bron er is | **Wacht op bronnen**, zoals afgesproken. De schillen staan er met hun activatievoorwaarden; indicatoren verzinnen voor een regio zonder data zou precies de zelfverzekerde leegte opleveren die dit ontwerp bestrijdt |
+| **6. UX & hardening** | FastAPI-splitsing, kaartcomponent, RBAC, retention, monitoring | **Niet begonnen.** Bewust: besluit #7 legt de FastAPI-splitsing hier neer, en een kaart op trackniveau heeft echte tracks nodig |
 
 Fase 1 en 2 zijn niet onderhandelbaar en gaan vooraf aan élke regionale
 functionaliteit. Een regiomodule bovenop een ongekalibreerde kern is een
@@ -1252,23 +1256,36 @@ ze niet stilletjes terugkeren.
 
 ## 12. Hoe we weten dat v2 geslaagd is
 
-Concrete, toetsbare acceptatiecriteria per niet-onderhandelbare eis:
+Concrete, toetsbare acceptatiecriteria per niet-onderhandelbare eis, met de
+stand erbij. Zeven van de acht zijn afdwingbaar gemaakt in code; de achtste
+wacht op de migratie van v1 en niet op werk aan v2.
 
-1. **Evaluatie-integriteit** — detectievermogen-curve per indicator uit
-   synthetische injectie; geen enkel gepubliceerd cijfer rust op
-   analist-bevestigingen.
-2. **Echt nulresultaat** — zuivere Poisson-ruis levert 0 alarmen; elk
-   `niet_actief` draagt detectievermogen mee.
-3. **Aanhoudende escalatie** — een 3× escalatie over 30 perioden wordt
-   gedetecteerd met gerapporteerde doorlooptijd; de divergentiematrix benoemt
-   expliciet "escalatie is baseline geworden".
-4. **Eén waarheid** — geen enkele UI-weergave toont twee verschillende
-   afwijkingsoordelen over hetzelfde punt.
-5. **Confidence** — geen input is door het model zelf gekalibreerd;
-   reekslengte kan het niveau niet verhogen.
-6. **Causaliteit** — testsuite bewijst dat productie-uitvoer op `as_of`
-   identiek is aan replay op datzelfde tijdstip.
-7. **Datacontract** — entiteit- en count-regio's delen dezelfde `event`-tabel
-   en dezelfde indicator-machinerie.
-8. **Analistvertrouwen** — elke assessment bevat baseline, bewijs,
-   alternatieve verklaring en vervolgstap; ontbreekt er één, dan faalt de test.
+| # | Eis | Stand | Waar het vastligt |
+|---|---|---|---|
+| 1 | **Evaluatie-integriteit** — detectievermogen uit synthetische injectie; geen cijfer rust op analist-bevestigingen | **Gehaald** | `sentinel/eval/harness.py` met kans-kalibratie (§6.3-bis); geen enkel pad leest bevestigingen |
+| 2 | **Echt nulresultaat** — zuivere ruis levert 0 alarmen; elk `niet_actief` draagt detectievermogen | **Gehaald** | `Signal.__post_init__` weigert NOT_ACTIVE zonder `DetectionPower`; alle 7 indicatoren hebben een gemeten én opgeloste vloer |
+| 3 | **Aanhoudende escalatie** — 3× over 30 perioden gedetecteerd; divergentiematrix benoemt "escalatie is baseline geworden" | **Gehaald** | Vloer 1,5× tegen v1's beste 3,0×; `DivergenceState.NORMALISED_ESCALATION` |
+| 4 | **Eén waarheid** — geen UI-weergave toont twee afwijkingsoordelen over hetzelfde punt | **Nog niet** | v1's `normbeeld`/`triage` draaien naast het v2-watchboard. Dat is de migratiestrategie (§10), niet een openstaand v2-gat: v1 verdwijnt pas als v2 aantoonbaar gelijkwaardig is op dezelfde data, en dat vraagt de chronologie |
+| 5 | **Confidence** — geen input door het model zelf gekalibreerd; reekslengte kan het niveau niet verhogen | **Gehaald** | `ConfidenceInputs` heeft geen lengteveld — structureel onmogelijk |
+| 6 | **Causaliteit** — productie-uitvoer op `as_of` gelijk aan replay op datzelfde tijdstip | **Gehaald** | `AsOfView` voor data; `indicators_at()` voor configuratie (§6.3-sexdecies) |
+| 7 | **Datacontract** — entiteit- en count-regio's delen dezelfde event-tabel en indicator-machinerie | **Gehaald** | `entity_events` + `evaluate_region(event_provider=...)`; beide eindigen in dezelfde `evaluate_indicator` |
+| 8 | **Analistvertrouwen** — elke assessment bevat baseline, bewijs, alternatief en vervolgstap | **Gehaald** | `Assessment.__post_init__` weigert een actief oordeel zonder alternatief én vervolg |
+
+### Wat het systeem nog niet kan, en waarom dat zo hoort
+
+Drie dingen ontbreken, en geen ervan is een programmeertaak:
+
+- **De chronologie.** `data/chronology/euro_atlantic.csv` heeft alleen een
+  header. Retrospectieve validatie meldt daarom "nothing was validated" en
+  geeft exitcode 1. Vullen is analistenwerk; verzinnen zou de meting waardeloos
+  maken.
+- **De AIS-feed.** Opslag, afleiding, peer-baselines en vloeren staan er en
+  draaien end-to-end op een synthetische vloot. Wat ontbreekt zijn echte
+  tracks, en de eerste echte run is meteen de eerste toets van de
+  DMA-kolomafbeelding.
+- **De corridors.** `data/infrastructure/nld_eez.json` is leeg om dezelfde
+  reden als de chronologie.
+
+Alle drie zijn expliciet gemarkeerd in de uitvoer in plaats van stilzwijgend
+opgevuld. Dat is het verschil tussen "er is niets gevonden" en "er is niet
+gekeken", en dat verschil is waar dit hele ontwerp om draait.
