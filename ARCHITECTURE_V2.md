@@ -1223,9 +1223,13 @@ draaien terwijl v2 groeit. De volgorde:
 
 ### Afhankelijkheden
 
-Nieuw: `psycopg`, `GeoAlchemy2`, `shapely`, `timescaledb` (extensie),
-`websockets` (aisstream), `hypothesis` (property-based tests).
-Weg: `scikit-learn` (alleen nog voor IsolationForest gebruikt — die verdwijnt).
+Nieuw: `psycopg`, `hypothesis` (property-based tests). **Niet** `GeoAlchemy2`,
+`shapely` of `timescaledb`: geen enkele query in deze codebase is ruimtelijk of
+volume-gebonden — zie §6.3-decies. `websockets` pas als aisstream gebouwd wordt
+(§6.3-duodecies).
+
+Weg: `scikit-learn` — **verwijderd**, samen met de IsolationForest-detector die
+er als enige gebruik van maakte.
 
 ---
 

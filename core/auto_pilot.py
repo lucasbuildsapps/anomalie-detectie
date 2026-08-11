@@ -5,8 +5,11 @@ Output per row:
     - severity: 'hoog' / 'midden' / 'laag' / None
     - is_anomaly: True als severity != None
 
-Iteratie: als er bij default-gevoeligheid 0 high-severity gevallen zijn,
-herhalen met losser instellingen. Als er > 3% high-severity is, strakker.
+Gevoeligheid is vast. Hier zat een lus die versoepelde tot er iets te tonen
+was; die is verwijderd (ARCHITECTURE_V2.md §1). Een detector die zijn drempel
+verschuift naar het aantal bevindingen is een quotum, en garandeert het luidste
+resultaat in de rustigste week. Drempels worden nu vooraf gezet — zie
+`sentinel/eval/budget.py`.
 """
 from __future__ import annotations
 
@@ -30,8 +33,9 @@ from core.explanations import explain_finding
 from core.profiler import DataProfile, profile_data
 from core.registry import get_detectors
 
-# Steering-doelband voor de auto-tuning: fractie rijen met severity
-# hoog óf midden (het "signaal" dat een analist daadwerkelijk bekijkt).
+# De oude stuurband voor de gevoeligheids-lus. Bewaard als documentatie van
+# wat er stond, niet gebruikt: `run_auto_pilot` stemt niet meer af op het
+# aantal bevindingen. Zie het commentaar bij de detectiestap.
 TARGET_SIGNAL_MIN = 0.003
 TARGET_SIGNAL_MAX = 0.05
 
@@ -347,35 +351,25 @@ def run_auto_pilot(
     methods = _select_methods(profile, log)
     log.log(TAG_SELECT, f"{len(methods)} methodes geselecteerd")
 
-    # === Detectie (met iteratie) ===
+    # === Detectie ===
+    # Eén keer, op vaste gevoeligheid. Hier zat de gevoeligheids-lus: vond hij
+    # te weinig, dan versoepelde hij tot er wél iets te tonen was. Dat is een
+    # quotum — het garandeert bevindingen, en het luidst in de weken waarin het
+    # minst gebeurt. ARCHITECTURE_V2.md §1 schrapt hem omdat hij niet naast
+    # eis #2 (echt nulresultaat) kan bestaan, en §6.3-undecies beschrijft wat
+    # ervoor in de plaats komt: het alert-budget, vooraf en offline gemeten,
+    # dat een drempel vastzet in plaats van hem tijdens de run te verschuiven.
+    #
+    # De functie zelf blijft: v1 draait nog en wordt pas verwijderd als v2
+    # aantoonbaar gelijkwaardig is op dezelfde data (§10, migratiestrategie).
+    # Alleen de lus gaat eruit.
     sensitivity = "normaal"
-    iterations = 0
-    results = None
-    per_method: dict = {}
-    for attempt in range(3):
-        iterations += 1
-        log.log(TAG_TUNE, f"Iteratie {attempt + 1}: gevoeligheid '{sensitivity}'")
-        results, per_method = _run_with_grouping(
-            df, methods, sensitivity, group_col, log
-        )
-        n_high = int((results["severity"] == "hoog").sum())
-        n_mid = int((results["severity"] == "midden").sum())
-        n_total = max(1, len(results))
-        # Stuur op hoog+midden: dát is wat de analist bekijkt
-        rate_signal = (n_high + n_mid) / n_total
-        log.log(TAG_VOTING,
-                f"  → {n_high} hoog + {n_mid} midden "
-                f"({rate_signal * 100:.1f}% van rijen)")
-
-        if rate_signal < TARGET_SIGNAL_MIN and sensitivity != "soepel":
-            log.log(TAG_TUNE, "Te weinig signaal — naar 'soepel'")
-            sensitivity = "soepel"
-            continue
-        if rate_signal > TARGET_SIGNAL_MAX and sensitivity != "streng":
-            log.log(TAG_TUNE, "Te veel signaal — naar 'streng'")
-            sensitivity = "streng"
-            continue
-        break
+    iterations = 1
+    log.log(TAG_TUNE, f"Gevoeligheid '{sensitivity}' (vast; geen afstemming "
+                      f"op het aantal bevindingen)")
+    results, per_method = _run_with_grouping(
+        df, methods, sensitivity, group_col, log
+    )
 
     # === Stemmen tellen ===
     n_high = int((results["severity"] == "hoog").sum())

@@ -1,11 +1,10 @@
-"""Gedrags-tests voor de change-point- en ensemble-detectoren
+"""Gedrags-tests voor de change-point-detector
 (voorheen 24%/27% coverage — de twee minst geteste plug-ins)."""
 import numpy as np
 import pandas as pd
 import pytest
 
 from detectors.changepoint import ChangePointDetector
-from detectors.ensemble import EnsembleDetector
 from detectors.zscore import ZScoreDetector
 
 
@@ -67,62 +66,6 @@ class TestChangePoint:
         assert len(out) == len(level_shift_df)
 
 
-class TestEnsemble:
-    def test_spike_confirmed_by_multiple_methods(self):
-        rng = np.random.default_rng(5)
-        vals = 5 + rng.normal(0, 0.5, 90)
-        vals[45] = 60.0
-        out = EnsembleDetector().detect(
-            _df(vals), "timestamp", "value",
-            methods=["Z-score (MAD)", "Rolling mean ± N·std"], min_votes=2,
-        )
-        assert bool(out.loc[45, "is_anomaly"])
-
-    def test_min_votes_filters_single_method_hits(self):
-        rng = np.random.default_rng(5)
-        vals = 5 + rng.normal(0, 0.5, 90)
-        vals[45] = 60.0
-        df = _df(vals)
-        loose = EnsembleDetector().detect(
-            df, "timestamp", "value",
-            methods=["Z-score (MAD)", "Rolling mean ± N·std"], min_votes=1,
-        )
-        strict = EnsembleDetector().detect(
-            df, "timestamp", "value",
-            methods=["Z-score (MAD)", "Rolling mean ± N·std"], min_votes=2,
-        )
-        assert strict["is_anomaly"].sum() <= loose["is_anomaly"].sum()
-
-    def test_unknown_methods_are_skipped_gracefully(self):
-        out = EnsembleDetector().detect(
-            _df([1.0] * 30), "timestamp", "value",
-            methods=["Bestaat niet", "Z-score (MAD)"],
-        )
-        assert len(out) == 30  # geen crash; onbekende methode genegeerd
-
-    def test_no_usable_methods_returns_clean_result(self):
-        out = EnsembleDetector().detect(
-            _df([1.0] * 30), "timestamp", "value", methods=["Bestaat niet"],
-        )
-        assert not out["is_anomaly"].any()
-        assert (out["anomaly_score"] == 0).all()
-
-    def test_score_is_vote_fraction(self):
-        rng = np.random.default_rng(5)
-        vals = 5 + rng.normal(0, 0.5, 90)
-        vals[45] = 60.0
-        out = EnsembleDetector().detect(
-            _df(vals), "timestamp", "value",
-            methods=["Z-score (MAD)", "Rolling mean ± N·std"],
-        )
-        assert out["anomaly_score"].between(0, 1).all()
-
-    def test_default_method_pick_excludes_self(self):
-        # Zonder expliciete methodes kiest hij er max 3, nooit zichzelf.
-        out = EnsembleDetector().detect(_df([1.0] * 40), "timestamp", "value")
-        assert len(out) == 40
-
-
 class TestZScoreEdgeCases:
     def test_zero_mad_flags_nothing(self):
         out = ZScoreDetector().detect(_df([4.0] * 30), "timestamp", "value")
@@ -175,3 +118,26 @@ class TestMissingValuesDoNotDisableDetectors:
         for name, det in get_detectors().items():
             out = det.detect(df, "timestamp", "value")
             assert out["anomaly_score"].notna().all(), f"{name} geeft NaN-scores"
+
+
+def test_the_ensemble_detector_is_gone():
+    """Removed with the voting model it duplicated (ARCHITECTURE_V2.md §1).
+
+    Detector agreement is evidence, never a verdict. An "ensemble" that turned
+    agreement back into a finding reintroduced exactly the truth model v2
+    retired, one layer down.
+    """
+    import pytest
+
+    with pytest.raises(ModuleNotFoundError):
+        __import__("detectors.ensemble")
+
+
+def test_isolation_forest_is_gone():
+    """`contamination=0.05` marks 5% of any dataset by construction — a
+    quantile cut, not a test. The same defect was found and fixed in v2's
+    peer baseline; leaving the v1 version live would be inconsistent."""
+    import pytest
+
+    with pytest.raises(ModuleNotFoundError):
+        __import__("detectors.isolation_forest")

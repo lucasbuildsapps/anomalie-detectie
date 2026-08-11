@@ -6,7 +6,6 @@ from core.signals import (
     change_signal,
     collect_signals,
     persistence_signal,
-    similar_period,
     variability_signal,
 )
 
@@ -65,22 +64,20 @@ def test_change_signal_old_shift_ignored():
     assert sig is None
 
 
-def test_similar_period_finds_planted_match():
-    """Plant hetzelfde patroon op twee plekken; het recente venster moet de
-    eerdere kopie terugvinden."""
-    rng = np.random.default_rng(4)
-    pattern = 10 + np.array([0, 2, 5, 9, 12, 9, 5, 2, 0, -2] * 2, dtype=float)
-    def noise(n):
-        return rng.normal(0, 0.3, n)
-    vals = np.concatenate([
-        5 + noise(30), pattern + noise(20), 5 + noise(40),
-        pattern + noise(20),
-    ])
-    sig = similar_period(_hist(vals), window=20)
-    assert sig is not None
-    assert sig["corr"] > 0.7
-    # de match moet rond de eerste kopie liggen (start ~ dag 30)
-    assert 20 <= (sig["start"] - pd.Timestamp("2025-01-01")).days <= 40
+def test_similar_period_is_gone():
+    """Removed (ARCHITECTURE_V2.md §1).
+
+    It searched hundreds of windows for the highest correlation with the
+    present and presented the winner as a historical analogy. An uncontrolled
+    maximum always finds a good match — including when there is none — so the
+    output was a reassuring parallel precisely when the situation was
+    unprecedented. A false reassurance is worse than a missed alert, and
+    nothing replaces it: the question needs a null distribution for "how well
+    does an arbitrary window match", and there is not one.
+    """
+    import core.signals as signals
+
+    assert not hasattr(signals, "similar_period")
 
 
 def test_collect_signals_never_crashes_on_short():
