@@ -21,12 +21,6 @@ data/store.db
 data/*.xlsx
 data/uploaded_*
 
-# Probe-uitvoer met ruwe provider-responses. Blijft lokaal: de
-# voorwaarden van Google Maps Platform staan het opslaan en
-# herdistribueren van routegegevens niet toe. Het bewijs hoort bij de
-# analyse-machine, niet in een publieke repo.
-data/traffic/
-
 # Secrets — NOOIT committen
 .streamlit/secrets.toml
 
