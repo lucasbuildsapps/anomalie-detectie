@@ -119,6 +119,28 @@ automatisch mee.
 - **Incomplete buckets**: bij week/maand-aggregatie wordt de laatste
   onvolledige periode weggelaten (voorkomt valse "onder band"-alerts).
 
+## Verkeersimpact van luchtaanvallen (`traffic/`, Fase 0)
+
+Een aparte meetketen, los van de Streamlit-tool: hoeveel wijkt de reistijd
+op Oekraïense wegen af van normaal na een raket- of drone-aanval, en hoe
+lang duurt herstel. Retrospectief en op vertraging — geen voorspelling,
+geen realtime uitvoer.
+
+Alleen **Fase 0** is gebouwd: een haalbaarheidsprobe die vaststelt of er
+überhaupt een levend verkeerssignaal te krijgen is voor Oekraïense steden.
+Google zette die verkeerslaag in februari 2022 uit; of de Routes API nog
+met verkeer rekent is een hypothese die de probe test, geen aanname.
+
+```bash
+cp .env.example .env                    # GOOGLE_MAPS_API_KEY etc.
+python -m traffic.cli preflight         # keys, bereikbaarheid, kostenschatting
+python -m traffic.cli run --label piek-2026-08-14 --duration-min 180 --budget 5
+python -m traffic.cli coverage --label piek-2026-08-14
+```
+
+Wat wél en niet is vastgesteld, de dekkingstabel, de prijzen met herkomst
+en de poort waar Fase 1 op wacht: **`PHASE0.md`**.
+
 ## Tests
 
 ```bash
